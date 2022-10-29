@@ -21,15 +21,17 @@ from rl_testing.util.util import (
 
 
 async def analyze_positions(
-    # engine: chess.engine.UciProtocol, board: chess.Board
+    queue: asyncio.Queue,
     engine: RelaxedUciProtocol,
-    boards: List[chess.Board],
     search_limits: Dict[str, Any],
+    num_boards: int,
 ) -> List[Tuple[Union[chess.Move, str], Dict[chess.Move, MoveStat], List[PositionStat]]]:
     results = []
     # Iterate over all boards
-    for board_index, board in enumerate(boards):
-        print(f"Analyzing board {board_index}/{len(boards)}: " + board.fen(en_passant="fen"))
+    for board_index in range(num_boards):
+        # Fetch the next board from the queue
+        board = await queue.get()
+        print(f"Analyzing board {board_index}/{num_boards}: " + board.fen(en_passant="fen"))
 
         move_stats, position_stats = {}, []
 
@@ -55,7 +57,54 @@ async def analyze_positions(
             best_move = (await analysis.wait()).move
             results.append((best_move, move_stats, position_stats))
 
+        queue.task_done()
+
     return results
+
+
+async def sample_valid_chess_positions(
+    queues: List[asyncio.Queue],
+    num_positions: int = 1,
+    num_pieces: Optional[int] = None,
+    num_pieces_min: Optional[int] = None,
+    num_pieces_max: Optional[int] = None,
+    max_attempts_per_position: int = 10000,
+):
+    boards = []
+
+    # Create random chess positions if necessary
+    for board_index in range(num_positions):
+        # Choose how many pieces the position should have
+        if num_pieces is None:
+            if num_pieces_min is None:
+                pieces_min = 1
+            else:
+                pieces_min = num_pieces_min
+            if num_pieces_max is None:
+                pieces_max = len(CHESS_PIECES_NON_ESSENTIAL)
+            else:
+                pieces_max = num_pieces_max
+            num_pieces_to_choose = np.random.randint(pieces_min, pieces_max)
+        else:
+            num_pieces_to_choose = num_pieces
+
+        # Create a random chess position
+        board_candidate = random_valid_board(
+            num_pieces=num_pieces_to_choose,
+            max_attempts_per_position=max_attempts_per_position,
+        )
+
+        # Check if the generated position was valid
+        if board_candidate != "failed":
+            boards.append(board_candidate)
+            fen = board_candidate.fen(en_passant="fen")
+            print(f"Created board {board_index}: " f"{fen}")
+            for queue in queues:
+                await queue.put(board_candidate.copy())
+
+            await asyncio.sleep(delay=0.1)
+
+    return boards
 
 
 async def differential_testing(
@@ -66,9 +115,8 @@ async def differential_testing(
     engine_config: str,
     network_path1: str,
     network_path2: str,
-    positions: List[chess.Board] = [],
-    num_positions: int = 1,
     search_limits: Optional[Dict[str, Any]] = None,
+    num_positions: int = 1,
     num_pieces: Optional[int] = None,
     num_pieces_min: Optional[int] = None,
     num_pieces_max: Optional[int] = None,
@@ -81,55 +129,19 @@ async def differential_testing(
             prompt=f"Please specify the SSH password for the user {remote_user}:\n"
         )
 
-    if positions:
-        boards = positions
-    else:
-        boards = []
-
     # Start connection
     async with asyncssh.connect(
         remote_host, username=remote_user, password=remote_password
     ) as conn:
         del remote_password
 
-        if not boards:
-            # Create random chess positions if necessary
-            for board_index in range(num_positions):
-                # Choose how many pieces the position should have
-                if num_pieces is None:
-                    if num_pieces_min is None:
-                        pieces_min = 1
-                    else:
-                        pieces_min = num_pieces_min
-                    if num_pieces_max is None:
-                        pieces_max = len(CHESS_PIECES_NON_ESSENTIAL)
-                    else:
-                        pieces_max = num_pieces_max
-                    num_pieces_to_choose = np.random.randint(pieces_min, pieces_max)
-                else:
-                    num_pieces_to_choose = num_pieces
-
-                # Create a random chess position
-                board_candidate = random_valid_board(
-                    num_pieces=num_pieces_to_choose,
-                    max_attempts_per_position=max_attempts_per_position,
-                )
-
-                # Check if the generated position was valid
-                if board_candidate != "failed":
-                    boards.append(board_candidate)
-                    fen = board_candidate.fen(en_passant="fen")
-                    print(f"Created board {board_index}: " f"{fen}")
-
         # Connect the two networks to test
         _, engine1 = await conn.create_subprocess(
-            # chess.engine.UciProtocol,
             RelaxedUciProtocol,
             engine_path,
         )
 
         _, engine2 = await conn.create_subprocess(
-            # chess.engine.UciProtocol,
             RelaxedUciProtocol,
             engine_path,
         )
@@ -154,11 +166,34 @@ async def differential_testing(
 
         results = []
         boards_final = []
-
-        results1, results2 = await asyncio.gather(
-            analyze_positions(engine=engine1, boards=boards, search_limits=search_limits),
-            analyze_positions(engine=engine2, boards=boards, search_limits=search_limits),
+        queue1, queue2 = asyncio.Queue(), asyncio.Queue()
+        # data_generator_task = asyncio.create_task(
+        data_generator_task = sample_valid_chess_positions(
+            queues=[queue1, queue2],
+            num_positions=num_positions,
+            num_pieces=num_pieces,
+            num_pieces_min=num_pieces_min,
+            num_pieces_max=num_pieces_max,
+            max_attempts_per_position=max_attempts_per_position,
         )
+        # )
+        (data_consumer_task1, data_consumer_task2) = [
+            asyncio.create_task(
+                analyze_positions(
+                    queue=queue,
+                    engine=engine,
+                    search_limits=search_limits,
+                    num_boards=num_positions,
+                )
+            )
+            for queue, engine in zip([queue1, queue2], [engine1, engine2])
+        ]
+
+        # Wait until all tasks finish
+        boards, results1, results2 = await asyncio.gather(
+            data_generator_task, data_consumer_task1, data_consumer_task2
+        )
+
         for board_index, board in enumerate(boards):
             best_move1, move_stats1, _ = results1[board_index]
             best_move2, move_stats2, _ = results2[board_index]
@@ -234,7 +269,6 @@ if __name__ == "__main__":
             engine_config=config.engine_config,
             network_path1=str(Path(config.network_base_path) / Path(NETWORK_PATH1)),
             network_path2=str(Path(config.network_base_path) / Path(NETWORK_PATH2)),
-            positions=POSITIONS,
             search_limits=config.search_limits,
             num_positions=NUM_POSITIONS,
             num_pieces=NUM_PIECES,

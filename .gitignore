@@ -140,6 +140,7 @@ mlruns/
 mlruns_data
 
 # Project specific stuff
+data/
 old/
 *old.py
 *OLD.py
