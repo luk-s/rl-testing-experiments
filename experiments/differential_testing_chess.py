@@ -9,15 +9,12 @@ import chess
 import chess.engine
 import numpy as np
 from rl_testing.config_parsers.engine_config_parser import RemoteEngineConfig
-from rl_testing.util.relaxed_uci_protocol import RelaxedUciProtocol
-from rl_testing.util.util import (
+from rl_testing.data_generators.random_board_generator import (
     CHESS_PIECES_NON_ESSENTIAL,
-    MoveStat,
-    PositionStat,
-    parse_info,
-    plot_board,
     random_valid_board,
 )
+from rl_testing.util.relaxed_uci_protocol import RelaxedUciProtocol
+from rl_testing.util.util import MoveStat, PositionStat, parse_info, plot_board
 
 
 async def analyze_positions(

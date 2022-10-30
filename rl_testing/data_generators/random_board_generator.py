@@ -166,6 +166,7 @@ def random_valid_board(
 class RandomBoardGenerator(BoardGenerator):
     def __init__(
         self,
+        *,
         num_pieces: Optional[int] = None,
         num_pieces_min: Optional[int] = None,
         num_pieces_max: Optional[int] = None,

@@ -8,16 +8,14 @@ import asyncssh
 import chess
 import chess.engine
 import numpy as np
-from rl_testing.config_parsers.engine_config_parser import RemoteEngineConfig
-from rl_testing.util.relaxed_uci_protocol import RelaxedUciProtocol
-from rl_testing.util.util import (
-    CHESS_PIECES_NON_ESSENTIAL,
-    MoveStat,
-    PositionStat,
-    parse_info,
-    plot_board,
-    random_valid_board,
+from rl_testing.config_parsers import BoardGeneratorConfig, RemoteEngineConfig
+from rl_testing.data_generators import (
+    BoardGenerator,
+    DataBaseBoardGenerator,
+    RandomBoardGenerator,
 )
+from rl_testing.util.relaxed_uci_protocol import RelaxedUciProtocol
+from rl_testing.util.util import MoveStat, PositionStat, parse_info, plot_board
 
 
 async def analyze_positions(
@@ -25,12 +23,16 @@ async def analyze_positions(
     engine: RelaxedUciProtocol,
     search_limits: Dict[str, Any],
     num_boards: int,
+    sleep_after_get: float = 0,
 ) -> List[Tuple[Union[chess.Move, str], Dict[chess.Move, MoveStat], List[PositionStat]]]:
     results = []
     # Iterate over all boards
     for board_index in range(num_boards):
         # Fetch the next board from the queue
         board = await queue.get()
+
+        await asyncio.sleep(delay=sleep_after_get)
+
         print(f"Analyzing board {board_index}/{num_boards}: " + board.fen(en_passant="fen"))
 
         move_stats, position_stats = {}, []
@@ -62,37 +64,19 @@ async def analyze_positions(
     return results
 
 
-async def sample_valid_chess_positions(
+async def get_positions_async(
     queues: List[asyncio.Queue],
+    data_generator: BoardGenerator,
     num_positions: int = 1,
-    num_pieces: Optional[int] = None,
-    num_pieces_min: Optional[int] = None,
-    num_pieces_max: Optional[int] = None,
-    max_attempts_per_position: int = 10000,
-):
+    sleep_between_positions: float = 0.1,
+) -> List[chess.Board]:
     boards = []
 
     # Create random chess positions if necessary
     for board_index in range(num_positions):
-        # Choose how many pieces the position should have
-        if num_pieces is None:
-            if num_pieces_min is None:
-                pieces_min = 1
-            else:
-                pieces_min = num_pieces_min
-            if num_pieces_max is None:
-                pieces_max = len(CHESS_PIECES_NON_ESSENTIAL)
-            else:
-                pieces_max = num_pieces_max
-            num_pieces_to_choose = np.random.randint(pieces_min, pieces_max)
-        else:
-            num_pieces_to_choose = num_pieces
 
         # Create a random chess position
-        board_candidate = random_valid_board(
-            num_pieces=num_pieces_to_choose,
-            max_attempts_per_position=max_attempts_per_position,
-        )
+        board_candidate = data_generator.next()
 
         # Check if the generated position was valid
         if board_candidate != "failed":
@@ -102,7 +86,7 @@ async def sample_valid_chess_positions(
             for queue in queues:
                 await queue.put(board_candidate.copy())
 
-            await asyncio.sleep(delay=0.1)
+            await asyncio.sleep(delay=sleep_between_positions)
 
     return boards
 
@@ -115,13 +99,12 @@ async def differential_testing(
     engine_config: str,
     network_path1: str,
     network_path2: str,
+    data_generator: BoardGenerator,
+    *,
     search_limits: Optional[Dict[str, Any]] = None,
     num_positions: int = 1,
-    num_pieces: Optional[int] = None,
-    num_pieces_min: Optional[int] = None,
-    num_pieces_max: Optional[int] = None,
-    max_attempts_per_position: int = 10000,
-):
+    sleep_between_positions: float = 0.1,
+) -> Tuple[List[chess.Board], List[Tuple[float, float]]]:
     remote_password = None
 
     if remote_password is None and password_required:
@@ -135,15 +118,22 @@ async def differential_testing(
     ) as conn:
         del remote_password
 
+        # Set the CUDA available devices
+        # _ = await conn.run("export CUDA_VISIBLE_DEVICES=3,4", check=True)
+
         # Connect the two networks to test
         _, engine1 = await conn.create_subprocess(
             RelaxedUciProtocol,
-            engine_path,
+            # engine_path,
+            "/home/flurilu/Software/leelachesszero/lc0/build/release/lc0",
+            env={"CUDA_VISIBLE_DEVICES": "3"},
         )
 
         _, engine2 = await conn.create_subprocess(
             RelaxedUciProtocol,
-            engine_path,
+            # engine_path,
+            "/home/flurilu/Software/leelachesszero/lc0/build/release/lc0",
+            env={"CUDA_VISIBLE_DEVICES": "3"},
         )
 
         # Initialize the two engines
@@ -167,16 +157,26 @@ async def differential_testing(
         results = []
         boards_final = []
         queue1, queue2 = asyncio.Queue(), asyncio.Queue()
-        # data_generator_task = asyncio.create_task(
-        data_generator_task = sample_valid_chess_positions(
-            queues=[queue1, queue2],
-            num_positions=num_positions,
-            num_pieces=num_pieces,
-            num_pieces_min=num_pieces_min,
-            num_pieces_max=num_pieces_max,
-            max_attempts_per_position=max_attempts_per_position,
+
+        data_generator_task = asyncio.create_task(
+            get_positions_async(
+                queues=[queue1, queue2],
+                data_generator=data_generator,
+                num_positions=num_positions,
+                sleep_between_positions=sleep_between_positions,
+            )
         )
-        # )
+        """
+        data_consumer_task1 = asyncio.create_task(
+            analyze_positions(
+                queue=queue1,
+                engine=engine1,
+                search_limits=search_limits,
+                num_boards=num_positions,
+                sleep_after_get=0,
+            )
+        )
+        """
         (data_consumer_task1, data_consumer_task2) = [
             asyncio.create_task(
                 analyze_positions(
@@ -184,16 +184,27 @@ async def differential_testing(
                     engine=engine,
                     search_limits=search_limits,
                     num_boards=num_positions,
+                    sleep_after_get=sleep_time,
                 )
             )
-            for queue, engine in zip([queue1, queue2], [engine1, engine2])
+            for queue, engine, sleep_time in zip([queue1, queue2], [engine1, engine2], [0.1, 0.1])
         ]
 
         # Wait until all tasks finish
         boards, results1, results2 = await asyncio.gather(
-            data_generator_task, data_consumer_task1, data_consumer_task2
+            data_generator_task,
+            data_consumer_task1,
+            data_consumer_task2
+            # data_generator_task
         )
 
+        # results1 = await data_consumer_task1.wait()
+        # results2 = await data_consumer_task2.wait()
+        """
+
+        # Wait until all tasks finish
+        boards, results1, results2 = await asyncio.gather(data_generator_task, data_consumer_task1)
+        """
         for board_index, board in enumerate(boards):
             best_move1, move_stats1, _ = results1[board_index]
             best_move2, move_stats2, _ = results2[board_index]
@@ -234,13 +245,10 @@ if __name__ == "__main__":
     #           CONFIG START         #
     ##################################
     SEED = 42
-    USE_DEFAULT_CONFIG = False
-    ENGINE_CONFIG_NAME = "remote_400_nodes.ini"
+    ENGINE_CONFIG_NAME = "default_remote.ini"  # "remote_400_nodes.ini"
+    DATA_CONFIG_NAME = "random_many_pieces.ini"
     POSITIONS = []
     NUM_POSITIONS = 100
-    NUM_PIECES = None
-    NUM_PIECES_MIN = 10  # 18
-    NUM_PIECES_MAX = None
     DIFFERENCE_THRESHOLD = 1
     NETWORK_PATH1 = "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
     NETWORK_PATH2 = "network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be"
@@ -252,28 +260,28 @@ if __name__ == "__main__":
     RemoteEngineConfig.set_config_folder_path(
         Path(__file__).parent.absolute() / Path("configs/engine_configs/")
     )
-    if USE_DEFAULT_CONFIG:
-        config = RemoteEngineConfig.default_config()
-    else:
-        config = RemoteEngineConfig.from_config_file(ENGINE_CONFIG_NAME)
+    BoardGeneratorConfig.set_config_folder_path(
+        Path(__file__).parent.absolute() / Path("configs/data_generator_configs")
+    )
+    engine_config = RemoteEngineConfig.from_config_file(ENGINE_CONFIG_NAME)
+    data_config = BoardGeneratorConfig.from_config_file(DATA_CONFIG_NAME)
+    data_generator = RandomBoardGenerator(**data_config.board_generator_config)
 
     start_time = time.perf_counter()
 
     asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
     boards, results = asyncio.run(
         differential_testing(
-            remote_host=config.remote_host,
-            remote_user=config.remote_user,
-            password_required=config.password_required,
-            engine_path=config.engine_path,
-            engine_config=config.engine_config,
-            network_path1=str(Path(config.network_base_path) / Path(NETWORK_PATH1)),
-            network_path2=str(Path(config.network_base_path) / Path(NETWORK_PATH2)),
-            search_limits=config.search_limits,
+            remote_host=engine_config.remote_host,
+            remote_user=engine_config.remote_user,
+            password_required=engine_config.password_required,
+            engine_path=engine_config.engine_path,
+            engine_config=engine_config.engine_config,
+            network_path1=str(Path(engine_config.network_base_path) / Path(NETWORK_PATH1)),
+            network_path2=str(Path(engine_config.network_base_path) / Path(NETWORK_PATH2)),
+            data_generator=data_generator,
+            search_limits=engine_config.search_limits,
             num_positions=NUM_POSITIONS,
-            num_pieces=NUM_PIECES,
-            num_pieces_min=NUM_PIECES_MIN,
-            num_pieces_max=NUM_PIECES_MAX,
         )
     )
     print("Results = ", results)
