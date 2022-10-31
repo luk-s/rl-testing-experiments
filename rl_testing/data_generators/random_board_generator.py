@@ -203,6 +203,7 @@ class RandomBoardGenerator(BoardGenerator):
         board_candidate = random_valid_board(
             num_pieces=num_pieces_to_choose,
             max_attempts_per_position=self.max_attempts_per_position,
+            _rng=self._random_generator,
         )
 
         if board_candidate == "failed" and self.raise_error_when_failed:

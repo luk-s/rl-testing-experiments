@@ -1,6 +1,7 @@
+import datetime
 import io
-from itertools import product
-from typing import Any, Dict, List, Optional, Tuple, Union
+from time import time
+from typing import Any, Dict, List, Optional, Union
 
 import chess
 import chess.svg
@@ -123,7 +124,15 @@ def parse_info(
             raise ValueError("The provided dictionary cannot be parsed!")
 
 
-def plot_board(board: chess.Board, title: str = "", fen: str = "", fontsize: int = 22) -> None:
+def plot_board(
+    board: chess.Board,
+    title: str = "",
+    fen: str = "",
+    fontsize: int = 22,
+    save: bool = True,
+    show: bool = False,
+    save_path: str = "",
+) -> None:
     # Get the XML representation of an SVG image of the board
     svg = chess.svg.board(board)
 
@@ -156,7 +165,16 @@ def plot_board(board: chess.Board, title: str = "", fen: str = "", fontsize: int
 
     plt.title(title, pad=10)
 
-    plt.show()
+    if save:
+        if save_path == "":
+            time_now = str(datetime.datetime.now())
+            time_now = time_now.replace(" ", "_")
+            save_path = f"board_{time_now}.png"
+
+        plt.savefig(save_path, dpi=200)
+
+    if show:
+        plt.show()
 
 
 if __name__ == "__main__":
@@ -164,24 +182,4 @@ if __name__ == "__main__":
     fen = "8/1p3r2/P1pK4/P3Pnp1/PpnR3N/Q4bqB/p2Bp3/Nk6 w - - 70 50"
     board = chess.Board(fen)
 
-    plot_board(board=board)
-
-    ENGINE_CONFIG = {
-        "Backend": "cuda-auto",
-        "WeightsFile": "/home/flurilu/Software/leelachesszero/lc0/build/release/weights/"
-        "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42",
-        "VerboseMoveStats": "true",
-        "SmartPruningFactor": "0",
-        "Threads": "1",
-        "TaskWorkers": "0",
-        "MinibatchSize": "1",
-        "MaxPrefetch": "0",
-        "NNCacheSize": "1",
-    }
-
-    # for key, val in ENGINE_CONFIG.items():
-    #    print(f"setoption name {key} value {val}")
-
-    # for i in range(1000):
-    #    # print(random_board_position_fen(num_pieces=20))
-    #    print(random_valid_board(num_pieces=20, max_attempts_per_position=10000).fen())
+    plot_board(board=board, title="value 1: 0.99, value2: -0.99", fen=fen, fontsize=14)

@@ -140,7 +140,9 @@ mlruns/
 mlruns_data
 
 # Project specific stuff
-data/
+data/*.txt
+data/*.pgn
+experiments/results/
 old/
 *old.py
 *OLD.py
