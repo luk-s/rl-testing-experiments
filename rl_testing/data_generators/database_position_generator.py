@@ -46,7 +46,10 @@ class DataBaseBoardGenerator(BoardGenerator):
             self.current_game = chess.pgn.read_game(self.file_iterator)
             self.games_read += 1
 
-        self.current_board = chess.Board()
+        if "FEN" in self.current_game.headers:
+            self.current_board = chess.Board(self.current_game.headers["FEN"])
+        else:
+            self.current_board = chess.Board()
         moves = list(self.current_game.mainline_moves())
 
         # Read all moves which have already been read
@@ -74,7 +77,10 @@ class DataBaseBoardGenerator(BoardGenerator):
             self.games_read += 1
             self.moves_read = 0
             self.current_game = chess.pgn.read_game(self.file_iterator)
-            self.current_board = chess.Board()
+            if "FEN" in self.current_game.headers:
+                self.current_board = chess.Board(self.current_game.headers["FEN"])
+            else:
+                self.current_board = chess.Board()
             moves = list(self.current_game.mainline_moves())
 
         for move_idx in range(
