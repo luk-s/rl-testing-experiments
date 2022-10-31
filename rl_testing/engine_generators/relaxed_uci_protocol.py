@@ -1,4 +1,5 @@
-from typing import Iterable, List, Optional
+import asyncio
+from typing import Any, Iterable, List, Optional, Tuple, Union
 
 import chess
 from chess import Move
@@ -309,3 +310,30 @@ class RelaxedUciProtocol(UciProtocol):
                 self.analysis.set_exception(exc)
 
         return await self.communicate(UciAnalysisCommand)
+
+
+async def popen_uci_relaxed(
+    command: Union[str, List[str]], *, setpgrp: bool = False, **popen_args: Any
+) -> Tuple[asyncio.SubprocessTransport, RelaxedUciProtocol]:
+    """
+    Spawns and initializes a UCI engine.
+
+    :param command: Path of the engine executable, or a list including the
+        path and arguments.
+    :param setpgrp: Open the engine process in a new process group. This will
+        stop signals (such as keyboard interrupts) from propagating from the
+        parent process. Defaults to ``False``.
+    :param popen_args: Additional arguments for
+        `popen <https://docs.python.org/3/library/subprocess.html#popen-constructor>`_.
+        Do not set ``stdin``, ``stdout``, ``bufsize`` or
+        ``universal_newlines``.
+
+    Returns a subprocess transport and engine protocol pair.
+    """
+    transport, protocol = await RelaxedUciProtocol.popen(command, setpgrp=setpgrp, **popen_args)
+    try:
+        await protocol.initialize()
+    except:
+        transport.close()
+        raise
+    return transport, protocol
