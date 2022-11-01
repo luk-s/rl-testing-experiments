@@ -125,7 +125,7 @@ async def differential_testing(
     *,
     search_limits: Optional[Dict[str, Any]] = None,
     num_positions: int = 1,
-    sleep_between_positions: float = 0.2,
+    sleep_between_positions: float = 0.1,
 ) -> Tuple[List[chess.Board], List[Tuple[float, float]]]:
 
     engine_generator.set_network(network_name1)
@@ -164,7 +164,7 @@ async def differential_testing(
             )
         )
         for queue, engine, sleep_time, network_name in zip(
-            [queue1, queue2], [engine1, engine2], [0.0, 0.0], [network_name1, network_name2]
+            [queue1, queue2], [engine1, engine2], [0.05, 0.05], [network_name1, network_name2]
         )
     ]
 
