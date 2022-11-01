@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import chess
+import chess.engine
 import numpy as np
 from rl_testing.config_parsers import BoardGeneratorConfig, RemoteEngineConfig
 from rl_testing.config_parsers.engine_config_parser import EngineConfig
@@ -25,7 +26,9 @@ async def analyze_positions(
     engine: RelaxedUciProtocol,
     search_limits: Dict[str, Any],
     num_boards: int,
-    sleep_after_get: float = 0,
+    sleep_after_get: float = 0.0,
+    engine_generator: Optional[EngineGenerator] = None,
+    network_name: Optional[str] = None,
 ) -> List[Tuple[Union[chess.Move, str], Dict[chess.Move, MoveStat], List[PositionStat]]]:
     results = []
     # Iterate over all boards
@@ -35,34 +38,54 @@ async def analyze_positions(
 
         await asyncio.sleep(delay=sleep_after_get)
 
-        print(f"Analyzing board {board_index}/{num_boards}: " + board.fen(en_passant="fen"))
+        print(f"Analyzing board {board_index + 1}/{num_boards}: " + board.fen(en_passant="fen"))
 
         move_stats, position_stats = {}, []
 
-        # Start the analysis
-        with await engine.analysis(board, limit=chess.engine.Limit(**search_limits)) as analysis:
-            async for info in analysis:
-                # Parse the analysis info
-                result = parse_info(info=info, raise_exception=False)
+        # Needs to be in a try-except because the engine might crash unexpectedly
+        try:
+            # Start the analysis
+            with await engine.analysis(
+                board, limit=chess.engine.Limit(**search_limits)
+            ) as analysis:
+                async for info in analysis:
+                    # Parse the analysis info
+                    result = parse_info(info=info, raise_exception=False)
 
-                # Check if the info could be parsed into a 'MoveStat' or a 'PositionStat' instance
-                if result is not None:
-                    if isinstance(result, MoveStat):
-                        move_stats[result.move] = result
-                    elif isinstance(result, PositionStat):
-                        position_stats.append(result)
-                    else:
-                        ValueError(f"Objects of type {type(result)} are not supported")
+                    # Check if the info could be parsed into a 'MoveStat'
+                    # or a 'PositionStat' instance
+                    if result is not None:
+                        if isinstance(result, MoveStat):
+                            move_stats[result.move] = result
+                        elif isinstance(result, PositionStat):
+                            position_stats.append(result)
+                        else:
+                            ValueError(f"Objects of type {type(result)} are not supported")
 
-        # Check if the proposed best move is valid
-        if engine.invalid_best_move:
-            best_move = (await analysis.wait()).move
+        except chess.engine.EngineTerminatedError:
+            if engine_generator is None or network_name is None:
+                print("Can't restart engine due to missing generator")
+                raise
+
+            # Mark the current board as failed
             results.append(("invalid", {}, []))
-        else:
-            best_move = (await analysis.wait()).move
-            results.append((best_move, move_stats, position_stats))
 
-        queue.task_done()
+            # Try to restart the engine
+            print("Trying to restart engine")
+
+            engine_generator.set_network(network_name)
+            engine = await engine_generator.get_initialized_engine()
+
+        else:
+            # Check if the proposed best move is valid
+            if engine.invalid_best_move:
+                best_move = (await analysis.wait()).move
+                results.append(("invalid", {}, []))
+            else:
+                best_move = (await analysis.wait()).move
+                results.append((best_move, move_stats, position_stats))
+        finally:
+            queue.task_done()
 
     return results
 
@@ -102,7 +125,7 @@ async def differential_testing(
     *,
     search_limits: Optional[Dict[str, Any]] = None,
     num_positions: int = 1,
-    sleep_between_positions: float = 0.1,
+    sleep_between_positions: float = 0.2,
 ) -> Tuple[List[chess.Board], List[Tuple[float, float]]]:
 
     engine_generator.set_network(network_name1)
@@ -136,9 +159,13 @@ async def differential_testing(
                 search_limits=search_limits,
                 num_boards=num_positions,
                 sleep_after_get=sleep_time,
+                engine_generator=engine_generator,
+                network_path=network_name,
             )
         )
-        for queue, engine, sleep_time in zip([queue1, queue2], [engine1, engine2], [0.1, 0.1])
+        for queue, engine, sleep_time, network_name in zip(
+            [queue1, queue2], [engine1, engine2], [0.0, 0.0], [network_name1, network_name2]
+        )
     ]
 
     # Wait until all tasks finish
@@ -194,14 +221,17 @@ if __name__ == "__main__":
     #           CONFIG START         #
     ##################################
     SEED = 42
-    ENGINE_CONFIG_NAME = "local_1_node.ini"  # "remote_400_nodes.ini"
-    DATA_CONFIG_NAME = "random_fen_database.ini"  # "random_many_pieces.ini"
+    ENGINE_CONFIG_NAME = "local_400_nodes.ini"  # "remote_400_nodes.ini"
+    DATA_CONFIG_NAME = "random_fen_database_test.ini"  # "random_many_pieces.ini"
     REMOTE = False
     POSITIONS = []
-    NUM_POSITIONS = 100_000
+    NUM_POSITIONS = 10
     # DIFFERENCE_THRESHOLD = 1
     NETWORK_PATH1 = "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
     NETWORK_PATH2 = "network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be"
+    # NETWORK_PATH1 = "f21ee51844a7548c004a1689eacd8b4cd4c6150d6e03c732b211cf9963d076e1"
+    # NETWORK_PATH2 = "fbd5e1c049d5a46c098f0f7f12e79e3fb82a7a6cd1c9d1d0894d0aae2865826f"
+
     RESULT_SUBDIR = "main_experiment"
     ##################################
     #           CONFIG END           #
