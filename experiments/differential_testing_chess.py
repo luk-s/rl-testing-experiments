@@ -229,7 +229,7 @@ if __name__ == "__main__":
     ##################################
     SEED = 42
     ENGINE_CONFIG_NAME = "local_400_nodes.ini"  # "remote_400_nodes.ini"
-    DATA_CONFIG_NAME = "random_fen_database_test.ini"  # "random_many_pieces.ini"
+    DATA_CONFIG_NAME = "random_fen_database.ini"  # "random_many_pieces.ini"
     REMOTE = False
     POSITIONS = []
     NUM_POSITIONS = 100_000
