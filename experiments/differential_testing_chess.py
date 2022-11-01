@@ -160,7 +160,7 @@ async def differential_testing(
                 num_boards=num_positions,
                 sleep_after_get=sleep_time,
                 engine_generator=engine_generator,
-                network_path=network_name,
+                network_name=network_name,
             )
         )
         for queue, engine, sleep_time, network_name in zip(
