@@ -232,7 +232,7 @@ if __name__ == "__main__":
     DATA_CONFIG_NAME = "random_fen_database_test.ini"  # "random_many_pieces.ini"
     REMOTE = False
     POSITIONS = []
-    NUM_POSITIONS = 10
+    NUM_POSITIONS = 100_000
     # DIFFERENCE_THRESHOLD = 1
     NETWORK_PATH1 = "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
     NETWORK_PATH2 = "network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be"
