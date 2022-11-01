@@ -68,6 +68,12 @@ class MoveStat:
         info_str = info_str.replace(" N:", "(N:")
         if "(T)" in info_str:
             info_str = info_str.replace("(T)", "(T:1)")
+        if "(L)" in info_str:
+            info_str = info_str.replace("(L)", "(L:1)")
+        if "(D)" in info_str:
+            info_str = info_str.replace("(D)", "(D:1)")
+        if "(W)" in info_str:
+            info_str = info_str.replace("(W)", "(W:1)")
 
         parse_dic = parse_stats(info_str, drop_indices=[1, 3], names={0: "move"})
         self.move = parse_dic["move"]
