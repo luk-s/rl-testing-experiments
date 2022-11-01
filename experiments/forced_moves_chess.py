@@ -208,14 +208,17 @@ if __name__ == "__main__":
     #           CONFIG START         #
     ##################################
     SEED = 42
-    ENGINE_CONFIG_NAME = "lukas_local_400_nodes.ini"  # "remote_400_nodes.ini"
+    ENGINE_CONFIG_NAME = "local_1_node.ini"  # "remote_400_nodes.ini"
     DATA_CONFIG_NAME = "forced_moves_fen_database.ini"  # "random_many_pieces.ini"
     REMOTE = False
     POSITIONS = []
-    NUM_POSITIONS = 100
-    # NETWORK_PATH = "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
-    # "network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be"
-    NETWORK_PATH = "f21ee51844a7548c004a1689eacd8b4cd4c6150d6e03c732b211cf9963d076e1"
+    NUM_POSITIONS = 100_000
+    NETWORK_PATH = "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
+    # NETWORKS:
+    # =========
+    # strong and recent: "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
+    # from leela paper: "network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be"
+    # NETWORK_PATH = "f21ee51844a7548c004a1689eacd8b4cd4c6150d6e03c732b211cf9963d076e1"
     # NETWORK_PATH = "fbd5e1c049d5a46c098f0f7f12e79e3fb82a7a6cd1c9d1d0894d0aae2865826f"
 
     RESULT_SUBDIR = "main_experiment"

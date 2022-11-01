@@ -181,8 +181,11 @@ async def differential_testing(
         best_move2, move_stats2, _ = results2[board_index]
 
         if best_move1 != "invalid" and best_move2 != "invalid":
-            results.append((move_stats1[best_move1].Q, move_stats2[best_move2].Q))
-            boards_final.append(board)
+            try:
+                results.append((move_stats1[best_move1].Q, move_stats2[best_move2].Q))
+                boards_final.append(board)
+            except:
+                print(f"ERROR parsing the results of board {board_index}")
         else:
             message = "board: " + board.fen(en_passant="fen") + " "
             if best_move1 == "invalid":
