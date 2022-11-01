@@ -190,8 +190,11 @@ async def forced_moves_testing(
         best_move2, move_stats2, _ = results2[board_index]
 
         if best_move1 != "invalid" and best_move2 != "invalid":
-            results.append((move_stats1[best_move1].Q, move_stats2[best_move2].Q))
-            board_tuples_final.append((board1, board2))
+            try:
+                results.append((move_stats1[best_move1].Q, move_stats2[best_move2].Q))
+                board_tuples_final.append((board1, board2))
+            except:
+                print(f"ERROR parsing the results of board {board_index}")
         else:
             message = "board: " + board1.fen(en_passant="fen") + " "
             if best_move1 == "invalid":
