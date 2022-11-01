@@ -5,7 +5,7 @@ from rl_testing.data_generators import DataBaseBoardGenerator
 
 if __name__ == "__main__":
     DATA_CONFIG_NAME = "database_late_moves.ini"
-    NUM_POSITIONS_TO_CREATE = 10000
+    NUM_POSITIONS_TO_CREATE = 100000
     FILE_NAME = "data/forced_move_positions.txt"
 
     BoardGeneratorConfig.set_config_folder_path(

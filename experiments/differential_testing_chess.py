@@ -183,6 +183,13 @@ async def differential_testing(
         if best_move1 != "invalid" and best_move2 != "invalid":
             results.append((move_stats1[best_move1].Q, move_stats2[best_move2].Q))
             boards_final.append(board)
+        else:
+            message = "board: " + board.fen(en_passant="fen") + " "
+            if best_move1 == "invalid":
+                message += "engine 1 invalid, "
+            if best_move2 == "invalid":
+                message += "engine 2 invalid"
+            print(message)
 
     return boards_final, results
 
