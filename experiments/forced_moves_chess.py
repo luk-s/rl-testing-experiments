@@ -312,7 +312,7 @@ if __name__ == "__main__":
         f.write("\n")
 
         # Store the results
-        f.write("FEN1, FEN2, Q1, Q2\n")
+        f.write("FEN1,FEN2,Q1,Q2\n")
         for (board1, board2), (q1, q2) in zip(board_tuples, results):
             fen1 = board1.fen(en_passant="fen").replace(" ", "_")
             fen2 = board2.fen(en_passant="fen").replace(" ", "_")

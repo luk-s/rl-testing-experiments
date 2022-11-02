@@ -232,7 +232,7 @@ if __name__ == "__main__":
     ##################################
     SEED = 42
     ENGINE_CONFIG_NAME = "local_400_nodes.ini"  # "remote_400_nodes.ini"
-    DATA_CONFIG_NAME = "random_fen_database.ini"  # "random_many_pieces.ini"
+    DATA_CONFIG_NAME = "late_move_fen_database.ini"  # "random_many_pieces.ini"
     REMOTE = False
     POSITIONS = []
     NUM_POSITIONS = 100_000
@@ -315,7 +315,7 @@ if __name__ == "__main__":
         f.write("\n")
 
         # Store the results
-        f.write("FEN, Q1, Q2\n")
+        f.write("FEN,Q1,Q2\n")
         for board, (q1, q2) in zip(boards, results):
             fen = board.fen(en_passant="fen").replace(" ", "_")
             f.write(f"{fen},{q1},{q2}\n")
