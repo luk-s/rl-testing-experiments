@@ -106,25 +106,33 @@ async def get_positions_async(
         board_candidate = data_generator.next()
 
         # Check if the generated position was valid
-        if board_candidate != "failed" and len(list(board_candidate.legal_moves)) == 1:
-            # Log the board position
-            fen = board_candidate.fen(en_passant="fen")
-            print(f"Created board {board_index}: " f"{fen}")
+        if board_candidate != "failed":
+            continue
+        if len(list(board_candidate.legal_moves)) != 1:
+            continue
 
-            # Push the board position to the analysis queue
-            await first_queue.put(board_candidate.copy())
+        # Find the only legal move
+        move = list(board_candidate.legal_moves)[0]
+        board2 = board_candidate.copy()
+        board2.push(move)
 
-            # Find the only legal move
-            move = list(board_candidate.legal_moves)[0]
-            board2 = board_candidate.copy()
-            board2.push(move)
+        # Only consider positions where you can make predictions
+        if len(list(board2.legal_moves)) == 0:
+            continue
 
-            # Push the new board position to the analysis queue
-            await second_queue.put(board2.copy())
+        # Log the board position
+        fen = board_candidate.fen(en_passant="fen")
+        print(f"Created board {board_index}: " f"{fen}")
 
-            board_tuples.append((board_candidate, board2))
+        # Push the board position to the analysis queue
+        await first_queue.put(board_candidate.copy())
 
-            await asyncio.sleep(delay=sleep_between_positions)
+        # Push the new board position to the analysis queue
+        await second_queue.put(board2.copy())
+
+        board_tuples.append((board_candidate, board2))
+
+        await asyncio.sleep(delay=sleep_between_positions)
 
     return board_tuples
 

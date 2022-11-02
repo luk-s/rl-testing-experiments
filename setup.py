@@ -12,6 +12,8 @@ setuptools.setup(
         "python-chess==1.999",
         "imgkit==1.2.2",
         "matplotlib==3.6.1",
+        "pandas==1.5.1",
+        "scipy==1.9.3"
     ],
     author="Lukas Fluri",
     author_email="lukas.fluri@protonmail.ch",
