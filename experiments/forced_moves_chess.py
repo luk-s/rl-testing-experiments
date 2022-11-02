@@ -38,6 +38,9 @@ async def analyze_positions(
 
         await asyncio.sleep(delay=sleep_after_get)
 
+        if board == "failed":
+            continue
+
         print(f"Analyzing board {board_index + 1}/{num_boards}: " + board.fen(en_passant="fen"))
 
         move_stats, position_stats = {}, []
@@ -107,8 +110,12 @@ async def get_positions_async(
 
         # Check if the generated position was valid
         if board_candidate == "failed":
+            first_queue.put("failed")
+            second_queue.put("failed")
             continue
         if len(list(board_candidate.legal_moves)) != 1:
+            first_queue.put("failed")
+            second_queue.put("failed")
             continue
 
         # Find the only legal move
@@ -118,6 +125,8 @@ async def get_positions_async(
 
         # Only consider positions where you can make predictions
         if len(list(board2.legal_moves)) == 0:
+            first_queue.put("failed")
+            second_queue.put("failed")
             continue
 
         # Log the board position
