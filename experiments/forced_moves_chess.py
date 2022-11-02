@@ -106,7 +106,7 @@ async def get_positions_async(
         board_candidate = data_generator.next()
 
         # Check if the generated position was valid
-        if board_candidate != "failed":
+        if board_candidate == "failed":
             continue
         if len(list(board_candidate.legal_moves)) != 1:
             continue
