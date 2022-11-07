@@ -155,7 +155,7 @@ def random_valid_board(
         fen = random_board_position_fen(num_pieces=num_pieces, _rng=_rng)
         try:
             board = chess.Board(fen=fen)
-            if board.is_valid() and (not board.is_checkmate()) and (not board.is_stalemate()):
+            if board.is_valid() and board.outcome(claim_draw=True) is None:
                 return board
         except ValueError as ve:
             print(ve)

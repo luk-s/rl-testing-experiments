@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 from unittest import result
 
+import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -25,6 +26,13 @@ def differences_density_plot(
         plt.ylim(bottom=y_limits[0], top=y_limits[1])
 
     max_difference = dataframe["difference"].max()
+    font = {"family": "normal", "size": 22}
+    matplotlib.rc("font", **font)
+    plt.xlabel("Value difference", fontdict=font)
+    plt.ylabel("Amount", fontdict=font)
+    plt.xticks(fontsize=20)
+    plt.yticks(fontsize=20)
+    plt.yscale("log")
     print(max_difference)
     plt.vlines([max_difference], ymin=[0], ymax=8)
     plt.show()
@@ -33,11 +41,14 @@ def differences_density_plot(
 if __name__ == "__main__":
     # result_folder = RESULT_DIRECTORY / Path("differential_testing/main_experiment/")
     result_folder = RESULT_DIRECTORY / Path("forced_moves/main_experiment/")
-    result_file = Path("results_ENGINE_local_1_node_DATA_forced_moves_fen_database.txt")
+    # result_file = Path("results_ENGINE_local_400_nodes_DATA_random_fen_database.txt")
+    result_file = Path("results_ENGINE_local_400_nodes_DATA_forced_moves_fen_database.txt")
+    # result_file = Path("results_ENGINE_local_1_node_DATA_late_move_fen_database.txt")
+
     column_name1, column_name2 = "Q1", "Q2"
     result_path = result_folder / result_file
     x_limits = (0, 2)
-    y_limits = (0, 10)
+    y_limits = None  # (0, 10)
     q_vals_to_flip = ["Q2"]
 
     dataframe, _ = load_data(result_path=result_path)

@@ -17,18 +17,21 @@ if __name__ == "__main__":
 
     with open(FILE_NAME, "a") as f:
         boards_read = 0
+        boards_found: set = set()
         for i in range(NUM_POSITIONS_TO_CREATE):
             while True:
                 if boards_read % 10000 == 0:
                     print(f"Scanned {boards_read} boards")
                 board = data_generator.next()
                 boards_read += 1
-                if board.legal_moves.count() >= 1:
+                fen = board.fen(en_passant="fen")
+                if fen not in boards_found:
+                    boards_found.add(fen)
                     break
 
             print(
-                f"Found forced move {i+1}/{NUM_POSITIONS_TO_CREATE} "
+                f"Found position {i+1}/{NUM_POSITIONS_TO_CREATE}: {fen} "
                 f"after scanning {boards_read} boards."
             )
 
-            f.write(board.fen(en_passant="fen") + "\n")
+            f.write(f"{fen}\n")
