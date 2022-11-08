@@ -1,24 +1,22 @@
 from pathlib import Path
 
 import chess
+from rl_testing.config_parsers.data_generator_config_parser import (
+    FENDatabaseBoardGeneratorConfig,
+)
 from rl_testing.data_generators.generators import BoardGenerator
 
 DATA_PATH = data_path = Path(__file__).parent.parent.parent / "data"
 
 
 class FENDatabaseBoardGenerator(BoardGenerator):
-    def __init__(
-        self,
-        database_name: str,
-        *,
-        open_now: bool = True,
-    ):
-        self.data_path = DATA_PATH / database_name
+    def __init__(self, config: FENDatabaseBoardGeneratorConfig):
+        self.data_path = DATA_PATH / config.database_name
         self.file_iterator = None
 
         self.positions_read = 0
 
-        if open_now:
+        if config.open_now:
             self.setup_position()
 
     def setup_position(self) -> None:

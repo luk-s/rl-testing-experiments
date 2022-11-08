@@ -3,6 +3,9 @@ from typing import Optional, Union
 
 import chess
 import numpy as np
+from rl_testing.config_parsers.data_generator_config_parser import (
+    RandomBoardGeneratorConfig,
+)
 from rl_testing.data_generators.generators import BoardGenerator
 
 FILES = "abcdefgh"
@@ -164,25 +167,16 @@ def random_valid_board(
 
 
 class RandomBoardGenerator(BoardGenerator):
-    def __init__(
-        self,
-        *,
-        num_pieces: Optional[int] = None,
-        num_pieces_min: Optional[int] = None,
-        num_pieces_max: Optional[int] = None,
-        max_attempts_per_position: Union[int, str] = "unlimited",
-        raise_error_when_failed: bool = False,
-        seed: Optional[int] = None,
-    ):
-        if seed is None:
+    def __init__(self, config: RandomBoardGeneratorConfig):
+        if config.seed is None:
             self._random_generator = np.random.default_rng()
         else:
-            self._random_generator = np.random.default_rng(seed)
-        self.num_pieces = num_pieces
-        self.num_pieces_min = num_pieces_min
-        self.num_pieces_max = num_pieces_max
-        self.max_attempts_per_position = max_attempts_per_position
-        self.raise_error_when_failed = raise_error_when_failed
+            self._random_generator = np.random.default_rng(config.seed)
+        self.num_pieces = config.num_pieces
+        self.num_pieces_min = config.num_pieces_min
+        self.num_pieces_max = config.num_pieces_max
+        self.max_attempts_per_position = config.max_attempts_per_position
+        self.raise_error_when_failed = config.raise_error_when_failed
 
     def next(self) -> chess.Board:
         # Choose how many pieces the position should have

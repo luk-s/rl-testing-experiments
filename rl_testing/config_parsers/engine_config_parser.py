@@ -12,7 +12,13 @@ EngineConfigs = Union["EngineConfig", "RemoteEngineConfig"]
 class EngineConfig(Config):
     CONFIG_FOLDER = Path("./configs/engine_configs")
     DEFAULT_CONFIG_NAME = Path("default.ini")
-    REQUIRED_ATTRIBUTES = ["engine_path", "network_base_path", "engine_config", "search_limits"]
+    REQUIRED_ATTRIBUTES = [
+        "engine_type",
+        "engine_path",
+        "network_base_path",
+        "engine_config",
+        "search_limits",
+    ]
     OPTIONAL_ATTRIBUTES = ["network_path"]
 
     def __init__(
@@ -21,6 +27,7 @@ class EngineConfig(Config):
         _initialize: bool = True,
     ):
         # Initialize the parameters
+        self.engine_type = None
         self.engine_path = None
         self.network_base_path = None
         self.network_path = None

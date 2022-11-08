@@ -6,6 +6,47 @@ TConfig = TypeVar("TConfig", bound="Config")
 T = TypeVar("T")
 
 
+def get_attribute_from_config(
+    attribute_name: str,
+    config_name: str,
+    config_directory_path: str = "",
+    _base_config_list: Optional[List[str]] = None,
+) -> Optional[Any]:
+
+    if _base_config_list is None:
+        _base_config_list = [config_name]
+
+    # Create the config parser
+    config_parser = configparser.ConfigParser()
+    file_path = Path(config_directory_path) / Path(config_name)
+    with open(file_path, "r") as f:
+        config_parser.read_file(f)
+
+    # Check if the desired attribute is in this config
+    if "General" in config_parser.sections() and attribute_name in config_parser["General"]:
+        return config_parser["General"][attribute_name]
+
+    # Check if the config is based on another root config
+    elif "BaseConfig" in config_parser.sections():
+        # Load the root config file
+        base_config_name = Path(config_parser["BaseConfig"]["base_config_name"])
+
+        # Make sure that no circular import is created
+        if base_config_name in _base_config_list:
+            raise ValueError(f"Circular import detected! {_base_config_list}")
+
+        _base_config_list.append(base_config_name)
+
+        return get_attribute_from_config(
+            attribute_name,
+            base_config_name,
+            config_directory_path,
+            _base_config_list=_base_config_list,
+        )
+
+    return None
+
+
 class Config:
     CONFIG_FOLDER = Path("./configs/")
     DEFAULT_CONFIG_NAME = Path("default.ini")

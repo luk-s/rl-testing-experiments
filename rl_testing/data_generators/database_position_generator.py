@@ -2,29 +2,29 @@ from pathlib import Path
 
 import chess
 import chess.pgn
+from rl_testing.config_parsers.data_generator_config_parser import (
+    DatabaseBoardGeneratorConfig,
+)
 from rl_testing.data_generators.generators import BoardGenerator
 
 DATA_PATH = data_path = Path(__file__).parent.parent.parent / "data"
 
 
-class DataBaseBoardGenerator(BoardGenerator):
+class DatabaseBoardGenerator(BoardGenerator):
     def __init__(
         self,
-        database_name: str,
-        *,
-        open_now: bool = True,
-        get_positions_after_move: int = 0,
+        config: DatabaseBoardGeneratorConfig,
     ):
-        self.data_path = DATA_PATH / database_name
+        self.data_path = DATA_PATH / config.database_name
         self.file_iterator = None
-        self.get_positions_after_move = get_positions_after_move
+        self.get_positions_after_move = config.get_positions_after_move
 
         self.current_game = None
         self.current_board = None
         self.games_read = 0
         self.moves_read = 0
 
-        if open_now:
+        if config.open_now:
             self.setup_position()
 
     def setup_position(self) -> None:
@@ -102,7 +102,7 @@ if __name__ == "__main__":
         1. Test implementation
         2. Add a parameter which only reads in moves after a certain depth
     """
-    gen = DataBaseBoardGenerator(database_name="caissabasse.pgn", get_positions_after_move=15)
+    gen = DatabaseBoardGenerator(database_name="caissabasse.pgn", get_positions_after_move=15)
     for i in range(50):
         board = gen.next()
         print(board.fen())

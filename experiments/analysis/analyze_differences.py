@@ -16,10 +16,11 @@ STOCKFISH_PATH = "/home/lukas/Software/stockfish/stockfish_15_linux_x64_avx2/sto
 async def analyze_with_stockfish(stockfish_path: str, positions: List[chess.Board]) -> List[Score]:
     stockfish_scores = []
     _, engine = await chess.engine.popen_uci(stockfish_path)
+    engine.configure({"Threads": 1})
     for board_index, board in enumerate(positions):
         fen = board.fen(en_passant="fen")
         print(f"Analyzing board {board_index+1}/{len(positions)}: {fen}")
-        info = await engine.analyse(board, chess.engine.Limit(depth=10))
+        info = await engine.analyse(board, chess.engine.Limit(depth=30))
         # stockfish_scores.append(info["score"].white())
         stockfish_scores.append(info["score"].relative)
 

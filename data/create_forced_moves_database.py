@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from rl_testing.config_parsers import BoardGeneratorConfig
-from rl_testing.data_generators import DataBaseBoardGenerator
+from rl_testing.data_generators import DatabaseBoardGenerator
 
 if __name__ == "__main__":
     DATA_CONFIG_NAME = "database_late_moves.ini"
@@ -13,7 +13,7 @@ if __name__ == "__main__":
         / Path("experiments/configs/data_generator_configs")
     )
     data_config = BoardGeneratorConfig.from_config_file(DATA_CONFIG_NAME)
-    data_generator = DataBaseBoardGenerator(**data_config.board_generator_config)
+    data_generator = DatabaseBoardGenerator(**data_config.board_generator_config)
 
     with open(FILE_NAME, "a") as f:
         boards_read = 0

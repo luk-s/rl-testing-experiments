@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import time
 from pathlib import Path
@@ -6,15 +7,9 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import chess
 import chess.engine
 import numpy as np
-from rl_testing.config_parsers import BoardGeneratorConfig, RemoteEngineConfig
-from rl_testing.config_parsers.engine_config_parser import EngineConfig
-from rl_testing.data_generators import (
-    BoardGenerator,
-    DataBaseBoardGenerator,
-    FENDatabaseBoardGenerator,
-    RandomBoardGenerator,
-)
-from rl_testing.engine_generators import EngineGenerator, RemoteEngineGenerator
+from rl_testing.config_parsers import get_data_generator_config, get_engine_config
+from rl_testing.data_generators import BoardGenerator, get_data_generator
+from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol
 from rl_testing.util.util import MoveStat, PositionStat, parse_info, plot_board
 
@@ -227,50 +222,46 @@ def analyze_results(
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+
     ##################################
     #           CONFIG START         #
     ##################################
-    SEED = 42
-    ENGINE_CONFIG_NAME = "local_400_nodes.ini"  # "remote_400_nodes.ini"
-    DATA_CONFIG_NAME = "late_move_fen_database.ini"  # "random_many_pieces.ini"
-    REMOTE = False
-    POSITIONS = []
-    NUM_POSITIONS = 100_000
-    # DIFFERENCE_THRESHOLD = 1
-    NETWORK_PATH1 = "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
-    NETWORK_PATH2 = "network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be"
-    # NETWORK_PATH1 = "f21ee51844a7548c004a1689eacd8b4cd4c6150d6e03c732b211cf9963d076e1"
-    # NETWORK_PATH2 = "fbd5e1c049d5a46c098f0f7f12e79e3fb82a7a6cd1c9d1d0894d0aae2865826f"
+    # NETWORKS:
+    # =========
+    # strong and recent: "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
+    # from leela paper: "network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be"
+    # Weak local 1: "f21ee51844a7548c004a1689eacd8b4cd4c6150d6e03c732b211cf9963d076e1"
+    # Weak local 2: "fbd5e1c049d5a46c098f0f7f12e79e3fb82a7a6cd1c9d1d0894d0aae2865826f"
 
-    RESULT_SUBDIR = "main_experiment"
+    # fmt: off
+    parser.add_argument("--seed",               type=int, default=42)
+    parser.add_argument("--engine_config_name", type=str, default="local_400_nodes.ini")
+    parser.add_argument("--data_config_name",   type=str, default="late_move_fen_database.ini")
+    parser.add_argument("--num_positions",      type=int, default=100_000)
+    parser.add_argument("--network_path1",      type=str, default="network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42")  # noqa: E501
+    parser.add_argument("--network_path2",      type=str, default="network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be")  # noqa: E501
+    parser.add_argument("--result_subdir",      type=str, default="main_experiment")
+    # fmt: on
     ##################################
     #           CONFIG END           #
     ##################################
+    args = parser.parse_args()
 
-    np.random.seed(SEED)
+    np.random.seed(args.seed)
 
-    # Build the engine generator
-    if REMOTE:
-        RemoteEngineConfig.set_config_folder_path(
-            Path(__file__).parent.absolute() / Path("configs/engine_configs/")
-        )
-        engine_config = RemoteEngineConfig.from_config_file(ENGINE_CONFIG_NAME)
-        engine_generator = RemoteEngineGenerator(engine_config)
-
-    else:
-        EngineConfig.set_config_folder_path(
-            Path(__file__).parent.absolute() / Path("configs/engine_configs/")
-        )
-        engine_config = EngineConfig.from_config_file(ENGINE_CONFIG_NAME)
-        engine_generator = EngineGenerator(engine_config)
-
-    # Build the data generator
-    BoardGeneratorConfig.set_config_folder_path(
-        Path(__file__).parent.absolute() / Path("configs/data_generator_configs")
+    engine_config = get_engine_config(
+        config_name=args.engine_config_name,
+        config_folder_path=Path(__file__).parent.absolute() / Path("configs/engine_configs/"),
     )
-    data_config = BoardGeneratorConfig.from_config_file(DATA_CONFIG_NAME)
-    # data_generator = RandomBoardGenerator(**data_config.board_generator_config)
-    data_generator = FENDatabaseBoardGenerator(**data_config.board_generator_config)
+    engine_generator = get_engine_generator(engine_config)
+
+    data_config = get_data_generator_config(
+        config_name=args.data_config_name,
+        config_folder_path=Path(__file__).parent.absolute()
+        / Path("configs/data_generator_configs"),
+    )
+    data_generator = get_data_generator(data_config)
 
     # Run the differential testing
     start_time = time.perf_counter()
@@ -278,12 +269,12 @@ if __name__ == "__main__":
     asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
     boards, results = asyncio.run(
         differential_testing(
-            network_name1=NETWORK_PATH1,
-            network_name2=NETWORK_PATH2,
+            network_name1=args.network_path1,
+            network_name2=args.network_path2,
             data_generator=data_generator,
             engine_generator=engine_generator,
             search_limits=engine_config.search_limits,
-            num_positions=NUM_POSITIONS,
+            num_positions=args.num_positions,
         )
     )
 
@@ -291,11 +282,11 @@ if __name__ == "__main__":
     print(f"Elapsed time: {end_time - start_time: .3f} seconds")
 
     # Create results-file-name
-    engine_config_name = ENGINE_CONFIG_NAME[:-4]
-    data_config_name = DATA_CONFIG_NAME[:-4]
+    engine_config_name = args.engine_config_name[:-4]
+    data_config_name = args.data_config_name[:-4]
 
     # Open the results file
-    result_directory = RESULT_DIR / RESULT_SUBDIR
+    result_directory = RESULT_DIR / args.result_subdir
     result_directory.mkdir(parents=True, exist_ok=True)
     with open(
         result_directory
@@ -303,15 +294,13 @@ if __name__ == "__main__":
         "a",
     ) as f:
         # Store the config
-        f.write(f"{SEED = }\n")
-        f.write(f"{ENGINE_CONFIG_NAME = }\n")
-        f.write(f"{DATA_CONFIG_NAME = }\n")
-        f.write(f"{REMOTE = }\n")
-        f.write(f"{POSITIONS = }\n")
-        f.write(f"{NUM_POSITIONS = }\n")
-        f.write(f"{NETWORK_PATH1 = }\n")
-        f.write(f"{NETWORK_PATH2 = }\n")
-        f.write(f"{RESULT_SUBDIR = }\n")
+        f.write(f"SEED = {args.seed}\n")
+        f.write(f"ENGINE_CONFIG_NAME = {args.engine_config_name}\n")
+        f.write(f"DATA_CONFIG_NAME = {args.data_config_name}\n")
+        f.write(f"NUM_POSITIONS = {args.num_positions}\n")
+        f.write(f"NETWORK_PATH1 = {args.network_path1}\n")
+        f.write(f"NETWORK_PATH2 = {args.network_path2}\n")
+        f.write(f"RESULT_SUBDIR = {args.result_subdir}\n")
         f.write("\n")
 
         # Store the results
@@ -319,22 +308,3 @@ if __name__ == "__main__":
         for board, (q1, q2) in zip(boards, results):
             fen = board.fen(en_passant="fen").replace(" ", "_")
             f.write(f"{fen},{q1},{q2}\n")
-
-    """
-    if results:
-        special_cases = analyze_results(
-            boards,
-            results,
-            difference_threshold=DIFFERENCE_THRESHOLD,
-            show=False,
-            result_dir=RESULT_DIR / RESULT_SUBDIR,
-            fontsize=14,
-        )
-        print(
-            f"Found {len(special_cases)} boards where "
-            f"evaluation differs by more than {DIFFERENCE_THRESHOLD}!"
-        )
-        for board, difference, v1, v2 in special_cases:
-            fen = board.fen(en_passant="fen")
-            print(f"{fen}, {difference = :.2f}, {v1 = :.3f}, {v2 = :.3f}")
-    """
