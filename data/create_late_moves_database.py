@@ -25,7 +25,7 @@ if __name__ == "__main__":
                 board = data_generator.next()
                 boards_read += 1
                 fen = board.fen(en_passant="fen")
-                if fen not in boards_found:
+                if board.legal_moves.count() > 0 and fen not in boards_found:
                     boards_found.add(fen)
                     break
 
