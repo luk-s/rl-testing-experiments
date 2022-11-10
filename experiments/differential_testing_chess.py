@@ -177,7 +177,9 @@ async def differential_testing(
 
         if best_move1 != "invalid" and best_move2 != "invalid":
             try:
-                results.append((move_stats1[best_move1].Q, move_stats2[best_move2].Q))
+                results.append(
+                    (best_move1, move_stats1[best_move1].Q, best_move2, move_stats2[best_move2].Q)
+                )
                 boards_final.append(board)
             except:
                 print(f"ERROR parsing the results of board {board_index}")
@@ -304,7 +306,7 @@ if __name__ == "__main__":
         f.write("\n")
 
         # Store the results
-        f.write("FEN,Q1,Q2\n")
-        for board, (q1, q2) in zip(boards, results):
+        f.write("FEN,Move1,Q1,Move2,Q2\n")
+        for board, (best_move1, q1, best_move2, q2) in zip(boards, results):
             fen = board.fen(en_passant="fen").replace(" ", "_")
-            f.write(f"{fen},{q1},{q2}\n")
+            f.write(f"{fen},{best_move1},{q1},{best_move2},{q2}\n")

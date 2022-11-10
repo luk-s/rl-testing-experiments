@@ -5,7 +5,6 @@ from typing import List
 import chess
 import chess.engine
 import numpy as np
-import pandas as pd
 from chess.engine import Cp, Score
 
 from load_results import compute_differences, flip_q_values, load_data
@@ -13,14 +12,16 @@ from load_results import compute_differences, flip_q_values, load_data
 STOCKFISH_PATH = "/home/lukas/Software/stockfish/stockfish_15_linux_x64_avx2/stockfish_15_x64_avx2"
 
 
-async def analyze_with_stockfish(stockfish_path: str, positions: List[chess.Board]) -> List[Score]:
+async def analyze_with_stockfish(
+    stockfish_path: str, positions: List[chess.Board], search_depth: int = 30
+) -> List[Score]:
     stockfish_scores = []
     _, engine = await chess.engine.popen_uci(stockfish_path)
-    engine.configure({"Threads": 1})
+    await engine.configure({"Threads": 1})
     for board_index, board in enumerate(positions):
         fen = board.fen(en_passant="fen")
         print(f"Analyzing board {board_index+1}/{len(positions)}: {fen}")
-        info = await engine.analyse(board, chess.engine.Limit(depth=30))
+        info = await engine.analyse(board, chess.engine.Limit(depth=search_depth))
         # stockfish_scores.append(info["score"].white())
         stockfish_scores.append(info["score"].relative)
 
@@ -83,16 +84,17 @@ def find_better_evaluations(
 
 if __name__ == "__main__":
     result_folder = Path(__file__).parent.parent / Path(
-        # "results/differential_testing/main_experiment"
-        "results/forced_moves/main_experiment"
+        "results/differential_testing/main_experiment"
+        # "results/forced_moves/main_experiment"
     )
-    # result_file = Path("results_ENGINE_local_400_nodes_DATA_random_fen_database.txt")
-    result_file = Path("results_ENGINE_local_400_nodes_DATA_forced_moves_fen_database.txt")
+    result_file = Path("results_ENGINE_local_5000_nodes_DATA_random_fen_database.txt")
+    # result_file = Path("results_ENGINE_local_400_nodes_DATA_forced_moves_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_late_move_fen_database.txt")
     # result_file = Path("results_ENGINE_local_1_node_DATA_late_move_fen_database.txt")
     num_largest = 100
-    fen_key = "FEN1"
-    q_vals_to_flip = ["Q2"]
+    fen_key = "FEN"
+    q_vals_to_flip = []  # ["Q2"]
+    search_depth = 20
 
     dataframe, _ = load_data(result_folder / result_file)
     for column_name in q_vals_to_flip:
@@ -115,7 +117,9 @@ if __name__ == "__main__":
     # Analyze the positions with stockfish
     asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
     stockfish_scores = asyncio.run(
-        analyze_with_stockfish(stockfish_path=STOCKFISH_PATH, positions=interesting_boards)
+        analyze_with_stockfish(
+            stockfish_path=STOCKFISH_PATH, positions=interesting_boards, search_depth=search_depth
+        )
     )
 
     # Decide which evaluations are better
