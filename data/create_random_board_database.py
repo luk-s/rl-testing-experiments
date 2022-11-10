@@ -1,19 +1,19 @@
 from pathlib import Path
 
-from rl_testing.config_parsers import BoardGeneratorConfig
-from rl_testing.data_generators import RandomBoardGenerator
+from rl_testing.config_parsers import get_data_generator_config
+from rl_testing.data_generators import get_data_generator
 
 if __name__ == "__main__":
     DATA_CONFIG_NAME = "random_many_pieces.ini"
     NUM_POSITIONS_TO_CREATE = 100000
     FILE_NAME = "data/random_positions.txt"
 
-    BoardGeneratorConfig.set_config_folder_path(
+    data_config = get_data_generator_config(
+        DATA_CONFIG_NAME,
         Path(__file__).parent.parent.absolute()
-        / Path("experiments/configs/data_generator_configs")
+        / Path("experiments/configs/data_generator_configs"),
     )
-    data_config = BoardGeneratorConfig.from_config_file(DATA_CONFIG_NAME)
-    data_generator = RandomBoardGenerator(**data_config.board_generator_config)
+    data_generator = get_data_generator(data_config)
 
     with open(FILE_NAME, "a") as f:
         boards_read = 0
