@@ -31,6 +31,8 @@ def parse_stats(
     result = {}
     result_list = info_str.split("(")
 
+    parsing_failed = False
+
     for data_index, data in enumerate(result_list):
         if data_index in drop_indices:
             continue
@@ -48,17 +50,20 @@ def parse_stats(
             value = chess.Move.from_uci(value)
         elif name == "position":
             assert value == "node"
+        elif value == "nan":
+            parsing_failed = True
         else:
             try:
                 value = float(value)
             except ValueError:
+                parsing_failed = True
                 raise ValueError(f"Can't parse value {value}")
 
         if data_index in names:
             name = names[data_index]
 
         result[name] = value
-    return result
+    return result, parsing_failed
 
 
 class MoveStat:
@@ -75,7 +80,8 @@ class MoveStat:
         if "(W)" in info_str:
             info_str = info_str.replace("(W)", "(W:1)")
 
-        parse_dic = parse_stats(info_str, drop_indices=[1, 3], names={0: "move"})
+        parse_dic, parsing_failed = parse_stats(info_str, drop_indices=[1, 3], names={0: "move"})
+        self.parsing_failed = parsing_failed
         self.move = parse_dic["move"]
         self.N = parse_dic["N"]
         self.P = parse_dic["P"]
@@ -102,7 +108,10 @@ class PositionStat:
         if "(T)" in info_str:
             info_str = info_str.replace("(T)", "(T:1)")
 
-        parse_dic = parse_stats(info_str, drop_indices=[1, 3], names={0: "position"})
+        parse_dic, parsing_failed = parse_stats(
+            info_str, drop_indices=[1, 3], names={0: "position"}
+        )
+        self.parsing_failed = parsing_failed
         self.N = parse_dic["N"]
         self.P = parse_dic["P"]
         self.WL = parse_dic["WL"]

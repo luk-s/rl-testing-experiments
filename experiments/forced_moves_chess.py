@@ -40,6 +40,8 @@ async def analyze_positions(
 
         move_stats, position_stats = {}, []
 
+        analysis_failed = False
+
         # Needs to be in a try-except because the engine might crash unexpectedly
         try:
             # Start the analysis
@@ -55,8 +57,10 @@ async def analyze_positions(
                     if result is not None:
                         if isinstance(result, MoveStat):
                             move_stats[result.move] = result
+                            analysis_failed = analysis_failed or result.parsing_failed
                         elif isinstance(result, PositionStat):
                             position_stats.append(result)
+                            analysis_failed = analysis_failed or result.parsing_failed
                         else:
                             ValueError(f"Objects of type {type(result)} are not supported")
 
@@ -76,7 +80,7 @@ async def analyze_positions(
 
         else:
             # Check if the proposed best move is valid
-            if engine.invalid_best_move:
+            if analysis_failed or engine.invalid_best_move:
                 best_move = (await analysis.wait()).move
                 results.append(("invalid", {}, []))
             else:
