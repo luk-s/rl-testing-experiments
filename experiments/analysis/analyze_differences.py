@@ -87,10 +87,10 @@ if __name__ == "__main__":
         "results/differential_testing/main_experiment"
         # "results/forced_moves/main_experiment"
     )
-    result_file = Path("results_ENGINE_local_5000_nodes_DATA_random_fen_database.txt")
+    # result_file = Path("results_ENGINE_local_5000_nodes_DATA_random_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_forced_moves_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_late_move_fen_database.txt")
-    # result_file = Path("results_ENGINE_local_1_node_DATA_late_move_fen_database.txt")
+    result_file = Path("results_ENGINE_local_10000_nodes_DATA_late_move_fen_database.txt")
     num_largest = 100
     fen_key = "FEN"
     q_vals_to_flip = []  # ["Q2"]
@@ -102,8 +102,8 @@ if __name__ == "__main__":
     dataframe = compute_differences(dataframe=dataframe, column_name1="Q1", column_name2="Q2")
 
     interesting_boards = []
-    leela_cp_scores1 = []
-    leela_cp_scores2 = []
+    leela_cp_scores1, leela_cp_scores2 = [], []
+    leela_q_scores1, leela_q_scores2 = [], []
     differences = []
     for i in range(num_largest):
         fen = dataframe.iloc[i][fen_key]
@@ -112,6 +112,8 @@ if __name__ == "__main__":
         difference = dataframe.iloc[i]["difference"]
         leela_cp_scores1.append(q2cp(dataframe.iloc[i]["Q1"]))
         leela_cp_scores2.append(q2cp(dataframe.iloc[i]["Q2"]))
+        leela_q_scores1.append(dataframe.iloc[i]["Q1"])
+        leela_q_scores2.append(dataframe.iloc[i]["Q2"])
         differences.append(difference)
 
     # Analyze the positions with stockfish
@@ -135,14 +137,16 @@ if __name__ == "__main__":
 
     for index, board in enumerate(interesting_boards):
         fen = board.fen(en_passant="fen")
-        q1 = str(leela_cp_scores1[index])
-        q2 = str(leela_cp_scores2[index])
+        cp1 = str(leela_cp_scores1[index])
+        cp2 = str(leela_cp_scores2[index])
+        q1 = str(leela_q_scores1[index])
+        q2 = str(leela_q_scores2[index])
         stockfish = str(stockfish_scores[index])
         result = better[index]
         suffix = " is better" if result != "unknown" else ""
         print(
-            f"{fen :<74} CP1: {q1:<7} CP2: {q2:<7}, "
-            # f"Difference: {differences[index] :<20} CP1: {q1:<7} CP2: {q2:<7}, "
+            f"{fen :<74} Q1: {q1:<9} Q2: {q2:<9} CP1: {cp1:<7} CP2: {cp2:<7}, "
+            f"Diff: {differences[index] :<20} "
             f"Stockfish: {stockfish :<7} Result: {result + suffix}"
         )
     print()

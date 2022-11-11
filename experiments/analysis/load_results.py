@@ -41,3 +41,27 @@ def compute_differences(
     dataframe["difference"] = dataframe["difference"].abs()
     dataframe = dataframe.sort_values(by="difference", ascending=False)
     return dataframe
+
+
+def compare_columns_and_filter(
+    dataframe: pd.DataFrame, column_name1: str, column_name2: str, compare_string: str = "=="
+):
+    if compare_string == "==":
+        dataframe2 = dataframe.loc[dataframe[column_name1] == dataframe[column_name2]]
+    elif compare_string == "!=":
+        dataframe2 = dataframe.loc[dataframe[column_name1] != dataframe[column_name2]]
+    elif compare_string == ">=":
+        dataframe2 = dataframe.loc[dataframe[column_name1] >= dataframe[column_name2]]
+    elif compare_string == "<=":
+        dataframe2 = dataframe.loc[dataframe[column_name1] <= dataframe[column_name2]]
+    elif compare_string == "<":
+        dataframe2 = dataframe.loc[dataframe[column_name1] < dataframe[column_name2]]
+    elif compare_string == ">":
+        dataframe2 = dataframe.loc[dataframe[column_name1] != dataframe[column_name2]]
+    else:
+        raise ValueError(
+            f"The compare string '{compare_string}' is not supported! "
+            "Please choose one from ['==', '!=', '>=', '<=', '<', '>']"
+        )
+
+    return dataframe2

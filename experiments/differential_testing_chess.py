@@ -237,6 +237,7 @@ if __name__ == "__main__":
     # =========
     # strong and recent: "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
     # from leela paper: "network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be"
+    # strong recommended: "network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2" # noqa: E501
     # Weak local 1: "f21ee51844a7548c004a1689eacd8b4cd4c6150d6e03c732b211cf9963d076e1"
     # Weak local 2: "fbd5e1c049d5a46c098f0f7f12e79e3fb82a7a6cd1c9d1d0894d0aae2865826f"
 
@@ -246,7 +247,8 @@ if __name__ == "__main__":
     parser.add_argument("--data_config_name",   type=str, default="late_move_fen_database.ini")
     parser.add_argument("--num_positions",      type=int, default=100_000)
     parser.add_argument("--network_path1",      type=str, default="network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42")  # noqa: E501
-    parser.add_argument("--network_path2",      type=str, default="network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be")  # noqa: E501
+    # parser.add_argument("--network_path2",      type=str, default="network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be")  # noqa: E501
+    parser.add_argument("--network_path2",      type=str, default="network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
     parser.add_argument("--result_subdir",      type=str, default="main_experiment")
     # fmt: on
     ##################################
