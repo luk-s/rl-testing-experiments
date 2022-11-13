@@ -5,7 +5,6 @@ from unittest import result
 import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
-
 from load_results import compare_columns_and_filter, flip_q_values, load_data
 
 RESULT_DIRECTORY = Path(__file__).parent.parent / Path("results")
@@ -26,7 +25,7 @@ def differences_density_plot(
         plt.ylim(bottom=y_limits[0], top=y_limits[1])
 
     max_difference = dataframe["difference"].max()
-    font = {"family": "normal", "size": 22}
+    font = {"size": 22}
     matplotlib.rc("font", **font)
     plt.xlabel("Value difference", fontdict=font)
     plt.ylabel("Amount", fontdict=font)
@@ -36,7 +35,6 @@ def differences_density_plot(
     print(max_difference)
     _, y_max = plt.gca().get_ylim()
     plt.vlines([max_difference], ymin=[0], ymax=y_max, colors=["red"])
-    plt.hist(dataframe["difference"], bins=1000, range=x_limits)
     plt.show()
 
 

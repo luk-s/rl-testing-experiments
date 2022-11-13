@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import chess
 import chess.engine
 import numpy as np
+
 from rl_testing.config_parsers import get_data_generator_config, get_engine_config
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
@@ -187,6 +188,8 @@ async def differential_testing(
                 boards_final.append(board)
             except:
                 print(f"ERROR parsing the results of board {board_index}")
+                print("ERROR BOARD: ", board.fen(en_passant="fen"))
+                print(f"ERROR Move stats: ", move_stats1)
         else:
             message = "board: " + board.fen(en_passant="fen") + " "
             if best_move1 == "invalid":
