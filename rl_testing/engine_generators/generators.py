@@ -7,14 +7,8 @@ import asyncssh
 import chess
 import chess.engine
 from chess.engine import UciProtocol
-from rl_testing.config_parsers.engine_config_parser import (
-    EngineConfig,
-    RemoteEngineConfig,
-)
-from rl_testing.engine_generators.relaxed_uci_protocol import (
-    RelaxedUciProtocol,
-    popen_uci_relaxed,
-)
+from rl_testing.config_parsers.engine_config_parser import EngineConfig, RemoteEngineConfig
+from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol, popen_uci_relaxed
 
 TUciProtocol = TypeVar("TUciProtocol", bound="UciProtocol")
 
@@ -33,11 +27,14 @@ class EngineGenerator:
             self.engine_path,
         )
 
-    async def get_initialized_engine(self, **kwargs: Any) -> TUciProtocol:
-        assert self.network_path is not None, (
-            "You first need to set a network using the 'set_network' "
-            "function before initializing the engine!"
-        )
+    async def get_initialized_engine(
+        self, initialize_network: bool = True, **kwargs: Any
+    ) -> TUciProtocol:
+        if initialize_network:
+            assert self.network_path is not None, (
+                "You first need to set a network using the 'set_network' "
+                "function before initializing the engine!"
+            )
 
         # Create the engine
         _, engine = await self._create_engine(**kwargs)
@@ -48,7 +45,9 @@ class EngineGenerator:
 
         # Configure engine
         config = dict(self.engine_config)
-        config["WeightsFile"] = self.network_path
+        if initialize_network:
+            config["WeightsFile"] = self.network_path
+
         await engine.configure(config)
 
         return engine

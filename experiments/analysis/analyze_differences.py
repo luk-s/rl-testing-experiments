@@ -6,7 +6,6 @@ import chess
 import chess.engine
 import numpy as np
 from chess.engine import Cp, Score
-
 from load_results import compute_differences, flip_q_values, load_data
 
 STOCKFISH_PATH = "/home/lukas/Software/stockfish/stockfish_15_linux_x64_avx2/stockfish_15_x64_avx2"
@@ -90,7 +89,7 @@ if __name__ == "__main__":
     # result_file = Path("results_ENGINE_local_5000_nodes_DATA_random_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_forced_moves_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_late_move_fen_database.txt")
-    result_file = Path("results_ENGINE_local_10000_nodes_DATA_late_move_fen_database.txt")
+    result_file = Path("results_ENGINE_local_5000_nodes_DATA_late_move_fen_database.txt")
     num_largest = 100
     fen_key = "FEN"
     q_vals_to_flip = []  # ["Q2"]
@@ -146,7 +145,7 @@ if __name__ == "__main__":
         suffix = " is better" if result != "unknown" else ""
         print(
             f"{fen :<74} Q1: {q1:<9} Q2: {q2:<9} CP1: {cp1:<7} CP2: {cp2:<7}, "
-            f"Diff: {differences[index] :<20} "
+            f"Diff: {differences[index] :8.5f} "
             f"Stockfish: {stockfish :<7} Result: {result + suffix}"
         )
     print()
