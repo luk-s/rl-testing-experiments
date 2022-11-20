@@ -1,6 +1,6 @@
 import datetime
 import io
-from time import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import chess
@@ -9,6 +9,7 @@ import imgkit
 import matplotlib
 import matplotlib.image as mimage
 import matplotlib.pyplot as plt
+import numpy as np
 
 
 def contains_move_stat(info: Dict[str, Any]) -> bool:
@@ -139,6 +140,20 @@ def parse_info(
             raise ValueError("The provided dictionary cannot be parsed!")
 
 
+def q2cp(q_value: float) -> float:
+    return chess.engine.Cp(round(111.714640912 * np.tan(1.5620688421 * q_value)))
+
+
+def cp2q(cp_value: float) -> float:
+    return np.arctan(cp_value / 111.714640912) / 1.5620688421
+
+
+def fen_to_file_name(fen: str, suffix: str = ""):
+    fen = fen.replace("/", "|")
+    fen = fen.replace(" ", "_")
+    return fen + suffix
+
+
 def plot_board(
     board: chess.Board,
     title: str = "",
@@ -146,7 +161,7 @@ def plot_board(
     fontsize: int = 22,
     save: bool = True,
     show: bool = False,
-    save_path: str = "",
+    save_path: Union[str, Path] = "",
 ) -> None:
     # Get the XML representation of an SVG image of the board
     svg = chess.svg.board(board)
@@ -184,8 +199,10 @@ def plot_board(
         if save_path == "":
             time_now = str(datetime.datetime.now())
             time_now = time_now.replace(" ", "_")
-            save_path = f"board_{time_now}.png"
+            save_path = Path(f"board_{time_now}.png")
 
+        save_path = Path(save_path)
+        save_path.absolute().parent.mkdir(parents=True, exist_ok=True)
         plt.savefig(save_path, dpi=200)
 
     if show:

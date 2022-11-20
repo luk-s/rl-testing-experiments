@@ -4,33 +4,15 @@ from typing import List
 
 import chess
 import chess.engine
-import numpy as np
+from board_analysis import analyze_with_engine
 from chess.engine import Cp, Score
 from load_results import compute_differences, flip_q_values, load_data
 
+from rl_testing.config_parsers import get_engine_config
+from rl_testing.engine_generators import get_engine_generator
+from rl_testing.util.util import q2cp
+
 STOCKFISH_PATH = "/home/lukas/Software/stockfish/stockfish_15_linux_x64_avx2/stockfish_15_x64_avx2"
-
-
-async def analyze_with_stockfish(
-    stockfish_path: str, positions: List[chess.Board], search_depth: int = 30
-) -> List[Score]:
-    stockfish_scores = []
-    _, engine = await chess.engine.popen_uci(stockfish_path)
-    await engine.configure({"Threads": 1})
-    for board_index, board in enumerate(positions):
-        fen = board.fen(en_passant="fen")
-        print(f"Analyzing board {board_index+1}/{len(positions)}: {fen}")
-        info = await engine.analyse(board, chess.engine.Limit(depth=search_depth))
-        # stockfish_scores.append(info["score"].white())
-        stockfish_scores.append(info["score"].relative)
-
-    await engine.quit()
-
-    return stockfish_scores
-
-
-def q2cp(q_value):
-    return Cp(round(111.714640912 * np.tan(1.5620688421 * q_value)))
 
 
 def find_better_evaluations(
@@ -93,7 +75,9 @@ if __name__ == "__main__":
     num_largest = 100
     fen_key = "FEN"
     q_vals_to_flip = []  # ["Q2"]
-    search_depth = 20
+    engine_config_name = "remote_25_depth_stockfish.ini"  # "remote_400_nodes.ini"
+    network_name = ""  # "network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2"
+    search_limit = {"depth": 20}
 
     dataframe, _ = load_data(result_folder / result_file)
     for column_name in q_vals_to_flip:
@@ -117,9 +101,22 @@ if __name__ == "__main__":
 
     # Analyze the positions with stockfish
     asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
+
+    # Setup engine generator
+    engine_config = get_engine_config(
+        config_name=engine_config_name,
+        config_folder_path=Path(__file__).parent.parent.absolute()
+        / Path("configs/engine_configs/"),
+    )
+    engine_generator = get_engine_generator(engine_config)
+    if network_name:
+        engine_generator.set_network(network_name)
+
     stockfish_scores = asyncio.run(
-        analyze_with_stockfish(
-            stockfish_path=STOCKFISH_PATH, positions=interesting_boards, search_depth=search_depth
+        analyze_with_engine(
+            engine_generator=engine_generator,
+            positions=interesting_boards,
+            search_limits=search_limit,
         )
     )
 

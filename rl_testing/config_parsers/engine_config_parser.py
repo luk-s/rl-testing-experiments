@@ -19,7 +19,7 @@ class EngineConfig(Config):
         "engine_config",
         "search_limits",
     ]
-    OPTIONAL_ATTRIBUTES = ["network_path"]
+    OPTIONAL_ATTRIBUTES = ["network_path", "initialize_network"]
 
     def __init__(
         self,
@@ -33,6 +33,7 @@ class EngineConfig(Config):
         self.network_path = None
         self.engine_config = {}
         self.search_limits = {}
+        self.initialize_network = True
 
         # Assign the parameters from the provided config file
         if _initialize:
@@ -40,6 +41,7 @@ class EngineConfig(Config):
             self.check_parameters()
 
     def set_parameter(self, section: str, name: str, value: str) -> None:
+        value = self.parse_string(value, raise_error=False)
         if section == "EngineConfig":
             self.engine_config[name] = value
         elif section == "SearchLimits":
@@ -47,7 +49,7 @@ class EngineConfig(Config):
         elif name in EngineConfig.REQUIRED_ATTRIBUTES or name in EngineConfig.OPTIONAL_ATTRIBUTES:
             setattr(self, name, value)
         else:
-            raise ValueError(f"Objects of type {type(self)} don't have the attribute {value}!")
+            raise ValueError(f"Objects of type {type(self)} don't have the attribute {name}!")
 
     def set_network(self, network_name: str) -> None:
         self.network_path = str(Path(self.network_base_path) / Path(network_name))
@@ -69,9 +71,8 @@ class RemoteEngineConfig(EngineConfig):
         self.check_parameters()
 
     def set_parameter(self, section: str, name: str, value: str) -> None:
-        if name == "password_required":
-            self.password_required = value == "True"
-        elif (
+        value = self.parse_string(value, raise_error=False)
+        if (
             name in RemoteEngineConfig.REQUIRED_ATTRIBUTES
             or name in RemoteEngineConfig.OPTIONAL_ATTRIBUTES
         ):
