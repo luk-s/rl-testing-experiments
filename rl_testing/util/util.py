@@ -1,7 +1,9 @@
+import asyncio
 import datetime
 import io
+import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import chess
 import chess.svg
@@ -10,6 +12,32 @@ import matplotlib
 import matplotlib.image as mimage
 import matplotlib.pyplot as plt
 import numpy as np
+
+
+def get_task_result_handler(
+    logger: logging.Logger,
+    message: str,
+    message_args: Tuple[Any, ...] = (),
+) -> Any:
+    def handle_task_result(
+        task: asyncio.Task,
+        *,
+        logger: logging.Logger,
+        message: str,
+        message_args: Tuple[Any, ...] = (),
+    ) -> None:
+        try:
+            task.result()
+        except asyncio.CancelledError:
+            pass  # Task cancellation should not be logged as an error.
+        # Ad the pylint ignore: we want to handle all exceptions here so that the result of the task
+        # is properly logged. There is no point re-raising the exception in this callback.
+        except Exception:  # pylint: disable=broad-except
+            logger.exception(message, *message_args)
+
+    return lambda task: handle_task_result(
+        task, logger=logger, message=message, message_args=message_args
+    )
 
 
 def contains_move_stat(info: Dict[str, Any]) -> bool:
