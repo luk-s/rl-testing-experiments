@@ -251,7 +251,7 @@ async def filter_candidates(
             )
 
             # Check if the board is promising
-            if score_v != "invalid" and np.abs(score_v - score_original_e) > np.abs(
+            if score_v != "invalid" and np.abs(score_v - score_original_e) >= np.abs(
                 threshold_adversarial - threshold_equal
             ):
                 logging.info(
@@ -339,8 +339,8 @@ async def evaluate_candidates(
 
             # Iterate over the received data
             for (
-                board_original,
                 board_adversarial,
+                board_original,
                 score_original_v,
                 score_original_e,
                 score_adversarial_v,
@@ -632,7 +632,7 @@ if __name__ == "__main__":
     parser.add_argument("--examiner_engine_config_name",    type=str, default="local_25_depth_stockfish.ini")  # noqa: E501
     # parser.add_argument("--victim_engine_config_name",      type=str, default="remote_400_nodes.ini")  # noqa: E501
     # parser.add_argument("--examiner_engine_config_name",    type=str, default="remote_25_depth_stockfish.ini")  # noqa: E501
-    parser.add_argument("--data_config_name",               type=str, default="late_move_fen_database.ini")  # noqa: E501
+    parser.add_argument("--data_config_name",               type=str, default="database.ini")  # noqa: E501
     parser.add_argument("--num_positions",                  type=int, default=100_000)  # noqa: E501
     # parser.add_argument("--num_positions",                  type=int, default=100)  # noqa: E501
     parser.add_argument("--victim_network_path",            type=str, default="network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42")  # noqa: E501
