@@ -5,7 +5,12 @@ from unittest import result
 import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
-from load_results import compare_columns_and_filter, flip_q_values, load_data
+from load_results import (
+    compare_columns_and_filter,
+    compute_differences,
+    flip_q_values,
+    load_data,
+)
 
 RESULT_DIRECTORY = Path(__file__).parent.parent / Path("results")
 
@@ -17,8 +22,8 @@ def differences_density_plot(
     x_limits: Tuple[float, float] = (0, 2),
     y_limits: Optional[Tuple[float, float]] = None,
 ) -> None:
-    dataframe["difference"] = dataframe[column_name1] - dataframe[column_name2]
-    dataframe["difference"] = dataframe["difference"].abs()
+    dataframe = compute_differences(dataframe, column_name1, column_name2)
+    print(dataframe[:100].to_string())
     plt.hist(dataframe["difference"], bins=1000, range=x_limits)
 
     if y_limits is not None:
@@ -41,13 +46,13 @@ def differences_density_plot(
 if __name__ == "__main__":
     # result_folder = RESULT_DIRECTORY / Path("differential_testing/main_experiment/")
     result_folder = RESULT_DIRECTORY / Path(
-        "differential_testing/main_experiment"
-        # "differential_testing/main_experiment/results_fixed_and_long"
+        # "differential_testing/main_experiment"
+        "differential_testing/main_experiment/results_fixed_and_long"
     )
     # result_folder = RESULT_DIRECTORY / Path("forced_moves/main_experiment/")
     # result_file = Path("results_ENGINE_local_5000_nodes_DATA_random_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_forced_moves_fen_database.txt")
-    result_file = Path("results_ENGINE_local_1000_nodes_DATA_late_move_fen_database.txt")
+    result_file = Path("results_ENGINE_local_5000_nodes_DATA_late_move_fen_database.txt")
 
     column_name1, column_name2 = "Q1", "Q2"
     result_path = result_folder / result_file
