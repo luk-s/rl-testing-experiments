@@ -81,7 +81,8 @@ async def create_positions(
 
     # This website might be helpful: https://www.chessprogramming.org/Flipping_Mirroring_and_Rotating
     # Create random chess positions if necessary
-    for board_index in range(num_positions):
+    board_index = 1
+    while board_index <= num_positions:
 
         # Create a random chess position
         board_candidate = data_generator.next()
@@ -110,6 +111,8 @@ async def create_positions(
                     await queue.put((board_candidate.copy(), transform_index, transformed_board))
 
             await asyncio.sleep(delay=sleep_between_positions)
+
+            board_index += 1
 
 
 async def evaluate_candidates(
