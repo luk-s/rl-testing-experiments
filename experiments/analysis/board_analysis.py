@@ -3,28 +3,73 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import chess
+import networkx as nx
+import netwulf as nw
 from chess.engine import Score
 
 from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
+from rl_testing.util.tree_parser import NodeInfo, TreeInfo
+
+
+def assign_depths(node: NodeInfo, depth: int, num_per_depth: List[int]):
+    node.depth = depth
+    if len(num_per_depth) <= depth:
+        num_per_depth.append(0)
+    node.depth_index = num_per_depth[depth]
+    num_per_depth[depth] += 1
+    for edge in node.child_edges:
+        if edge.end_node is not None:
+            assign_depths(edge.end_node, max(depth + 1, edge.end_node.depth), num_per_depth)
+
+
+def convert_tree_to_networkx(tree: TreeInfo):
+    # Assign the depth to each node
+    for fen in tree.node_cache:
+        tree.node_cache[fen].depth = 0
+
+    num_per_depth = []
+    assign_depths(tree.root_node, 0, num_per_depth)
+
+    G = nx.Graph()
+    for fen in tree.node_cache:
+        node = tree.node_cache[fen]
+        # G.add_node(node, **node.__dict__)
+        if node.v_value is None:
+            print("This should not happen!")
+        G.add_node(
+            node.index,
+            size=(node.v_value if node.depth % 2 == 0 else -node.v_value) + 1,
+            x=node.depth_index * 10,
+            y=node.depth * 5,
+        )
+    for fen in tree.node_cache:
+        node = tree.node_cache[fen]
+        for edge in node.child_edges:
+            if edge.end_node is not None:
+                assert edge.start_node.index in G
+                assert edge.end_node.index in G
+                # G.add_edge(edge.start_node, edge.end_node, **edge.__dict__)
+                G.add_edge(edge.start_node.index, edge.end_node.index, size=edge.q_value)
+    return G
 
 
 async def analyze_with_engine(
     engine_generator: EngineGenerator,
     positions: List[Union[chess.Board, str]],
+    network_name: Optional[str] = None,
     search_limits: Optional[Dict[str, Any]] = None,
 ) -> List[Score]:
     engine_scores = []
+    trees = []
 
     # Set search limits
     if search_limits is None:
         search_limits = {"depth": 25}
 
     # Setup and configure the engine
-    # TODO: Remove after test!
-    engine_generator.set_network(
-        "network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be"
-    )
+    if network_name is not None:
+        engine_generator.set_network(network_name)
     engine = await engine_generator.get_initialized_engine()
 
     for board_index, board in enumerate(positions):
@@ -41,11 +86,16 @@ async def analyze_with_engine(
 
         # Extract the score
         engine_scores.append(info["score"].relative)
+        trees.append(info["mcts_tree"])
 
-    return engine_scores
+    return engine_scores, trees
 
 
 if __name__ == "__main__":
+    fens = [
+        "1qk4r/pp5r/4b1p1/nNp1Np2/4P3/6QP/PPP3BK/3R4 b - - 3 32",
+    ]
+    """
     fens = [
         "1qk4r/pp5r/4b1p1/nNp1Np2/4P3/6QP/PPP3BK/3R4 b - - 3 32",
         "4rr2/2q2p1k/p6p/1p1bp2P/8/P1PPQN2/3K1PR1/2R5 b - - 3 33",
@@ -66,7 +116,8 @@ if __name__ == "__main__":
         "k1brr3/ppq3pp/1Rp4n/2P5/R3p3/3B1N1P/P2Q1PP1/6K1 w - - 0 26",
         "r4k2/1pp1brqp/p2pR3/3P4/1P3P2/4Q3/P1P3PP/4R1K1 w - - 1 25",
         "1k6/8/P1K5/2PR4/8/8/2r5/8 b - - 0 80",
-    ]
+    ]"""
+    network_name = "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
     # engine_config_name = "remote_25_depth_stockfish.ini"
     # search_limit = {"depth": 25}
     engine_config_name = "remote_1000_nodes.ini"
@@ -83,13 +134,18 @@ if __name__ == "__main__":
     )
     engine_generator = get_engine_generator(engine_config)
 
-    scores = asyncio.run(
+    scores, trees = asyncio.run(
         analyze_with_engine(
             engine_generator=engine_generator,
             positions=fens,
+            network_name=network_name,
             search_limits=search_limit,
         )
     )
+
+    for tree in trees:
+        G = convert_tree_to_networkx(tree)
+    stylized_network, config = nw.visualize(G)
 
     print("Results:")
     for fen, score in zip(fens, scores):

@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Iterable, List, Optional, Tuple, Union
 
 import chess
 from chess import Move
@@ -26,6 +26,8 @@ from chess.engine import (
     UciProtocol,
     Wdl,
 )
+
+from rl_testing.util.tree_parser import TreeInfo, TreeParser
 
 
 def parse_uci_relaxed(self, uci: str) -> Move:
@@ -206,6 +208,12 @@ def _parse_uci_bestmove_relaxed(board: chess.Board, args: str) -> BestMove:
     return BestMove(move, ponder), not failed
 
 
+class ExtendedAnalysisResult(AnalysisResult):
+    def __init__(self, stop: Optional[Callable[[], None]] = None):
+        super().__init__(stop)
+        self.mcts_tree: Optional[TreeInfo] = None
+
+
 class RelaxedUciProtocol(UciProtocol):
     """
     A relaxed implementation of the
@@ -223,12 +231,13 @@ class RelaxedUciProtocol(UciProtocol):
         info: Info = INFO_ALL,
         root_moves: Optional[Iterable[chess.Move]] = None,
         options: ConfigMapping = {},
-    ) -> AnalysisResult:
+    ) -> ExtendedAnalysisResult:
         self.invalid_best_move = False
 
         class UciAnalysisCommand(BaseCommand[UciProtocol, AnalysisResult]):
             def start(self, engine: UciProtocol) -> None:
-                self.analysis = AnalysisResult(stop=lambda: self.cancel(engine))
+                self.analysis = ExtendedAnalysisResult(stop=lambda: self.cancel(engine))
+                self.tree_parser = TreeParser(self.analysis)
                 self.sent_isready = False
 
                 if "Ponder" in engine.options:
@@ -254,7 +263,9 @@ class RelaxedUciProtocol(UciProtocol):
 
             def line_received(self, engine: UciProtocol, line: str) -> None:
                 # try:
-                if line.startswith("info "):
+                if TreeParser.PARSE_TOKEN in line:
+                    self.tree_parser.parse_line(line)
+                elif line.startswith("info "):
                     self._info(engine, line.split(" ", 1)[1])
                 elif line.startswith("bestmove "):
                     self._bestmove(engine, line.split(" ", 1)[1])
