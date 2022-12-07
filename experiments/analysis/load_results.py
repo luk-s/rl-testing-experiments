@@ -11,18 +11,26 @@ def load_data(result_path: Union[str, Path]) -> Tuple[pd.DataFrame, Dict[str, st
     with open(result_path, "r") as f:
         line = f.readline()
         line = line[:-1]
-        while line != "":
-            # Parse the config
-            if line != "":
-                name, value = line.split("=")
-                name, value = name.strip(), value.strip()
-                config[name] = value
-
-            start_line += 1
+        if ":" in line:
             line = f.readline()
             line = line[:-1]
+        if "," not in line:
+            while line != "":
+                # Parse the config
+                if line != "":
+                    name, value = line.split("=")
+                    name, value = name.strip(), value.strip()
+                    config[name] = value
 
-    start_line += 1
+                start_line += 1
+                line = f.readline()
+                line = line[:-1]
+                # if line == "":
+                #    start_line += 1
+
+    if "," not in line:
+        start_line += 1
+
     # Read in the data
     dataframe = pd.read_csv(result_path, header=start_line, skip_blank_lines=False)
 

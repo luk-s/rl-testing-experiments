@@ -65,19 +65,20 @@ def find_better_evaluations(
 
 if __name__ == "__main__":
     result_folder = Path(__file__).parent.parent / Path(
-        "results/differential_testing/main_experiment"
+        "results/differential_testing/main_experiment/results_fixed_and_long"
+        # "results/differential_testing/main_experiment"
         # "results/forced_moves/main_experiment"
     )
     # result_file = Path("results_ENGINE_local_5000_nodes_DATA_random_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_forced_moves_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_late_move_fen_database.txt")
-    result_file = Path("results_ENGINE_local_5000_nodes_DATA_late_move_fen_database.txt")
+    result_file = Path("results_ENGINE_local_10000_nodes_DATA_late_move_fen_database.txt")
     num_largest = 100
     fen_key = "FEN"
     q_vals_to_flip = []  # ["Q2"]
     engine_config_name = "remote_25_depth_stockfish.ini"  # "remote_400_nodes.ini"
     network_name = ""  # "network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2"
-    search_limit = {"depth": 20}
+    search_limit = {"depth": 25}
 
     dataframe, _ = load_data(result_folder / result_file)
     for column_name in q_vals_to_flip:
@@ -112,7 +113,7 @@ if __name__ == "__main__":
     if network_name:
         engine_generator.set_network(network_name)
 
-    stockfish_scores = asyncio.run(
+    stockfish_scores, trees = asyncio.run(
         analyze_with_engine(
             engine_generator=engine_generator,
             positions=interesting_boards,

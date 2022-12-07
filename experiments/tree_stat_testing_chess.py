@@ -12,48 +12,15 @@ import numpy as np
 from rl_testing.config_parsers import get_data_generator_config, get_engine_config
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
+from rl_testing.util.tree_parser import TreeInfo
 from rl_testing.util.util import cp2q, get_task_result_handler
 
-RESULT_DIR = Path(__file__).parent / Path("results/parent_child_testing")
-
-
-class ReceiverCache:
-    def __init__(self, queue: asyncio.Queue) -> None:
-        assert isinstance(queue, asyncio.Queue)
-        self.queue = queue
-
-        self.score_cache = {}
-
-    async def receive_data(self) -> List[Iterable[Any]]:
-        # Receive data from queue
-        base_board, num_child_nodes, board, move, score = await self.queue.get()
-
-        assert isinstance(base_board, chess.Board)
-
-        # The boards might not arrive in the correct order due to the asynchronous nature of
-        # the program. Therefore, we need to cache the boards and scores until we have all
-        # of them.
-        fen = base_board.fen()
-        move_str = move.uci() if move is not None else "NaN"
-        if fen in self.score_cache:
-            self.score_cache[fen].append((move_str, score))
-        else:
-            self.score_cache[fen] = [(move_str, score)]
-
-        complete_data_tuples = []
-        # Check if we have all the data for this board
-        if len(self.score_cache[fen]) == num_child_nodes:
-            # We have all the data for this board
-            complete_data_tuples.append((fen, self.score_cache[fen]))
-            del self.score_cache[fen]
-
-        return complete_data_tuples
+RESULT_DIR = Path(__file__).parent / Path("results/tree_stat_testing")
 
 
 async def create_positions(
     queues: List[asyncio.Queue],
     data_generator: BoardGenerator,
-    max_child_moves: int = 10,
     num_positions: int = 1,
     sleep_between_positions: float = 0.1,
     identifier_str: str = "",
@@ -72,37 +39,18 @@ async def create_positions(
 
         legal_moves = list(board_candidate.legal_moves)
 
-        # Check if the generated position should be further processed
-        if board_candidate.fen() not in fen_cache and 0 < len(legal_moves) <= max_child_moves:
+        # Check if the generated position has at least two legal moves and if this position
+        # has not been generated before
+        if board_candidate.fen() not in fen_cache and len(legal_moves) > 1:
             fen_cache[board_candidate.fen()] = True
-
-            # Get all child positions which are not terminal positions
-            board_list = [board_candidate]
-            move_list = [None]
-            for legal_move in legal_moves:
-                board_temp = board_candidate.copy()
-                board_temp.push(legal_move)
-                if len(list(board_temp.legal_moves)) > 0:
-                    board_list.append(board_temp)
-                    move_list.append(legal_move)
-
-            # If all child positions are terminal positions, we do not need to process this
-            if len(board_list) == 1:
-                continue
 
             # Log the base position
             fen = board_candidate.fen(en_passant="fen")
             logging.info(f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}")
 
-            # Log the child positions
-            for board in board_list[1:]:
-                fen = board.fen(en_passant="fen")
-                logging.info(f"[{identifier_str}] Created transformed board: " f"{fen}")
-
             # Send the base position to all queues
             for queue in queues:
-                for board, move in zip(board_list, move_list):
-                    await queue.put((board_candidate.copy(), len(board_list), board.copy(), move))
+                await queue.put(board_candidate.copy())
 
             await asyncio.sleep(delay=sleep_between_positions)
 
@@ -110,8 +58,7 @@ async def create_positions(
 
 
 async def evaluate_candidates(
-    engine_queue: asyncio.Queue,
-    max_child_moves: int,
+    result_queue: asyncio.Queue,
     file_path: Union[str, Path],
     sleep_after_get: float = 0.1,
     identifier_str: str = "",
@@ -121,45 +68,60 @@ async def evaluate_candidates(
     file_path.parent.mkdir(parents=True, exist_ok=True)
     board_counter = 1
 
-    # The order of the queues is important! The 'receive' function will return the data in the
-    # same order as the queues are given to the initializer.
-    receiver_cache = ReceiverCache(queue=engine_queue)
-
     with open(file_path, "a") as file:
 
         while True:
             # Fetch the next board and the corresponding scores from the queues
-            complete_data_tuples = await receiver_cache.receive_data()
+            board, score, tree = await result_queue.get()
+            fen = board.fen(en_passant="fen")
 
-            # Iterate over the received data
-            for fen, score_tuple_list in complete_data_tuples:
-                await asyncio.sleep(delay=sleep_after_get)
+            await asyncio.sleep(delay=sleep_after_get)
 
-                logging.info(f"[{identifier_str}] Saving board {board_counter}: " + fen)
+            logging.info(f"[{identifier_str}] Saving board {board_counter}: " + fen)
 
-                # Write the found adversarial example into a file
-                index = 0
-                result_str = f"{fen},"
-                for (move, score) in score_tuple_list:
-                    # Add the score to the result string
-                    result_str += f"{move},{score},"
+            # Write the found adversarial example into a file
+            result_str = f"{fen};{score};"
 
-                    # Mark the element as processed
-                    engine_queue.task_done()
+            # Extract information about all outgoing edges of the root node
+            if isinstance(tree, TreeInfo):
+                # Extract the information about the root node
+                root_node = tree.root_node
+                assert root_node is not None
 
-                    index += 1
+                # Extract the edges and sort them by their move
+                edges = [e for e in root_node.child_edges if e.end_node is not None]
+                moves = [edge.move.uci() for edge in edges]
+                edge_tuples = sorted(zip(moves, edges), key=lambda x: x[0])
 
-                # Fill the row with empty values if the number of child nodes is smaller than
-                # the maximum number of child nodes
-                for _ in range(index, max_child_moves):
-                    result_str += "NaN,NaN,"
+                # Store information about the edges
+                for move, edge in edge_tuples:
+                    result_str += (
+                        ",".join(
+                            [
+                                move,
+                                str(edge.num_visits),
+                                str(edge.in_flight_visits),
+                                str(edge.policy_value),
+                                str(edge.v_value),
+                                str(edge.q_value),
+                                str(edge.u_value),
+                                str(edge.s_value),
+                            ]
+                        )
+                        + ","
+                    )
+            else:
+                pass
 
-                result_str = result_str[:-1] + "\n"
+            # Mark the element as processed
+            result_queue.task_done()
 
-                # Write the result to the file
-                file.write(result_str)
+            result_str += "\n"
 
-                board_counter += 1
+            # Write the result to the file
+            file.write(result_str)
+
+            board_counter += 1
 
 
 async def analyze_position(
@@ -181,7 +143,7 @@ async def analyze_position(
     while True:
         # Fetch the next base board, the next transformed board, and the corresponding
         # transformation index
-        base_board, num_child_nodes, board, move = await consumer_queue.get()
+        board = await consumer_queue.get()
         await asyncio.sleep(delay=sleep_after_get)
 
         logging.info(
@@ -190,6 +152,7 @@ async def analyze_position(
         try:
             # Analyze the board
             info = await engine.analyse(board, chess.engine.Limit(**search_limits))
+            assert "mcts_tree" in info
         except chess.engine.EngineTerminatedError:
             if engine_generator is None:
                 logging.info("Can't restart engine due to missing generator")
@@ -203,7 +166,7 @@ async def analyze_position(
             engine = await engine_generator.get_initialized_engine()
 
             # Add an error to the receiver queue
-            await producer_queue.put((base_board, num_child_nodes, board, move, "invalid"))
+            await producer_queue.put(board, "invalid", "invalid")
         else:
             # Add the board to the receiver queue
             # The 12800 is used as maximum value because we use the q2cp function
@@ -211,11 +174,9 @@ async def analyze_position(
             # [-12800, 12800] for q_values in [-1, 1]
             await producer_queue.put(
                 (
-                    base_board,
-                    num_child_nodes,
                     board,
-                    move,
                     cp2q(info["score"].relative.score(mate_score=12800)),
+                    info["mcts_tree"],
                 )
             )
         finally:
@@ -223,12 +184,11 @@ async def analyze_position(
             board_counter += 1
 
 
-async def parent_child_invariance_testing(
+async def tree_stat_testing(
     engine_generator: EngineGenerator,
     network_name: Optional[str],
     data_generator: BoardGenerator,
     *,
-    max_child_moves: int = 10,
     search_limits: Optional[Dict[str, Any]] = None,
     result_file_path: Optional[Union[str, Path]] = None,
     num_positions: int = 1,
@@ -254,7 +214,6 @@ async def parent_child_invariance_testing(
         create_positions(
             queues=[engine_queue_in],
             data_generator=data_generator,
-            max_child_moves=max_child_moves,
             num_positions=num_positions,
             sleep_between_positions=sleep_after_get,
             identifier_str="BOARD_GENERATOR",
@@ -263,8 +222,7 @@ async def parent_child_invariance_testing(
 
     candidate_evaluation_task = asyncio.create_task(
         evaluate_candidates(
-            engine_queue=engine_queue_out,
-            max_child_moves=max_child_moves,
+            result_queue=engine_queue_out,
             file_path=result_file_path,
             sleep_after_get=sleep_after_get,
             identifier_str="CANDIDATE_EVALUATION",
@@ -327,13 +285,12 @@ if __name__ == "__main__":
     # fmt: off
     parser.add_argument("--seed",                           type=int, default=42)  # noqa: E501
     # parser.add_argument("--engine_config_name",             type=str, default="local_400_nodes.ini")  # noqa: E501
-    parser.add_argument("--engine_config_name",             type=str, default="remote_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name",             type=str, default="remote_debug_400_nodes.ini")  # noqa: E501
     parser.add_argument("--data_config_name",               type=str, default="database.ini")  # noqa: E501
     parser.add_argument("--num_positions",                  type=int, default=100_000)  # noqa: E501
     # parser.add_argument("--num_positions",                  type=int, default=100)  # noqa: E501
     # parser.add_argument("--network_path",                   type=str, default="network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42")  # noqa: E501
     parser.add_argument("--network_path",                   type=str, default="network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
-    parser.add_argument("--max_child_moves",                type=int, default=10),  # noqa: E501
     parser.add_argument("--queue_max_size",                 type=int, default=10000)  # noqa: E501
     parser.add_argument("--num_engine_workers",             type=int, default=2)  # noqa: E501
     parser.add_argument("--result_subdir",                  type=str, default="")  # noqa: E501
@@ -364,6 +321,7 @@ if __name__ == "__main__":
     )
     engine_generator = get_engine_generator(engine_config)
 
+    # Build the data generator
     data_config = get_data_generator_config(
         config_name=args.data_config_name,
         config_folder_path=Path(__file__).parent.absolute()
@@ -382,33 +340,31 @@ if __name__ == "__main__":
         f"results_ENGINE_{engine_config_name}_DATA_{data_config_name}.txt"
     )
 
-    # Store the experiment configuration in the result file
     with open(result_file_path, "w") as result_file:
+        # Store the experiment configuration in the result file
         result_file.write("CONFIGURATION:\n")
         result_file.write(f"{args.seed = }\n")
         result_file.write(f"{args.engine_config_name = }\n")
         result_file.write(f"{args.data_config_name = }\n")
-        result_file.write(f"{args.max_child_moves = }\n")
         result_file.write(f"{args.num_positions = }\n")
         result_file.write(f"{args.network_path = }\n")
         result_file.write(f"{args.queue_max_size = }\n")
         result_file.write(f"{args.num_engine_workers = }\n")
         result_file.write("\n")
-        csv_header = "fen,original," + ",".join(
-            [f"move_{i},score_{i}," for i in range(args.max_child_moves + 1)]
-        )
-        result_file.write(csv_header[:-1] + "\n")  # noqa: E501
+
+        # Store the header of the result data in the result file
+        csv_header = "fen;score;edge_info\n"
+        result_file.write(csv_header)  # noqa: E501
 
     # Run the differential testing
     start_time = time.perf_counter()
 
     asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
     asyncio.run(
-        parent_child_invariance_testing(
+        tree_stat_testing(
             engine_generator=engine_generator,
             network_name=args.network_path if args.network_path else None,
             data_generator=data_generator,
-            max_child_moves=args.max_child_moves,
             search_limits=engine_config.search_limits,
             result_file_path=result_file_path,
             num_positions=args.num_positions,

@@ -1,7 +1,12 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import chess
-from chess.engine import AnalysisResult
+import networkx as nx
+import numpy as np
+
+# from chess.engine import AnalysisResult
+if TYPE_CHECKING:
+    from rl_testing.engine_generators.relaxed_uci_protocol import ExtendedAnalysisResult
 
 
 class TreeParser:
@@ -29,13 +34,15 @@ class TreeParser:
         "V": "v_value",
     }
 
-    def __init__(self, analysis_result: AnalysisResult) -> None:
+    def __init__(self, analysis_result: "ExtendedAnalysisResult") -> None:
         self.tree: Optional[TreeInfo] = None
         self.node: Optional[NodeInfo] = None
         self.node_cache: dict[str, NodeInfo] = {}
         self.analysis_result = analysis_result
         self.node_index = 0
         self.node_already_visited = False
+        self.node_counter = 0
+        self.node_duplicate_counter = 0
 
     def parse_line(self, line: str) -> None:
         # Remove the PARSE_TOKEN and everything before it from the line.
@@ -60,13 +67,32 @@ class TreeParser:
         self.tree = TreeInfo()
 
     def end_tree(self) -> None:
+        assert self.tree is not None
+        assert self.tree.root_node is not None
+
+        # Compute the depth of each node
+        num_per_depth = []
+        self.tree.root_node.assign_depth(0, num_per_depth)
+
+        # Store the node cache
         self.tree.node_cache = self.node_cache
+
+        # Add the tree to the analysis result
         self.analysis_result.mcts_tree = self.tree
         for index in range(len(self.analysis_result.multipv)):
             self.analysis_result.multipv[index]["mcts_tree"] = self.tree
+
+        # Print some stats
+        print(f"Node counter: {self.node_counter}")
+        print(f"Node duplicate counter: {self.node_duplicate_counter}")
+        print(f"Difference: {self.node_counter - self.node_duplicate_counter}")
+
+        # Reset the parser
         self.tree = None
         self.node_index = 0
         self.node_cache = {}
+        self.node_counter = 0
+        self.node_duplicate_counter = 0
 
     def start_node(self) -> None:
         self.node = NodeInfo(self.node_index)
@@ -74,6 +100,8 @@ class TreeParser:
 
         if self.tree.root_node is None:
             self.tree.root_node = self.node
+
+        self.node_counter += 1
 
     def end_node(self) -> None:
         self.node = None
@@ -111,6 +139,7 @@ class TreeParser:
 
         if self.node.fen in self.node_cache:
             self.node_index -= 1
+            self.node_duplicate_counter += 1
             self.node_already_visited = True
         else:
             self.node_cache[self.node.fen] = self.node
@@ -224,6 +253,10 @@ class NodeInfo(Info):
         self.fen: Optional[str] = None
         self.index = index
 
+        # Initialize depth information
+        self.depth = -1
+        self.depth_index = -1
+
     @property
     def child_nodes(self) -> List["NodeInfo"]:
         return [edge.end_node for edge in self.child_edges if edge.end_node is not None]
@@ -257,6 +290,21 @@ class NodeInfo(Info):
             board.pop()
 
         raise ValueError(f"Can't find edge to connect {child_node.fen} to {self.fen}.")
+
+    def assign_depth(self, depth: int, num_per_depth: List[int]):
+        # Assign your own depth
+        self.depth = depth
+
+        # Compute how many other nodes already have this depth
+        if len(num_per_depth) <= depth:
+            num_per_depth.append(0)
+        self.depth_index = num_per_depth[depth]
+        num_per_depth[depth] += 1
+
+        # Assign the depths of the child nodes
+        for edge in self.child_edges:
+            if edge.end_node is not None:
+                edge.end_node.assign_depth(max(depth + 1, edge.end_node.depth), num_per_depth)
 
 
 class EdgeInfo(Info):
@@ -301,3 +349,47 @@ class EdgeInfo(Info):
     def set_end_node(self, node: NodeInfo) -> None:
         self.end_node = node
         node.parent_edges.append(self)
+
+
+def convert_tree_to_networkx(tree: TreeInfo, only_basic_info: bool = False) -> nx.DiGraph:
+    red = np.array([255, 0, 0])
+    green = np.array([0, 255, 0])
+    white = np.array([255, 255, 255])
+
+    graph = nx.Graph()
+    # Add all nodes to the graph
+    for fen in tree.node_cache:
+        node = tree.node_cache[fen]
+
+        if node.v_value is None:
+            print("This should not happen!")
+
+        # Compute the color of the new node
+        node_value_current_player = node.v_value if node.depth % 2 == 0 else -node.v_value
+        if node_value_current_player <= 0:
+            color = red + (white - red) * (1 + node_value_current_player)
+        else:
+            color = green + (white - green) * (1 - node_value_current_player)
+        color = color.round().astype(int)
+        color_str = f"#{color[0]:0{2}x}{color[1]:0{2}x}{color[2]:0{2}x}"
+
+        graph.add_node(
+            node.index if only_basic_info else node,
+            color=color_str,
+            x=node.depth_index * 30,
+            y=node.depth * 5,
+        )
+    for fen in tree.node_cache:
+        node = tree.node_cache[fen]
+        for edge in node.child_edges:
+            if edge.end_node is not None:
+                if only_basic_info:
+                    assert edge.start_node.index in graph
+                    assert edge.end_node.index in graph
+                    graph.add_edge(edge.start_node.index, edge.end_node.index, size=edge.q_value)
+                else:
+                    assert edge.start_node in graph
+                    assert edge.end_node in graph
+                    graph.add_edge(edge.start_node, edge.end_node, size=edge.q_value)
+
+    return graph

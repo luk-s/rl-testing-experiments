@@ -52,7 +52,7 @@ if __name__ == "__main__":
     # result_folder = RESULT_DIRECTORY / Path("forced_moves/main_experiment/")
     # result_file = Path("results_ENGINE_local_5000_nodes_DATA_random_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_forced_moves_fen_database.txt")
-    result_file = Path("results_ENGINE_local_5000_nodes_DATA_late_move_fen_database.txt")
+    result_file = Path("results_ENGINE_local_1000_nodes_DATA_late_move_fen_database.txt")
 
     column_name1, column_name2 = "Q1", "Q2"
     result_path = result_folder / result_file
