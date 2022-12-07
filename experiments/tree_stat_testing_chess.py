@@ -290,7 +290,7 @@ if __name__ == "__main__":
     parser.add_argument("--num_positions",                  type=int, default=100_000)  # noqa: E501
     # parser.add_argument("--num_positions",                  type=int, default=100)  # noqa: E501
     # parser.add_argument("--network_path",                   type=str, default="network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42")  # noqa: E501
-    parser.add_argument("--network_path",                   type=str, default="network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
+    parser.add_argument("--network_path",                   type=str, default="")  # noqa: E501
     parser.add_argument("--queue_max_size",                 type=int, default=10000)  # noqa: E501
     parser.add_argument("--num_engine_workers",             type=int, default=2)  # noqa: E501
     parser.add_argument("--result_subdir",                  type=str, default="")  # noqa: E501
@@ -332,12 +332,13 @@ if __name__ == "__main__":
     # Create results-file-name
     engine_config_name = args.engine_config_name[:-4]
     data_config_name = args.data_config_name[:-4]
+    network_name = args.network_path[:7]
 
     # Build the result file path
     result_directory = RESULT_DIR / args.result_subdir
     result_directory.mkdir(parents=True, exist_ok=True)
     result_file_path = result_directory / Path(
-        f"results_ENGINE_{engine_config_name}_DATA_{data_config_name}.txt"
+        f"results_ENGINE_{engine_config_name}_DATA_{data_config_name}_NET_{network_name}.txt"
     )
 
     with open(result_file_path, "w") as result_file:
