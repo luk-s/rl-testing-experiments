@@ -166,7 +166,7 @@ async def analyze_position(
             engine = await engine_generator.get_initialized_engine()
 
             # Add an error to the receiver queue
-            await producer_queue.put(board, "invalid", "invalid")
+            await producer_queue.put((board, "invalid", "invalid"))
         else:
             # Add the board to the receiver queue
             # The 12800 is used as maximum value because we use the q2cp function
