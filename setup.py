@@ -13,7 +13,9 @@ setuptools.setup(
         "imgkit==1.2.2",
         "matplotlib==3.6.1",
         "pandas==1.5.1",
-        "scipy==1.9.3"
+        "scipy==1.9.3",
+        "networkx==2.8.8",
+        "netwulf==0.1.5",
     ],
     author="Lukas Fluri",
     author_email="lukas.fluri@protonmail.ch",
