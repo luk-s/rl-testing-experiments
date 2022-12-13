@@ -4,7 +4,7 @@ from typing import Dict, Tuple, Union
 import pandas as pd
 
 
-def load_data(result_path: Union[str, Path]) -> Tuple[pd.DataFrame, Dict[str, str]]:
+def load_data(result_path: Union[str, Path], separator=",") -> Tuple[pd.DataFrame, Dict[str, str]]:
     # Find the start of the real data in the result file
     config = {}
     start_line = 0
@@ -14,7 +14,8 @@ def load_data(result_path: Union[str, Path]) -> Tuple[pd.DataFrame, Dict[str, st
         if ":" in line:
             line = f.readline()
             line = line[:-1]
-        if "," not in line:
+            start_line += 1
+        if separator not in line:
             while line != "":
                 # Parse the config
                 if line != "":
@@ -28,11 +29,11 @@ def load_data(result_path: Union[str, Path]) -> Tuple[pd.DataFrame, Dict[str, st
                 # if line == "":
                 #    start_line += 1
 
-    if "," not in line:
+    if separator not in line:
         start_line += 1
 
     # Read in the data
-    dataframe = pd.read_csv(result_path, header=start_line, skip_blank_lines=False)
+    dataframe = pd.read_csv(result_path, header=start_line, skip_blank_lines=False, sep=separator)
 
     return dataframe, config
 

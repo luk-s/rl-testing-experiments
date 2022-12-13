@@ -95,23 +95,20 @@ async def evaluate_candidates(
 
                 # Store information about the edges
                 for move, edge in edge_tuples:
-                    result_str += (
-                        ",".join(
-                            [
-                                move,
-                                str(edge.num_visits),
-                                str(edge.in_flight_visits),
-                                str(edge.policy_value),
-                                str(edge.v_value),
-                                str(edge.q_value),
-                                str(edge.u_value),
-                                str(edge.s_value),
-                            ]
-                        )
-                        + ","
+                    result_str += ",".join(
+                        [
+                            move,
+                            str(edge.num_visits),
+                            str(edge.in_flight_visits),
+                            str(edge.policy_value),
+                            str(edge.v_value),
+                            str(edge.q_value),
+                            str(edge.u_value),
+                            str(edge.s_value),
+                        ]
                     )
             else:
-                pass
+                result_str += "invalid"
 
             # Mark the element as processed
             result_queue.task_done()
