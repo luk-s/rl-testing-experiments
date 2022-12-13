@@ -36,7 +36,7 @@ class BoardGeneratorConfig(Config):
 
 class DatabaseBoardGeneratorConfig(BoardGeneratorConfig):
     REQUIRED_ATTRIBUTES = ["database_name"]
-    OPTIONAL_ATTRIBUTES = ["open_now", "get_positions_after_move"]
+    OPTIONAL_ATTRIBUTES = ["open_now", "get_positions_after_move", "games_read"]
 
     def __init__(
         self,
@@ -47,6 +47,7 @@ class DatabaseBoardGeneratorConfig(BoardGeneratorConfig):
         self.database_name = None
         self.open_now = True
         self.get_positions_after_move = 0
+        self.games_read = 0
 
         self.set_parameters(config=config)
         self.check_parameters()

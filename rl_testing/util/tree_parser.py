@@ -83,9 +83,9 @@ class TreeParser:
             self.analysis_result.multipv[index]["mcts_tree"] = self.tree
 
         # Print some stats
-        print(f"Node counter: {self.node_counter}")
-        print(f"Node duplicate counter: {self.node_duplicate_counter}")
-        print(f"Difference: {self.node_counter - self.node_duplicate_counter}")
+        # print(f"Node counter: {self.node_counter}")
+        # print(f"Node duplicate counter: {self.node_duplicate_counter}")
+        # print(f"Difference: {self.node_counter - self.node_duplicate_counter}")
 
         # Reset the parser
         self.tree = None

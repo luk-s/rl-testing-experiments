@@ -2,6 +2,7 @@ from pathlib import Path
 
 import chess
 import chess.pgn
+
 from rl_testing.config_parsers.data_generator_config_parser import (
     DatabaseBoardGeneratorConfig,
 )
@@ -21,7 +22,7 @@ class DatabaseBoardGenerator(BoardGenerator):
 
         self.current_game = None
         self.current_board = None
-        self.games_read = 0
+        self.games_read = config.games_read
         self.moves_read = 0
 
         if config.open_now:
