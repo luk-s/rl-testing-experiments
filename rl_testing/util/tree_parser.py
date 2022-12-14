@@ -43,6 +43,7 @@ class TreeParser:
         self.node_already_visited = False
         self.node_counter = 0
         self.node_duplicate_counter = 0
+        self.num_edges_parsed = 0
 
     def parse_line(self, line: str) -> None:
         # Remove the PARSE_TOKEN and everything before it from the line.
@@ -96,6 +97,7 @@ class TreeParser:
 
     def start_node(self) -> None:
         self.node = NodeInfo(self.node_index)
+        self.num_edges_parsed = 0
         self.node_index += 1
 
         if self.tree.root_node is None:
@@ -104,6 +106,17 @@ class TreeParser:
         self.node_counter += 1
 
     def end_node(self) -> None:
+        # If this node did not have any edges, then it can also act as a leaf node
+        if (
+            self.node_cache[self.node.fen].is_also_terminal
+            and self.node_cache[self.node.fen].contains_only_terminal
+            and self.num_edges_parsed > 0
+        ):
+            self.node_cache[self.node.fen].contains_only_terminal = False
+        if self.num_edges_parsed == 0 and (not self.node_cache[self.node.fen].is_also_terminal):
+            self.node_cache[self.node.fen].is_also_terminal = True
+            self.node_cache[self.node.fen].contains_only_terminal = True
+
         self.node = None
         self.node_already_visited = False
 
@@ -187,6 +200,13 @@ class TreeParser:
                 setattr(self.node, attribute, attribute_dict[attribute])
 
             self.node.check_required_attributes()
+        elif self.node_already_visited and self.node_cache[self.node.fen].contains_only_terminal:
+            attribute_dict = self.parse_data_line(line)
+
+            for attribute in attribute_dict:
+                setattr(self.node_cache[self.node.fen], attribute, attribute_dict[attribute])
+
+            self.node_cache[self.node.fen].check_required_attributes()
 
     def parse_edge_line(self, line: str) -> None:
         if not self.node_already_visited:
@@ -200,6 +220,19 @@ class TreeParser:
                 setattr(edge, attribute, attribute_dict[attribute])
 
             edge.check_required_attributes()
+        elif self.node_already_visited and self.node_cache[self.node.fen].contains_only_terminal:
+            attribute_dict = self.parse_data_line(line)
+
+            # Create a new edge
+            edge = EdgeInfo(attribute_dict["move"], self.node_cache[self.node.fen])
+            del attribute_dict["move"]
+
+            for attribute in attribute_dict:
+                setattr(edge, attribute, attribute_dict[attribute])
+
+            edge.check_required_attributes()
+
+        self.num_edges_parsed += 1
 
 
 class Info:
@@ -241,6 +274,8 @@ class NodeInfo(Info):
         "num_moves_left",
         "q_value",
         "v_value",
+        "is_also_terminal",
+        "contains_only_terminal",
     ]
 
     def __init__(self, index: int) -> None:
@@ -256,6 +291,10 @@ class NodeInfo(Info):
         # Initialize depth information
         self.depth = -1
         self.depth_index = -1
+
+        # This value indicates whether this node can also be a terminal node.
+        self.is_also_terminal = False
+        self.contains_only_terminal = False
 
     @property
     def child_nodes(self) -> List["NodeInfo"]:
