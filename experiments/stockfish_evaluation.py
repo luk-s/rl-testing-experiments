@@ -201,7 +201,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed",               type=int, default=42)
     parser.add_argument("--engine_config_name", type=str, default="local_25_depth_stockfish.ini")
     # parser.add_argument("--engine_config_name", type=str, default="remote_25_depth_stockfish.ini")
-    parser.add_argument("--data_config_name",   type=str, default="interesting_fen_database.ini")
+    parser.add_argument("--data_config_name",   type=str, default="different_fen_database.ini")
     parser.add_argument("--num_positions",      type=int, default=16_950)
     parser.add_argument("--result_subdir",      type=str, default="stockfish_analysis")
     # fmt: on
