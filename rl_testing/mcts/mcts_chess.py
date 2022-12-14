@@ -507,7 +507,9 @@ class ChessSearchNode:
         """Returns the best child in order of the sort key."""
         return max(self.children, key=ChessSearchNode.sort_key)
 
-    def backpropagate_value(self, evaluation_metrics: EvaluationMetrics, distance_to_leaf: int):
+    def backpropagate_value(
+        self, evaluation_metrics: Union[float, EvaluationMetrics], distance_to_leaf: int
+    ):
         """Use the provided evaluation metrics to update the value of this node.
 
         Args:
@@ -516,10 +518,17 @@ class ChessSearchNode:
             distance_to_leaf (int): The distance of this node to the leaf node where the evaluation
                 metrics were computed. This is necessary to update the number of moves left
         """
-        win_minus_loss = evaluation_metrics.win_minus_loss
-        draw_score = evaluation_metrics.draw_score
-        moves_left_estimated = evaluation_metrics.num_moves_left_estimated + distance_to_leaf
-        value = evaluation_metrics.value
+        # Check if this is a terminal node
+        if isinstance(evaluation_metrics, float):
+            win_minus_loss = evaluation_metrics
+            draw_score = float(not evaluation_metrics)
+            moves_left_estimated = 0.0
+            value = evaluation_metrics
+        else:
+            win_minus_loss = evaluation_metrics.win_minus_loss
+            draw_score = evaluation_metrics.draw_score
+            moves_left_estimated = evaluation_metrics.num_moves_left_estimated + distance_to_leaf
+            value = evaluation_metrics.value
 
         if self.explore_count == 0:
             self._win_minus_loss = win_minus_loss
@@ -715,11 +724,11 @@ class ChessMCTSBot:
                 outcome_info = working_board.outcome(claim_draw=True)
                 winner = outcome_info.winner
                 if winner is None:
-                    returns = (0.5, 0.5)
+                    returns = (0.0, 0.0)
                 elif winner:
-                    returns = (0, 1)
+                    returns = (-1.0, 1.0)
                 else:
-                    returns = (1, 0)
+                    returns = (1.0, -1.0)
 
                 visit_path[-1].outcome = returns
                 solved = self.solve

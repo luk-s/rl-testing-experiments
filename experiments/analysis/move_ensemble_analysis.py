@@ -156,15 +156,17 @@ if __name__ == "__main__":
     different_fens = []
     for fen, ensemble_move in ensemble_prediction_dict.items():
         if fen in single_prediction_dict and ensemble_move != single_prediction_dict[fen]:
-            different_fens.append(fen)
+            different_fens.append((fen, ensemble_move, single_prediction_dict[fen]))
 
     # Print the number of different fens
     print(f"Number of different fens: {len(different_fens)}")
 
-    # Store the different fens in a txt file
-    print("Storing different fens in txt file...")
-    with open(result_folder / "interesting_fens.txt", "w") as f:
-        for fen in different_fens:
-            f.write(f"{fen}\n")
+    # Store the different fens in a csv file
+    print("Storing different fens in csv file...")
+    df = pd.DataFrame(
+        different_fens,
+        columns=["fen", "ensemble_move", "single_move"],
+    )
+    df.to_csv(result_folder / "different_fens.csv", index=False)
 
     print("Finished!")
