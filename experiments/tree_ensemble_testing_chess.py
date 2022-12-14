@@ -346,11 +346,12 @@ if __name__ == "__main__":
 
     # fmt: off
     parser.add_argument("--seed",                           type=int, default=42)  # noqa: E501
-    # parser.add_argument("--engine_config_name",             type=str, default="local_400_nodes.ini")  # noqa: E501
     parser.add_argument("--engine_config_name_ensemble",    type=str, default="local_100_nodes_debug.ini")  # noqa: E501
     parser.add_argument("--engine_config_name_reference",   type=str, default="local_500_nodes_debug.ini")  # noqa: E501
-    # parser.add_argument("--data_config_name",               type=str, default="database.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name_ensemble",    type=str, default="remote_debug_100_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name_reference",   type=str, default="remote_debug_500_nodes.ini")  # noqa: E501
     parser.add_argument("--data_config_name",               type=str, default="database.ini")  # noqa: E501
+    # parser.add_argument("--data_config_name",               type=str, default="database_2000_games_read.ini")  # noqa: E501
     parser.add_argument("--num_positions",                  type=int, default=100_000)  # noqa: E501
     # parser.add_argument("--num_positions",                  type=int, default=100)  # noqa: E501
     # parser.add_argument("--network_path",                   type=str, default="network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42")  # noqa: E501
