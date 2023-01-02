@@ -8,66 +8,18 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import chess
 import chess.engine
 import numpy as np
-from chess.engine import Cp, Score
 
 from rl_testing.config_parsers import get_data_generator_config, get_engine_config
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol
 from rl_testing.util.util import (
-    MoveStat,
-    PositionStat,
-    cp2q,
     get_task_result_handler,
     plot_board,
 )
+from rl_testing.util.experiment import store_experiment_params
 
 RESULT_DIR = Path(__file__).parent / Path("results/differential_testing")
-
-
-async def analyze_positions(
-    queue: asyncio.Queue,
-    engine: RelaxedUciProtocol,
-    search_limits: Dict[str, Any],
-    num_boards: int,
-    file_path: Union[str, Path],
-    sleep_after_get: float = 0.0,
-    engine_generator: Optional[EngineGenerator] = None,
-) -> None:
-
-    with open(file_path, "a") as file:
-        # Iterate over all boards
-        for board_index in range(num_boards):
-            # Fetch the next board from the queue
-            board = await queue.get()
-
-            await asyncio.sleep(delay=sleep_after_get)
-
-            logging.info(
-                f"Analyzing board {board_index + 1}/{num_boards}: " + board.fen(en_passant="fen")
-            )
-
-            # Needs to be in a try-except because the engine might crash unexpectedly
-            try:
-                # Start the analysis
-                info = await engine.analyse(board, chess.engine.Limit(**search_limits))
-                fen = board.fen(en_passant="fen")
-                score = info["score"].relative.score(mate_score=12800)
-                best_move = info["pv"][0]
-                file.write(f"{fen},{score},{best_move}\n")
-                logging.info("Wrote result to file!")
-
-            except chess.engine.EngineTerminatedError:
-                if engine_generator is None:
-                    logging.error("Can't restart engine due to missing generator")
-                    raise
-
-                # Try to restart the engine
-                logging.info("Trying to restart engine")
-
-                engine = await engine_generator.get_initialized_engine(initialize_network=False)
-            finally:
-                queue.task_done()
 
 
 async def get_positions_async(
@@ -94,6 +46,57 @@ async def get_positions_async(
             await asyncio.sleep(delay=sleep_between_positions)
 
 
+async def analyze_positions(
+    queue: asyncio.Queue,
+    engine: RelaxedUciProtocol,
+    search_limits: Dict[str, Any],
+    num_boards: int,
+    file_path: Union[str, Path],
+    sleep_after_get: float = 0.0,
+    engine_generator: Optional[EngineGenerator] = None,
+) -> None:
+
+    with open(file_path, "a") as file:
+        csv_header = "fen,score,best_move\n"
+        file.write(csv_header)
+
+        # Iterate over all boards
+        for board_index in range(num_boards):
+            # Fetch the next board from the queue
+            board = await queue.get()
+
+            await asyncio.sleep(delay=sleep_after_get)
+
+            logging.info(
+                f"Analyzing board {board_index + 1}/{num_boards}: "
+                + board.fen(en_passant="fen")
+            )
+
+            # Needs to be in a try-except because the engine might crash unexpectedly
+            try:
+                # Start the analysis
+                info = await engine.analyse(board, chess.engine.Limit(**search_limits))
+                fen = board.fen(en_passant="fen")
+                score = info["score"].relative.score(mate_score=12800)
+                best_move = info["pv"][0]
+                file.write(f"{fen},{score},{best_move}\n")
+                logging.info("Wrote result to file!")
+
+            except chess.engine.EngineTerminatedError:
+                if engine_generator is None:
+                    logging.error("Can't restart engine due to missing generator")
+                    raise
+
+                # Try to restart the engine
+                logging.info("Trying to restart engine")
+
+                engine = await engine_generator.get_initialized_engine(
+                    initialize_network=False
+                )
+            finally:
+                queue.task_done()
+
+
 async def analyze_positions_stockfish(
     engine_generator: EngineGenerator,
     data_generator: BoardGenerator,
@@ -114,8 +117,6 @@ async def analyze_positions_stockfish(
     if search_limits is None:
         search_limits = {"depth": 25}
 
-    scores = []
-    boards_final = []
     queue = asyncio.Queue()
 
     data_generator_task = asyncio.create_task(
@@ -178,7 +179,14 @@ def analyze_results(
         fen = fen.replace(" ", "_")
         fen = fen.replace("/", "|")
         file_path = Path(result_dir) / Path(fen + ".png")
-        plot_board(board, title=title, fen=fen, show=show, save_path=file_path, fontsize=fontsize)
+        plot_board(
+            board,
+            title=title,
+            fen=fen,
+            show=show,
+            save_path=file_path,
+            fontsize=fontsize,
+        )
 
     return special_results
 
@@ -200,7 +208,7 @@ if __name__ == "__main__":
     # fmt: off
     parser.add_argument("--seed",               type=int, default=42)
     parser.add_argument("--engine_config_name", type=str, default="local_25_depth_stockfish.ini")
-    # parser.add_argument("--engine_config_name", type=str, default="remote_25_depth_stockfish.ini")
+    # parser.add_argument("--engine_config_name", type=str, default="remote_25_depth_stockfish.ini") # noqa: E501
     parser.add_argument("--data_config_name",   type=str, default="different_fen_database.ini")
     parser.add_argument("--num_positions",      type=int, default=16_950)
     parser.add_argument("--result_subdir",      type=str, default="stockfish_analysis")
@@ -222,7 +230,8 @@ if __name__ == "__main__":
 
     engine_config = get_engine_config(
         config_name=args.engine_config_name,
-        config_folder_path=Path(__file__).parent.absolute() / Path("configs/engine_configs/"),
+        config_folder_path=Path(__file__).parent.absolute()
+        / Path("configs/engine_configs/"),
     )
     engine_generator = get_engine_generator(engine_config)
 
@@ -244,18 +253,10 @@ if __name__ == "__main__":
         f"results_ENGINE_{engine_config_name}_DATA_{data_config_name}.csv"
     )
 
-    with open(result_file_path, "w") as result_file:
-        # Store the experiment configuration in the result file
-        result_file.write("CONFIGURATION:\n")
-        result_file.write(f"{args.seed = }\n")
-        result_file.write(f"{args.engine_config_name = }\n")
-        result_file.write(f"{args.data_config_name = }\n")
-        result_file.write(f"{args.num_positions = }\n")
-        result_file.write("\n")
-
-        # Store the header of the result data in the result file
-        csv_header = "fen,score,best_move\n"
-        result_file.write(csv_header)
+    # Store the experiment configuration in the result file
+    store_experiment_params(
+        namespace=args, result_file_path=result_file_path, source_file_path=__file__
+    )
 
     # Run the differential testing
     start_time = time.perf_counter()

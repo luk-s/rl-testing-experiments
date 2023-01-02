@@ -3,7 +3,7 @@ import asyncio
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
-
+import logging
 import chess
 import chess.engine
 import numpy as np
@@ -12,110 +12,33 @@ from rl_testing.config_parsers import get_data_generator_config, get_engine_conf
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol
-from rl_testing.util.util import MoveStat, PositionStat, parse_info
+from rl_testing.util.util import (
+    get_task_result_handler,
+    cp2q,
+)
+from rl_testing.util.experiment import store_experiment_params
 
 RESULT_DIR = Path(__file__).parent / Path("results/forced_moves")
 
 
-async def analyze_positions(
-    queue: asyncio.Queue,
-    engine: RelaxedUciProtocol,
-    search_limits: Dict[str, Any],
-    num_boards: int,
-    sleep_after_get: float = 0.0,
-    engine_generator: Optional[EngineGenerator] = None,
-    network_name: Optional[str] = None,
-) -> List[Tuple[Union[chess.Move, str], Dict[chess.Move, MoveStat], List[PositionStat]]]:
-    results = []
-    # Iterate over all boards
-    for board_index in range(num_boards):
-        # Fetch the next board from the queue
-        board = await queue.get()
-
-        await asyncio.sleep(delay=sleep_after_get)
-
-        if board == "failed":
-            continue
-
-        print(f"Analyzing board {board_index + 1}/{num_boards}: " + board.fen(en_passant="fen"))
-
-        move_stats, position_stats = {}, []
-
-        analysis_failed = False
-
-        # Needs to be in a try-except because the engine might crash unexpectedly
-        try:
-            # Start the analysis
-            with await engine.analysis(
-                board, limit=chess.engine.Limit(**search_limits)
-            ) as analysis:
-                async for info in analysis:
-                    # Parse the analysis info
-                    result = parse_info(info=info, raise_exception=False)
-
-                    # Check if the info could be parsed into a 'MoveStat'
-                    # or a 'PositionStat' instance
-                    if result is not None:
-                        if isinstance(result, MoveStat):
-                            move_stats[result.move] = result
-                            analysis_failed = analysis_failed or result.parsing_failed
-                        elif isinstance(result, PositionStat):
-                            position_stats.append(result)
-                            analysis_failed = analysis_failed or result.parsing_failed
-                        else:
-                            ValueError(f"Objects of type {type(result)} are not supported")
-
-        except chess.engine.EngineTerminatedError:
-            if engine_generator is None or network_name is None:
-                print("Can't restart engine due to missing generator")
-                raise
-
-            # Mark the current board as failed
-            results.append(("invalid", {}, []))
-
-            # Try to restart the engine
-            print("Trying to restart engine")
-
-            engine_generator.set_network(network_name)
-            engine = await engine_generator.get_initialized_engine()
-
-        else:
-            # Check if the proposed best move is valid
-            if analysis_failed or engine.invalid_best_move:
-                best_move = (await analysis.wait()).move
-                results.append(("invalid", {}, []))
-            else:
-                best_move = (await analysis.wait()).move
-                results.append((best_move, move_stats, position_stats))
-        finally:
-            queue.task_done()
-
-    return results
-
-
-async def get_positions_async(
-    first_queue: asyncio.Queue,
-    second_queue: asyncio.Queue,
+async def get_positions(
+    original_board_queue: asyncio.Queue,
+    forced_move_board_queue: asyncio.Queue,
     data_generator: BoardGenerator,
     num_positions: int = 1,
     sleep_between_positions: float = 0.1,
-) -> List[Tuple[chess.Board, chess.Board]]:
-    board_tuples = []
+    identifier_str: str = "",
+) -> None:
+    num_boards_created = 0
 
-    # Create random chess positions if necessary
-    for board_index in range(num_positions):
-
-        # Create a random chess position
+    while num_boards_created < num_positions:
+        # Get the next board position
         board_candidate = data_generator.next()
 
-        # Check if the generated position was valid
+        # Check if the generated position was valid and contains a forced move
         if board_candidate == "failed":
-            await first_queue.put("failed")
-            await second_queue.put("failed")
             continue
         if len(list(board_candidate.legal_moves)) != 1:
-            await first_queue.put("failed")
-            await second_queue.put("failed")
             continue
 
         # Find the only legal move
@@ -125,36 +48,143 @@ async def get_positions_async(
 
         # Only consider positions where you can make predictions
         if len(list(board2.legal_moves)) == 0:
-            await first_queue.put("failed")
-            await second_queue.put("failed")
+            await original_board_queue.put("failed")
+            await forced_move_board_queue.put("failed")
             continue
 
         # Log the board position
         fen = board_candidate.fen(en_passant="fen")
-        print(f"Created board {board_index}: " f"{fen}")
+        logging.info(
+            f"[{identifier_str}] Created board {num_boards_created + 1}/{num_positions}: "
+            f"{fen} with forced move {move}"
+        )
 
         # Push the board position to the analysis queue
-        await first_queue.put(board_candidate.copy())
+        await original_board_queue.put(board_candidate.copy())
 
         # Push the new board position to the analysis queue
-        await second_queue.put(board2.copy())
-
-        board_tuples.append((board_candidate, board2))
+        await forced_move_board_queue.put(board2.copy())
 
         await asyncio.sleep(delay=sleep_between_positions)
 
-    return board_tuples
+        num_boards_created += 1
+
+
+async def analyze_positions(
+    input_queue: asyncio.Queue,
+    output_queue: asyncio.Queue,
+    engine: RelaxedUciProtocol,
+    search_limits: Dict[str, Any],
+    sleep_after_get: float = 0.0,
+    engine_generator: Optional[EngineGenerator] = None,
+    network_name: Optional[str] = None,
+    identifier_str: str = "",
+) -> None:
+    num_boards_analyzed = 0
+
+    # Iterate over all boards
+    while True:
+        # Fetch the next board from the queue
+        board = await input_queue.get()
+
+        await asyncio.sleep(delay=sleep_after_get)
+
+        if board == "failed":
+            continue
+
+        fen = board.fen(en_passant="fen")
+
+        logging.info(
+            f"[{identifier_str}] Analyzing board {num_boards_analyzed + 1}: "
+            + board.fen(en_passant="fen")
+        )
+
+        # Needs to be in a try-except because the engine might crash unexpectedly
+        try:
+            info = await engine.analyse(board, chess.engine.Limit(**search_limits))
+            best_move = info["pv"][0]
+            score = cp2q(info["score"].relative.score(mate_score=12800))
+        except chess.engine.EngineTerminatedError:
+            if engine_generator is None or network_name is None:
+                logging.info(
+                    f"[{identifier_str}] Can't restart engine due to missing generator"
+                )
+                raise
+
+            # Mark the current board as failed
+            await output_queue.put((fen, "invalid", "invalid"))
+
+            # Try to restart the engine
+            logging.info(f"[{identifier_str}] Trying to restart engine")
+
+            engine_generator.set_network(network_name)
+            engine = await engine_generator.get_initialized_engine()
+
+        else:
+            # Check if the proposed best move is valid
+            if engine.invalid_best_move:
+                await output_queue.put((fen, "invalid", "invalid"))
+            else:
+                await output_queue.put((fen, best_move, score))
+        finally:
+            input_queue.task_done()
+
+        num_boards_analyzed += 1
+
+
+async def analyze_results(
+    original_result_queue: asyncio.Queue,
+    forced_move_result_queue: asyncio.Queue,
+    file_path: Union[str, Path],
+    sleep_after_get: float = 0.1,
+    identifier_str: str = "",
+) -> None:
+
+    with open(file_path, "a") as file:
+        # Write the file header
+        file.write(
+            "fen_original,best_move_original,score_original,"
+            "fen_forced,best_move_forced,score_forced\n"
+        )
+
+        # Repeatedly fetch results from the queues
+        while True:
+            (
+                fen_original,
+                best_move_original,
+                score_original,
+            ) = await original_result_queue.get()
+            (
+                fen_forced,
+                best_move_forced,
+                score_forced,
+            ) = await forced_move_result_queue.get()
+            await asyncio.sleep(delay=sleep_after_get)
+
+            logging.info(f"[{identifier_str}] Received results for {fen_original}")
+
+            # Write the results to the file
+            file.write(
+                f"{fen_original},{best_move_original},{score_original},"
+                f"{fen_forced},{best_move_forced},{score_forced}\n"
+            )
 
 
 async def forced_moves_testing(
     network_name: str,
     engine_generator: EngineGenerator,
     data_generator: BoardGenerator,
+    result_file_path: Union[str, Path],
     *,
     search_limits: Optional[Dict[str, Any]] = None,
     num_positions: int = 1,
     sleep_between_positions: float = 0.1,
-) -> Tuple[List[chess.Board], List[Tuple[float, float]]]:
+    logger: Optional[logging.Logger] = None,
+) -> None:
+
+    # Set up the logger
+    if logger is None:
+        logger = logging.getLogger(__name__)
 
     # Create two instances of the same network
     engine_generator.set_network(network_name)
@@ -167,62 +197,83 @@ async def forced_moves_testing(
 
     results = []
     board_tuples_final = []
-    queue1, queue2 = asyncio.Queue(), asyncio.Queue()
+    original_board_queue, forced_move_board_queue = asyncio.Queue(), asyncio.Queue()
+    original_result_queue, forced_move_result_queue = asyncio.Queue(), asyncio.Queue()
 
+    # Create the data generator task
     data_generator_task = asyncio.create_task(
-        get_positions_async(
-            first_queue=queue1,
-            second_queue=queue2,
+        get_positions(
+            original_board_queue=original_board_queue,
+            forced_move_board_queue=forced_move_board_queue,
             data_generator=data_generator,
             num_positions=num_positions,
             sleep_between_positions=sleep_between_positions,
+            identifier_str="BOARD GENERATOR",
         )
     )
 
+    # Create the analysis tasks
     (data_consumer_task1, data_consumer_task2) = [
         asyncio.create_task(
             analyze_positions(
-                queue=queue,
+                input_queue=queue1,
+                output_queue=queue2,
                 engine=engine,
                 search_limits=search_limits,
-                num_boards=num_positions,
                 sleep_after_get=sleep_time,
                 engine_generator=engine_generator,
                 network_name=network_name,
+                identifier_str=identifier_str,
             )
         )
-        for queue, engine, sleep_time in zip([queue1, queue2], [engine1, engine2], [0.05, 0.05])
+        for queue1, queue2, engine, sleep_time, identifier_str in zip(
+            [original_board_queue, forced_move_board_queue],
+            [original_result_queue, forced_move_result_queue],
+            [engine1, engine2],
+            [0.05, 0.05],
+            ["ANALYSIS 1", "ANALYSIS 2"],
+        )
     ]
 
-    # Wait until all tasks finish
-    board_tuples, results1, results2 = await asyncio.gather(
-        data_generator_task, data_consumer_task1, data_consumer_task2
+    # Create the analysis task
+    analysis_task = asyncio.create_task(
+        analyze_results(
+            original_result_queue=original_result_queue,
+            forced_move_result_queue=forced_move_result_queue,
+            file_path=result_file_path,
+            sleep_after_get=0.1,
+            identifier_str="RESULT",
+        )
     )
 
-    # await engine1.quit()
-    # await engine2.quit()
+    # Add callbacks to all tasks
+    handle_task_exception = get_task_result_handler(
+        logger=logger, message="Task raised an exception"
+    )
+    for task in [
+        data_generator_task,
+        data_consumer_task1,
+        data_consumer_task2,
+        analysis_task,
+    ]:
+        task.add_done_callback(handle_task_exception)
 
-    for board_index, (board1, board2) in enumerate(board_tuples):
-        best_move1, move_stats1, _ = results1[board_index]
-        best_move2, move_stats2, _ = results2[board_index]
+    # Wait for the data generator task to finish
+    await asyncio.wait([data_generator_task])
 
-        if best_move1 != "invalid" and best_move2 != "invalid":
-            try:
-                results.append((move_stats1[best_move1].Q, move_stats2[best_move2].Q))
-                board_tuples_final.append((board1, board2))
-            except:
-                print(f"ERROR parsing the results of board {board_index}")
-                print("ERROR BOARD: ", board1.fen(en_passant="fen"))
-                print(f"ERROR Move stats: ", move_stats1)
-        else:
-            message = "board: " + board1.fen(en_passant="fen") + " "
-            if best_move1 == "invalid":
-                message += "engine 1 invalid, "
-            if best_move2 == "invalid":
-                message += "engine 2 invalid"
-            print(message)
+    # Join the queues
+    await original_board_queue.join()
+    await forced_move_board_queue.join()
+    await original_result_queue.join()
+    await forced_move_result_queue.join()
 
-    return board_tuples_final, results
+    # Cancel all remaining tasks
+    for task in [
+        data_consumer_task1,
+        data_consumer_task2,
+        analysis_task,
+    ]:
+        task.cancel()
 
 
 if __name__ == "__main__":
@@ -240,22 +291,34 @@ if __name__ == "__main__":
 
     # fmt: off
     parser.add_argument("--seed",               type=int, default=42)
+    # parser.add_argument("--engine_config_name", type=str, default="remote_400_nodes.ini")
     parser.add_argument("--engine_config_name", type=str, default="local_400_nodes.ini")
     parser.add_argument("--data_config_name",   type=str, default="late_move_fen_database.ini")
     parser.add_argument("--num_positions",      type=int, default=100_000)
     parser.add_argument("--network_path",       type=str, default="network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42")  # noqa: E501
-    parser.add_argument("--result_subdir",      type=str, default="main_experiment")
+    parser.add_argument("--result_subdir",      type=str, default="")
     # fmt: on
     ##################################
     #           CONFIG END           #
     ##################################
 
+    # Set up the logger
+    logging.basicConfig(
+        format="▸ %(asctime)s.%(msecs)03d %(filename)s:%(lineno)d %(levelname)s %(message)s",
+        level=logging.INFO,
+        datefmt="%H:%M:%S",
+    )
+    logger = logging.getLogger()
+
+    # Parse the arguments
     args = parser.parse_args()
+
     np.random.seed(args.seed)
 
     engine_config = get_engine_config(
         config_name=args.engine_config_name,
-        config_folder_path=Path(__file__).parent.absolute() / Path("configs/engine_configs/"),
+        config_folder_path=Path(__file__).parent.absolute()
+        / Path("configs/engine_configs/"),
     )
     engine_generator = get_engine_generator(engine_config)
 
@@ -266,23 +329,6 @@ if __name__ == "__main__":
     )
     data_generator = get_data_generator(data_config)
 
-    # Run the differential testing
-    start_time = time.perf_counter()
-
-    asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
-    board_tuples, results = asyncio.run(
-        forced_moves_testing(
-            network_name=args.network_path,
-            data_generator=data_generator,
-            engine_generator=engine_generator,
-            search_limits=engine_config.search_limits,
-            num_positions=args.num_positions,
-        )
-    )
-
-    end_time = time.perf_counter()
-    print(f"Elapsed time: {end_time - start_time: .3f} seconds")
-
     # Create results-file-name
     engine_config_name = args.engine_config_name[:-4]
     data_config_name = args.data_config_name[:-4]
@@ -290,23 +336,28 @@ if __name__ == "__main__":
     # Open the results file
     result_directory = RESULT_DIR / args.result_subdir
     result_directory.mkdir(parents=True, exist_ok=True)
-    with open(
-        result_directory
-        / Path(f"results_ENGINE_{engine_config_name}_DATA_{data_config_name}.txt"),
-        "a",
-    ) as f:
-        # Store the config
-        f.write(f"SEED = {args.seed}\n")
-        f.write(f"ENGINE_CONFIG_NAME = {args.engine_config_name}\n")
-        f.write(f"DATA_CONFIG_NAME = {args.data_config_name}\n")
-        f.write(f"NUM_POSITIONS = {args.num_positions}\n")
-        f.write(f"NETWORK_PATH = {args.network_path}\n")
-        f.write(f"RESULT_SUBDIR = {args.result_subdir}\n")
-        f.write("\n")
+    result_file_path = result_directory / Path(
+        f"results_ENGINE_{engine_config_name}_DATA_{data_config_name}.txt"
+    )
+    store_experiment_params(
+        namespace=args, result_file_path=result_file_path, source_file_path=__file__
+    )
 
-        # Store the results
-        f.write("FEN1,FEN2,Q1,Q2\n")
-        for (board1, board2), (q1, q2) in zip(board_tuples, results):
-            fen1 = board1.fen(en_passant="fen").replace(" ", "_")
-            fen2 = board2.fen(en_passant="fen").replace(" ", "_")
-            f.write(f"{fen1},{fen2},{q1},{q2}\n")
+    # Run the differential testing
+    start_time = time.perf_counter()
+
+    asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
+    asyncio.run(
+        forced_moves_testing(
+            network_name=args.network_path,
+            data_generator=data_generator,
+            engine_generator=engine_generator,
+            result_file_path=result_file_path,
+            search_limits=engine_config.search_limits,
+            num_positions=args.num_positions,
+            logger=logger,
+        )
+    )
+
+    end_time = time.perf_counter()
+    logging.info(f"Elapsed time: {end_time - start_time: .3f} seconds")

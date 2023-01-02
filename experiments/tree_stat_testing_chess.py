@@ -3,7 +3,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import chess
 import chess.engine
@@ -12,8 +12,9 @@ import numpy as np
 from rl_testing.config_parsers import get_data_generator_config, get_engine_config
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
-from rl_testing.util.tree_parser import TreeInfo
+from rl_testing.mcts.tree_parser import TreeInfo
 from rl_testing.util.util import cp2q, get_task_result_handler
+from rl_testing.util.experiment import store_experiment_params
 
 RESULT_DIR = Path(__file__).parent / Path("results/tree_stat_testing")
 
@@ -46,7 +47,9 @@ async def create_positions(
 
             # Log the base position
             fen = board_candidate.fen(en_passant="fen")
-            logging.info(f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}")
+            logging.info(
+                f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}"
+            )
 
             # Send the base position to all queues
             for queue in queues:
@@ -55,6 +58,67 @@ async def create_positions(
             await asyncio.sleep(delay=sleep_between_positions)
 
             board_index += 1
+
+
+async def analyze_position(
+    consumer_queue: asyncio.Queue,
+    producer_queue: asyncio.Queue,
+    search_limits: Dict[str, Any],
+    engine_generator: EngineGenerator,
+    network_name: Optional[str] = None,
+    sleep_after_get: float = 0.1,
+    identifier_str: str = "",
+) -> None:
+    board_counter = 1
+
+    # Initialize the engine
+    if network_name is not None:
+        engine_generator.set_network(network_name=network_name)
+    engine = await engine_generator.get_initialized_engine()
+
+    while True:
+        # Fetch the next base board, the next transformed board, and the corresponding
+        # transformation index
+        board = await consumer_queue.get()
+        await asyncio.sleep(delay=sleep_after_get)
+
+        logging.info(
+            f"[{identifier_str}] Analyzing board {board_counter}: "
+            + board.fen(en_passant="fen")
+        )
+        try:
+            # Analyze the board
+            info = await engine.analyse(board, chess.engine.Limit(**search_limits))
+            assert "mcts_tree" in info
+        except chess.engine.EngineTerminatedError:
+            if engine_generator is None:
+                logging.info("Can't restart engine due to missing generator")
+                raise
+
+            # Try to restart the engine
+            logging.info("Trying to restart engine")
+
+            if network_name is not None:
+                engine_generator.set_network(network_name=network_name)
+            engine = await engine_generator.get_initialized_engine()
+
+            # Add an error to the receiver queue
+            await producer_queue.put((board, "invalid", "invalid"))
+        else:
+            # Add the board to the receiver queue
+            # The 12800 is used as maximum value because we use the q2cp function
+            # to convert q_values to centipawns. This formula has values in
+            # [-12800, 12800] for q_values in [-1, 1]
+            await producer_queue.put(
+                (
+                    board,
+                    cp2q(info["score"].relative.score(mate_score=12800)),
+                    info["mcts_tree"],
+                )
+            )
+        finally:
+            consumer_queue.task_done()
+            board_counter += 1
 
 
 async def evaluate_candidates(
@@ -69,6 +133,10 @@ async def evaluate_candidates(
     board_counter = 1
 
     with open(file_path, "a") as file:
+
+        # Store the header of the result data in the result file
+        csv_header = "fen;score;edge_info\n"
+        file.write(csv_header)  # noqa: E501
 
         while True:
             # Fetch the next board and the corresponding scores from the queues
@@ -118,66 +186,6 @@ async def evaluate_candidates(
             # Write the result to the file
             file.write(result_str)
 
-            board_counter += 1
-
-
-async def analyze_position(
-    consumer_queue: asyncio.Queue,
-    producer_queue: asyncio.Queue,
-    search_limits: Dict[str, Any],
-    engine_generator: EngineGenerator,
-    network_name: Optional[str] = None,
-    sleep_after_get: float = 0.1,
-    identifier_str: str = "",
-) -> None:
-    board_counter = 1
-
-    # Initialize the engine
-    if network_name is not None:
-        engine_generator.set_network(network_name=network_name)
-    engine = await engine_generator.get_initialized_engine()
-
-    while True:
-        # Fetch the next base board, the next transformed board, and the corresponding
-        # transformation index
-        board = await consumer_queue.get()
-        await asyncio.sleep(delay=sleep_after_get)
-
-        logging.info(
-            f"[{identifier_str}] Analyzing board {board_counter}: " + board.fen(en_passant="fen")
-        )
-        try:
-            # Analyze the board
-            info = await engine.analyse(board, chess.engine.Limit(**search_limits))
-            assert "mcts_tree" in info
-        except chess.engine.EngineTerminatedError:
-            if engine_generator is None:
-                logging.info("Can't restart engine due to missing generator")
-                raise
-
-            # Try to restart the engine
-            logging.info("Trying to restart engine")
-
-            if network_name is not None:
-                engine_generator.set_network(network_name=network_name)
-            engine = await engine_generator.get_initialized_engine()
-
-            # Add an error to the receiver queue
-            await producer_queue.put((board, "invalid", "invalid"))
-        else:
-            # Add the board to the receiver queue
-            # The 12800 is used as maximum value because we use the q2cp function
-            # to convert q_values to centipawns. This formula has values in
-            # [-12800, 12800] for q_values in [-1, 1]
-            await producer_queue.put(
-                (
-                    board,
-                    cp2q(info["score"].relative.score(mate_score=12800)),
-                    info["mcts_tree"],
-                )
-            )
-        finally:
-            consumer_queue.task_done()
             board_counter += 1
 
 
@@ -281,8 +289,8 @@ if __name__ == "__main__":
 
     # fmt: off
     parser.add_argument("--seed",                           type=int, default=42)  # noqa: E501
-    # parser.add_argument("--engine_config_name",             type=str, default="local_400_nodes.ini")  # noqa: E501
-    parser.add_argument("--engine_config_name",             type=str, default="remote_debug_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name",             type=str, default="local_400_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name",             type=str, default="remote_debug_400_nodes.ini")  # noqa: E501
     parser.add_argument("--data_config_name",               type=str, default="database.ini")  # noqa: E501
     parser.add_argument("--num_positions",                  type=int, default=100_000)  # noqa: E501
     # parser.add_argument("--num_positions",                  type=int, default=100)  # noqa: E501
@@ -310,7 +318,9 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
 
     # Create result directory
-    config_folder_path = Path(__file__).parent.absolute() / Path("configs/engine_configs/")
+    config_folder_path = Path(__file__).parent.absolute() / Path(
+        "configs/engine_configs/"
+    )
 
     # Build the engine generator
     engine_config = get_engine_config(
@@ -338,21 +348,10 @@ if __name__ == "__main__":
         f"results_ENGINE_{engine_config_name}_DATA_{data_config_name}_NET_{network_name}.txt"
     )
 
-    with open(result_file_path, "w") as result_file:
-        # Store the experiment configuration in the result file
-        result_file.write("CONFIGURATION:\n")
-        result_file.write(f"{args.seed = }\n")
-        result_file.write(f"{args.engine_config_name = }\n")
-        result_file.write(f"{args.data_config_name = }\n")
-        result_file.write(f"{args.num_positions = }\n")
-        result_file.write(f"{args.network_path = }\n")
-        result_file.write(f"{args.queue_max_size = }\n")
-        result_file.write(f"{args.num_engine_workers = }\n")
-        result_file.write("\n")
-
-        # Store the header of the result data in the result file
-        csv_header = "fen;score;edge_info\n"
-        result_file.write(csv_header)  # noqa: E501
+    # Store the experiment configuration in the result file
+    store_experiment_params(
+        namespace=args, result_file_path=result_file_path, source_file_path=__file__
+    )
 
     # Run the differential testing
     start_time = time.perf_counter()

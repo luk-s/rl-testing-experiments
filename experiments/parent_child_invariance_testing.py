@@ -13,6 +13,7 @@ from rl_testing.config_parsers import get_data_generator_config, get_engine_conf
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.util.util import cp2q, get_task_result_handler
+from rl_testing.util.experiment import store_experiment_params
 
 RESULT_DIR = Path(__file__).parent / Path("results/parent_child_testing")
 
@@ -73,7 +74,10 @@ async def create_positions(
         legal_moves = list(board_candidate.legal_moves)
 
         # Check if the generated position should be further processed
-        if board_candidate.fen() not in fen_cache and 0 < len(legal_moves) <= max_child_moves:
+        if (
+            board_candidate.fen() not in fen_cache
+            and 0 < len(legal_moves) <= max_child_moves
+        ):
             fen_cache[board_candidate.fen()] = True
 
             # Get all child positions which are not terminal positions
@@ -92,7 +96,9 @@ async def create_positions(
 
             # Log the base position
             fen = board_candidate.fen(en_passant="fen")
-            logging.info(f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}")
+            logging.info(
+                f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}"
+            )
 
             # Log the child positions
             for board in board_list[1:]:
@@ -102,11 +108,77 @@ async def create_positions(
             # Send the base position to all queues
             for queue in queues:
                 for board, move in zip(board_list, move_list):
-                    await queue.put((board_candidate.copy(), len(board_list), board.copy(), move))
+                    await queue.put(
+                        (board_candidate.copy(), len(board_list), board.copy(), move)
+                    )
 
             await asyncio.sleep(delay=sleep_between_positions)
 
             board_index += 1
+
+
+async def analyze_position(
+    consumer_queue: asyncio.Queue,
+    producer_queue: asyncio.Queue,
+    search_limits: Dict[str, Any],
+    engine_generator: EngineGenerator,
+    network_name: Optional[str] = None,
+    sleep_after_get: float = 0.1,
+    identifier_str: str = "",
+) -> None:
+    board_counter = 1
+
+    # Initialize the engine
+    if network_name is not None:
+        engine_generator.set_network(network_name=network_name)
+    engine = await engine_generator.get_initialized_engine()
+
+    while True:
+        # Fetch the next base board, the next transformed board, and the corresponding
+        # transformation index
+        base_board, num_child_nodes, board, move = await consumer_queue.get()
+        await asyncio.sleep(delay=sleep_after_get)
+
+        logging.info(
+            f"[{identifier_str}] Analyzing board {board_counter}: "
+            + board.fen(en_passant="fen")
+        )
+        try:
+            # Analyze the board
+            info = await engine.analyse(board, chess.engine.Limit(**search_limits))
+        except chess.engine.EngineTerminatedError:
+            if engine_generator is None:
+                logging.info("Can't restart engine due to missing generator")
+                raise
+
+            # Try to restart the engine
+            logging.info("Trying to restart engine")
+
+            if network_name is not None:
+                engine_generator.set_network(network_name=network_name)
+            engine = await engine_generator.get_initialized_engine()
+
+            # Add an error to the receiver queue
+            await producer_queue.put(
+                (base_board, num_child_nodes, board, move, "invalid")
+            )
+        else:
+            # Add the board to the receiver queue
+            # The 12800 is used as maximum value because we use the q2cp function
+            # to convert q_values to centipawns. This formula has values in
+            # [-12800, 12800] for q_values in [-1, 1]
+            await producer_queue.put(
+                (
+                    base_board,
+                    num_child_nodes,
+                    board,
+                    move,
+                    cp2q(info["score"].relative.score(mate_score=12800)),
+                )
+            )
+        finally:
+            consumer_queue.task_done()
+            board_counter += 1
 
 
 async def evaluate_candidates(
@@ -126,6 +198,11 @@ async def evaluate_candidates(
     receiver_cache = ReceiverCache(queue=engine_queue)
 
     with open(file_path, "a") as file:
+        # Create the header of the result file
+        csv_header = "fen,original," + ",".join(
+            [f"move_{i},score_{i}," for i in range(max_child_moves + 1)]
+        )
+        file.write(csv_header[:-1] + "\n")  # noqa: E501
 
         while True:
             # Fetch the next board and the corresponding scores from the queues
@@ -160,67 +237,6 @@ async def evaluate_candidates(
                 file.write(result_str)
 
                 board_counter += 1
-
-
-async def analyze_position(
-    consumer_queue: asyncio.Queue,
-    producer_queue: asyncio.Queue,
-    search_limits: Dict[str, Any],
-    engine_generator: EngineGenerator,
-    network_name: Optional[str] = None,
-    sleep_after_get: float = 0.1,
-    identifier_str: str = "",
-) -> None:
-    board_counter = 1
-
-    # Initialize the engine
-    if network_name is not None:
-        engine_generator.set_network(network_name=network_name)
-    engine = await engine_generator.get_initialized_engine()
-
-    while True:
-        # Fetch the next base board, the next transformed board, and the corresponding
-        # transformation index
-        base_board, num_child_nodes, board, move = await consumer_queue.get()
-        await asyncio.sleep(delay=sleep_after_get)
-
-        logging.info(
-            f"[{identifier_str}] Analyzing board {board_counter}: " + board.fen(en_passant="fen")
-        )
-        try:
-            # Analyze the board
-            info = await engine.analyse(board, chess.engine.Limit(**search_limits))
-        except chess.engine.EngineTerminatedError:
-            if engine_generator is None:
-                logging.info("Can't restart engine due to missing generator")
-                raise
-
-            # Try to restart the engine
-            logging.info("Trying to restart engine")
-
-            if network_name is not None:
-                engine_generator.set_network(network_name=network_name)
-            engine = await engine_generator.get_initialized_engine()
-
-            # Add an error to the receiver queue
-            await producer_queue.put((base_board, num_child_nodes, board, move, "invalid"))
-        else:
-            # Add the board to the receiver queue
-            # The 12800 is used as maximum value because we use the q2cp function
-            # to convert q_values to centipawns. This formula has values in
-            # [-12800, 12800] for q_values in [-1, 1]
-            await producer_queue.put(
-                (
-                    base_board,
-                    num_child_nodes,
-                    board,
-                    move,
-                    cp2q(info["score"].relative.score(mate_score=12800)),
-                )
-            )
-        finally:
-            consumer_queue.task_done()
-            board_counter += 1
 
 
 async def parent_child_invariance_testing(
@@ -356,7 +372,9 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
 
     # Create result directory
-    config_folder_path = Path(__file__).parent.absolute() / Path("configs/engine_configs/")
+    config_folder_path = Path(__file__).parent.absolute() / Path(
+        "configs/engine_configs/"
+    )
 
     # Build the engine generator
     engine_config = get_engine_config(
@@ -383,21 +401,9 @@ if __name__ == "__main__":
     )
 
     # Store the experiment configuration in the result file
-    with open(result_file_path, "w") as result_file:
-        result_file.write("CONFIGURATION:\n")
-        result_file.write(f"{args.seed = }\n")
-        result_file.write(f"{args.engine_config_name = }\n")
-        result_file.write(f"{args.data_config_name = }\n")
-        result_file.write(f"{args.max_child_moves = }\n")
-        result_file.write(f"{args.num_positions = }\n")
-        result_file.write(f"{args.network_path = }\n")
-        result_file.write(f"{args.queue_max_size = }\n")
-        result_file.write(f"{args.num_engine_workers = }\n")
-        result_file.write("\n")
-        csv_header = "fen,original," + ",".join(
-            [f"move_{i},score_{i}," for i in range(args.max_child_moves + 1)]
-        )
-        result_file.write(csv_header[:-1] + "\n")  # noqa: E501
+    store_experiment_params(
+        namespace=args, result_file_path=result_file_path, source_file_path=__file__
+    )
 
     # Run the differential testing
     start_time = time.perf_counter()

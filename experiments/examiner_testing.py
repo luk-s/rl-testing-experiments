@@ -13,6 +13,7 @@ from rl_testing.config_parsers import get_data_generator_config, get_engine_conf
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.util.util import cp2q, get_task_result_handler
+from rl_testing.util.experiment import store_experiment_params
 
 RESULT_DIR = Path(__file__).parent / Path("results/examiner_testing")
 
@@ -93,7 +94,9 @@ async def create_positions(
         # Check if the generated position was valid
         if board_candidate != "failed":
             fen = board_candidate.fen(en_passant="fen")
-            logging.info(f"[{identifier_str}] Created board {board_index + 1}: " f"{fen}")
+            logging.info(
+                f"[{identifier_str}] Created board {board_index + 1}: " f"{fen}"
+            )
             await data_queue.put(board_candidate.copy())
             for queue_in, queue_out, queue_identifier_str in analysis_queue_tuples:
                 # Assign low priority to the new boards (0 = high, 1 = low)
@@ -103,7 +106,11 @@ async def create_positions(
                 # sorted by time if the priority is the same.
 
                 await queue_in.put(
-                    (1, time.time(), (board_candidate.copy(), queue_out, queue_identifier_str))
+                    (
+                        1,
+                        time.time(),
+                        (board_candidate.copy(), queue_out, queue_identifier_str),
+                    )
                 )
 
             await asyncio.sleep(delay=sleep_between_positions)
@@ -124,7 +131,9 @@ async def create_candidates(
 
     # The order of the queues is important! The 'receive' function will return the data in the
     # same order as the queues are given to the initializer.
-    receiver_cache = ReceiverCache([data_pop_queue, victim_pop_queue, examiner_pop_queue])
+    receiver_cache = ReceiverCache(
+        [data_pop_queue, victim_pop_queue, examiner_pop_queue]
+    )
 
     while True:
         # Fetch the next board and the corresponding scores from the queues
@@ -180,11 +189,22 @@ async def create_candidates(
                             (
                                 0,
                                 time.time(),
-                                (board.copy(), victim_push_queue_out, queue_identifier_str),
+                                (
+                                    board.copy(),
+                                    victim_push_queue_out,
+                                    queue_identifier_str,
+                                ),
                             )
                         )
                         await data_push_queue.put(
-                            (board.copy(), original_board, score_v, score_e, move1, move2)
+                            (
+                                board.copy(),
+                                original_board,
+                                score_v,
+                                score_e,
+                                move1,
+                                move2,
+                            )
                         )
 
                         # Undo the moves
@@ -273,7 +293,11 @@ async def filter_candidates(
                     (
                         0,
                         time.time(),
-                        (board_adversarial.copy(), examiner_push_queue_out, queue_identifier_str),
+                        (
+                            board_adversarial.copy(),
+                            examiner_push_queue_out,
+                            queue_identifier_str,
+                        ),
                     )
                 )
                 await data_push_queue.put(
@@ -294,7 +318,9 @@ async def filter_candidates(
                 if np.abs(score_v - score_original_e) <= np.abs(
                     threshold_adversarial - threshold_equal
                 ):
-                    reason += f"{score_v = } and {score_original_e = } are too similar, "
+                    reason += (
+                        f"{score_v = } and {score_original_e = } are too similar, "
+                    )
                 logging.info(
                     f"[{identifier_str}] Board {board_counter}: "
                     + board_adversarial.fen(en_passant="fen")
@@ -351,8 +377,10 @@ async def evaluate_candidates(
 
                 # Check if the board is actually an adversarial example
                 if (
-                    np.abs(score_adversarial_v - score_adversarial_e) >= threshold_adversarial
-                    and np.abs(score_original_e - score_adversarial_e) <= threshold_equal
+                    np.abs(score_adversarial_v - score_adversarial_e)
+                    >= threshold_adversarial
+                    and np.abs(score_original_e - score_adversarial_e)
+                    <= threshold_equal
                 ):
                     logging.info(
                         f"[{identifier_str}] Found adversarial example! Board {board_counter}: "
@@ -362,7 +390,10 @@ async def evaluate_candidates(
                     success = 1
                 else:
                     reason = ""
-                    if np.abs(score_adversarial_v - score_adversarial_e) < threshold_adversarial:
+                    if (
+                        np.abs(score_adversarial_v - score_adversarial_e)
+                        < threshold_adversarial
+                    ):
                         reason += (
                             f"{score_adversarial_v = } and {score_adversarial_e = } "
                             "are too similar, "
@@ -419,7 +450,8 @@ async def analyze_position(
         await asyncio.sleep(delay=sleep_after_get)
 
         logging.info(
-            f"[{identifier_str}] Analyzing board {board_counter}: " + board.fen(en_passant="fen")
+            f"[{identifier_str}] Analyzing board {board_counter}: "
+            + board.fen(en_passant="fen")
         )
         try:
             # Analyze the board
@@ -443,7 +475,9 @@ async def analyze_position(
             # The 12800 is used as maximum value because we use the q2cp function
             # to convert q_values to centipawns. This formula has values in
             # [-12800, 12800] for q_values in [-1, 1]
-            await producer_queue.put((board, cp2q(info["score"].relative.score(mate_score=12800))))
+            await producer_queue.put(
+                (board, cp2q(info["score"].relative.score(mate_score=12800)))
+            )
         finally:
             consumer_queue.task_done()
             board_counter += 1
@@ -475,7 +509,9 @@ async def examiner_testing(
 
     # Build the result file path
     if result_file_path is None:
-        result_file_path = Path("results") / f"{victim_network_name}-{examiner_network_name}.csv"
+        result_file_path = (
+            Path("results") / f"{victim_network_name}-{examiner_network_name}.csv"
+        )
 
     # Create all required queues
     # Only use one input queue for the victim and examiner
@@ -495,8 +531,16 @@ async def examiner_testing(
         create_positions(
             data_queue=data_queue1,
             analysis_queue_tuples=[
-                (victim_queue_in, victim_queue_original_out, "VICTIM_ORIGINAL_ANALYSIS"),
-                (examiner_queue_in, examiner_queue_original_out, "EXAMINER_ORIGINAL_ANALYSIS"),
+                (
+                    victim_queue_in,
+                    victim_queue_original_out,
+                    "VICTIM_ORIGINAL_ANALYSIS",
+                ),
+                (
+                    examiner_queue_in,
+                    examiner_queue_original_out,
+                    "EXAMINER_ORIGINAL_ANALYSIS",
+                ),
             ],
             data_generator=data_generator,
             num_positions=num_positions,
@@ -643,7 +687,7 @@ if __name__ == "__main__":
     parser.add_argument("--queue_max_size",                 type=int, default=10000)  # noqa: E501
     parser.add_argument("--num_victim_workers",             type=int, default=2)  # noqa: E501
     parser.add_argument("--num_examiner_workers",           type=int, default=2)  # noqa: E501
-    parser.add_argument("--result_subdir",                  type=str, default="main_experiment")  # noqa: E501
+    parser.add_argument("--result_subdir",                  type=str, default="")  # noqa: E501
     # fmt: on
     ##################################
     #           CONFIG END           #
@@ -663,17 +707,21 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
 
     # Create result directory
-    config_folder_path = Path(__file__).parent.absolute() / Path("configs/engine_configs/")
+    config_folder_path = Path(__file__).parent.absolute() / Path(
+        "configs/engine_configs/"
+    )
 
     # Build the victim engine generator
     engine_config_victim = get_engine_config(
-        config_name=args.victim_engine_config_name, config_folder_path=config_folder_path
+        config_name=args.victim_engine_config_name,
+        config_folder_path=config_folder_path,
     )
     engine_generator_victim = get_engine_generator(engine_config_victim)
 
     # Build the examiner engine generator
     engine_config_examiner = get_engine_config(
-        config_name=args.examiner_engine_config_name, config_folder_path=config_folder_path
+        config_name=args.examiner_engine_config_name,
+        config_folder_path=config_folder_path,
     )
     engine_generator_examiner = get_engine_generator(engine_config_examiner)
 
@@ -695,6 +743,10 @@ if __name__ == "__main__":
     result_file_path = result_directory / Path(
         f"results_VICTIM_ENGINE_{victim_engine_config_name}_"
         f"EXAMINER_ENGINE_{examiner_engine_config_name}_DATA_{data_config_name}.txt"
+    )
+
+    store_experiment_params(
+        namespace=args, result_file_path=result_file_path, source_file_path=__file__
     )
 
     # Run the differential testing

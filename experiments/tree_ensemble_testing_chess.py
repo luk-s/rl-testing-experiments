@@ -3,7 +3,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import chess
 import chess.engine
@@ -17,8 +17,8 @@ from rl_testing.mcts.mcts_chess import (
     ChessMCTSBot,
     ChessSearchNode,
 )
-from rl_testing.util.tree_parser import TreeInfo
 from rl_testing.util.util import cp2q, get_task_result_handler
+from rl_testing.util.experiment import store_experiment_params
 
 RESULT_DIR = Path(__file__).parent / Path("results/tree_ensemble_testing")
 
@@ -51,7 +51,9 @@ async def create_positions(
 
             # Log the base position
             fen = board_candidate.fen(en_passant="fen")
-            logging.info(f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}")
+            logging.info(
+                f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}"
+            )
 
             # Send the base position to all queues
             for queue in queues:
@@ -60,46 +62,6 @@ async def create_positions(
             await asyncio.sleep(delay=sleep_between_positions)
 
             board_index += 1
-
-
-async def evaluate_candidates(
-    reference_queue: asyncio.Queue,
-    ensemble_queue: asyncio.Queue,
-    file_path: Union[str, Path],
-    sleep_after_get: float = 0.1,
-    identifier_str: str = "",
-) -> None:
-    # Create a file to store the results
-    file_path = Path(file_path)
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    board_counter = 1
-
-    with open(file_path, "a") as file:
-
-        while True:
-            # Fetch the next board
-            board_reference, score_reference, move_reference = await reference_queue.get()
-            board_ensemble, score_ensemble, move_ensemble = await ensemble_queue.get()
-            assert board_reference.fen(en_passant="fen") == board_ensemble.fen(en_passant="fen")
-            fen = board_reference.fen(en_passant="fen")
-
-            await asyncio.sleep(delay=sleep_after_get)
-
-            logging.info(f"[{identifier_str}] Saving {board_counter}: " + fen)
-
-            # Write the found adversarial example into a file
-            result_str = (
-                f"{fen},{score_reference},{move_reference},{score_ensemble},{move_ensemble}\n"
-            )
-
-            # Write the result to the file
-            file.write(result_str)
-
-            # Mark the element as processed
-            reference_queue.task_done()
-            ensemble_queue.task_done()
-
-            board_counter += 1
 
 
 async def analyze_position(
@@ -125,7 +87,8 @@ async def analyze_position(
         await asyncio.sleep(delay=sleep_after_get)
 
         logging.info(
-            f"[{identifier_str}] Analyzing board {board_counter}: " + board.fen(en_passant="fen")
+            f"[{identifier_str}] Analyzing board {board_counter}: "
+            + board.fen(en_passant="fen")
         )
         try:
             # Analyze the board
@@ -159,6 +122,57 @@ async def analyze_position(
             )
         finally:
             consumer_queue.task_done()
+            board_counter += 1
+
+
+async def evaluate_candidates(
+    reference_queue: asyncio.Queue,
+    ensemble_queue: asyncio.Queue,
+    file_path: Union[str, Path],
+    sleep_after_get: float = 0.1,
+    identifier_str: str = "",
+) -> None:
+    # Create a file to store the results
+    file_path = Path(file_path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    board_counter = 1
+
+    with open(file_path, "a") as file:
+
+        # Store the header of the result data in the result file
+        csv_header = "fen,score_reference,move_reference,score_ensemble,move_ensemble\n"
+        file.write(csv_header)
+
+        while True:
+            # Fetch the next board
+            (
+                board_reference,
+                score_reference,
+                move_reference,
+            ) = await reference_queue.get()
+            board_ensemble, score_ensemble, move_ensemble = await ensemble_queue.get()
+            assert board_reference.fen(en_passant="fen") == board_ensemble.fen(
+                en_passant="fen"
+            )
+            fen = board_reference.fen(en_passant="fen")
+
+            await asyncio.sleep(delay=sleep_after_get)
+
+            logging.info(f"[{identifier_str}] Saving {board_counter}: " + fen)
+
+            # Write the found adversarial example into a file
+            result_str = (
+                f"{fen},{score_reference},{move_reference},"
+                f"{score_ensemble},{move_ensemble}\n"
+            )
+
+            # Write the result to the file
+            file.write(result_str)
+
+            # Mark the element as processed
+            reference_queue.task_done()
+            ensemble_queue.task_done()
+
             board_counter += 1
 
 
@@ -202,7 +216,8 @@ async def ensemble_analysis(
         await asyncio.sleep(delay=sleep_after_get)
 
         logging.info(
-            f"[{identifier_str}] Analyzing board {board_counter}: " + board.fen(en_passant="fen")
+            f"[{identifier_str}] Analyzing board {board_counter}: "
+            + board.fen(en_passant="fen")
         )
         root_node = await mcts_bot.mcts_search(board=board)
         if root_node == "invalid":
@@ -378,17 +393,21 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
 
     # Create result directory
-    config_folder_path = Path(__file__).parent.absolute() / Path("configs/engine_configs/")
+    config_folder_path = Path(__file__).parent.absolute() / Path(
+        "configs/engine_configs/"
+    )
 
     # Build the ensemble engine generator
     engine_config_ensemble = get_engine_config(
-        config_name=args.engine_config_name_ensemble, config_folder_path=config_folder_path
+        config_name=args.engine_config_name_ensemble,
+        config_folder_path=config_folder_path,
     )
     engine_generator_ensemble = get_engine_generator(engine_config_ensemble)
 
     # Build the reference engine generator
     engine_config_reference = get_engine_config(
-        config_name=args.engine_config_name_reference, config_folder_path=config_folder_path
+        config_name=args.engine_config_name_reference,
+        config_folder_path=config_folder_path,
     )
     engine_generator_reference = get_engine_generator(engine_config_reference)
 
@@ -416,22 +435,10 @@ if __name__ == "__main__":
         f"ENSEMBLE_SIZE_{num_network_names_ensemble}_NUM_GAMES_READ_{num_games_read}.txt"
     )
 
-    with open(result_file_path, "w") as result_file:
-        # Store the experiment configuration in the result file
-        result_file.write("CONFIGURATION:\n")
-        result_file.write(f"{args.seed = }\n")
-        result_file.write(f"{args.engine_config_name_ensemble = }\n")
-        result_file.write(f"{args.engine_config_name_reference = }\n")
-        result_file.write(f"{args.data_config_name = }\n")
-        result_file.write(f"{args.num_positions = }\n")
-        result_file.write(f"{args.network_path_reference = }\n")
-        result_file.write(f"{args.network_paths_ensemble = }\n")
-        result_file.write(f"{args.queue_max_size = }\n")
-        result_file.write("\n")
-
-        # Store the header of the result data in the result file
-        csv_header = "fen,score_reference,move_reference,score_ensemble,move_ensemble\n"
-        result_file.write(csv_header)  # noqa: E501
+    # Store the experiment configuration in the result file
+    store_experiment_params(
+        namespace=args, result_file_path=result_file_path, source_file_path=__file__
+    )
 
     # Run the differential testing
     start_time = time.perf_counter()

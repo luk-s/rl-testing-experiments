@@ -3,7 +3,7 @@ import asyncio
 import logging
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
 import chess
 import chess.engine
@@ -20,6 +20,7 @@ from rl_testing.util.board_transformations import (
     rotate_270_clockwise,
 )
 from rl_testing.util.util import cp2q, get_task_result_handler
+from rl_testing.util.experiment import store_experiment_params
 
 RESULT_DIR = Path(__file__).parent / Path("results/transformation_testing")
 
@@ -79,7 +80,7 @@ async def create_positions(
 ) -> None:
     fen_cache = {}
 
-    # This website might be helpful: https://www.chessprogramming.org/Flipping_Mirroring_and_Rotating
+    # This website might be helpful: https://www.chessprogramming.org/Flipping_Mirroring_and_Rotating # noqa: E501
     # Create random chess positions if necessary
     board_index = 1
     while board_index <= num_positions:
@@ -97,67 +98,28 @@ async def create_positions(
             # Apply the transformations to the board
             transformed_boards = [board_candidate]
             for transformation_function in transformation_functions:
-                transformed_boards.append(board_candidate.transform(transformation_function))
+                transformed_boards.append(
+                    board_candidate.transform(transformation_function)
+                )
 
             fen = board_candidate.fen(en_passant="fen")
 
-            logging.info(f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}")
+            logging.info(
+                f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}"
+            )
             for transformed_board in transformed_boards[1:]:
                 fen = transformed_board.fen(en_passant="fen")
                 logging.info(f"[{identifier_str}] Created transformed board: " f"{fen}")
 
             for queue in queues:
                 for transform_index, transformed_board in enumerate(transformed_boards):
-                    await queue.put((board_candidate.copy(), transform_index, transformed_board))
+                    await queue.put(
+                        (board_candidate.copy(), transform_index, transformed_board)
+                    )
 
             await asyncio.sleep(delay=sleep_between_positions)
 
             board_index += 1
-
-
-async def evaluate_candidates(
-    engine_queue: asyncio.Queue,
-    num_transforms: int,
-    file_path: Union[str, Path],
-    sleep_after_get: float = 0.1,
-    identifier_str: str = "",
-) -> None:
-    # Create a file to store the results
-    file_path = Path(file_path)
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    board_counter = 1
-
-    # The order of the queues is important! The 'receive' function will return the data in the
-    # same order as the queues are given to the initializer.
-    receiver_cache = ReceiverCache(queue=engine_queue, num_transformations=num_transforms)
-
-    with open(file_path, "a") as file:
-
-        while True:
-            # Fetch the next board and the corresponding scores from the queues
-            complete_data_tuples = await receiver_cache.receive_data()
-
-            # Iterate over the received data
-            for fen, scores in complete_data_tuples:
-                await asyncio.sleep(delay=sleep_after_get)
-
-                logging.info(f"[{identifier_str}] Saving board {board_counter}: " + fen)
-
-                # Write the found adversarial example into a file
-                result_str = f"{fen},"
-                for score in scores:
-                    # Add the score to the result string
-                    result_str += f"{score},"
-
-                    # Mark the element as processed
-                    engine_queue.task_done()
-
-                result_str = result_str[:-1] + "\n"
-
-                # Write the result to the file
-                file.write(result_str)
-
-                board_counter += 1
 
 
 async def analyze_position(
@@ -188,7 +150,9 @@ async def analyze_position(
         )
         try:
             # Analyze the board
-            info = await engine.analyse(transformed_board, chess.engine.Limit(**search_limits))
+            info = await engine.analyse(
+                transformed_board, chess.engine.Limit(**search_limits)
+            )
         except chess.engine.EngineTerminatedError:
             if engine_generator is None:
                 logging.info("Can't restart engine due to missing generator")
@@ -218,6 +182,53 @@ async def analyze_position(
         finally:
             consumer_queue.task_done()
             board_counter += 1
+
+
+async def evaluate_candidates(
+    engine_queue: asyncio.Queue,
+    num_transforms: int,
+    file_path: Union[str, Path],
+    sleep_after_get: float = 0.1,
+    identifier_str: str = "",
+) -> None:
+    # Create a file to store the results
+    file_path = Path(file_path)
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+    board_counter = 1
+
+    # The order of the queues is important! The 'receive' function will return the data in the
+    # same order as the queues are given to the initializer.
+    receiver_cache = ReceiverCache(
+        queue=engine_queue, num_transformations=num_transforms
+    )
+
+    with open(file_path, "a") as file:
+
+        while True:
+            # Fetch the next board and the corresponding scores from the queues
+            complete_data_tuples = await receiver_cache.receive_data()
+
+            # Iterate over the received data
+            for fen, scores in complete_data_tuples:
+                await asyncio.sleep(delay=sleep_after_get)
+
+                logging.info(f"[{identifier_str}] Saving board {board_counter}: " + fen)
+
+                # Write the found adversarial example into a file
+                result_str = f"{fen},"
+                for score in scores:
+                    # Add the score to the result string
+                    result_str += f"{score},"
+
+                    # Mark the element as processed
+                    engine_queue.task_done()
+
+                result_str = result_str[:-1] + "\n"
+
+                # Write the result to the file
+                file.write(result_str)
+
+                board_counter += 1
 
 
 async def transformation_invariance_testing(
@@ -354,7 +365,9 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
 
     # Create result directory
-    config_folder_path = Path(__file__).parent.absolute() / Path("configs/engine_configs/")
+    config_folder_path = Path(__file__).parent.absolute() / Path(
+        "configs/engine_configs/"
+    )
 
     # Build the engine generator
     engine_config = get_engine_config(
@@ -371,7 +384,8 @@ if __name__ == "__main__":
 
     # Extract the transformations
     transformation_functions = [
-        transformation_dict[transformation_name] for transformation_name in args.transformations
+        transformation_dict[transformation_name]
+        for transformation_name in args.transformations
     ]
 
     # Create results-file-name
@@ -386,17 +400,12 @@ if __name__ == "__main__":
     )
 
     # Store the experiment configuration in the result file
-    with open(result_file_path, "w") as result_file:
-        result_file.write("CONFIGURATION:\n")
-        result_file.write(f"{args.seed = }\n")
-        result_file.write(f"{args.engine_config_name = }\n")
-        result_file.write(f"{args.data_config_name = }\n")
-        result_file.write(f"{transformation_functions = }\n")
-        result_file.write(f"{args.num_positions = }\n")
-        result_file.write(f"{args.network_path = }\n")
-        result_file.write(f"{args.queue_max_size = }\n")
-        result_file.write(f"{args.num_engine_workers = }\n")
-        result_file.write("\n")
+    store_experiment_params(
+        namespace=args, result_file_path=result_file_path, source_file_path=__file__
+    )
+
+    # Store the transformation names in the result file
+    with open(result_file_path, "a") as result_file:
         result_file.write("fen,original,")
         transformation_str = "".join(
             [f"{transformation}," for transformation in args.transformations]

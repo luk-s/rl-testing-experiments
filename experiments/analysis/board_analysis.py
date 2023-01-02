@@ -8,7 +8,7 @@ from chess.engine import Score
 
 from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
-from rl_testing.util.tree_parser import convert_tree_to_networkx
+from rl_testing.mcts.tree_parser import convert_tree_to_networkx
 
 
 async def analyze_with_engine(
@@ -58,7 +58,9 @@ if __name__ == "__main__":
     # network_name = "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
     # network_name = "network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be"
     # network_name = "network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2"
-    network_name = "T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2"
+    network_name = (
+        "T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2"
+    )
 
     # engine_config_name = "remote_25_depth_stockfish.ini"
     # search_limit = {"depth": 25}
@@ -89,5 +91,5 @@ if __name__ == "__main__":
     print("Results:")
     for fen, score, tree in zip(fens, scores, trees):
         print(f"board {fen :<74} score: {score}")
-        # graph = convert_tree_to_networkx(tree, only_basic_info=True)
-        # stylized_network, config = nw.visualize(graph)
+        graph = convert_tree_to_networkx(tree, only_basic_info=True)
+        stylized_network, config = nw.visualize(graph)

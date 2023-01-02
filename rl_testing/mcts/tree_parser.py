@@ -15,7 +15,7 @@ class TreeParser:
     PARSE_TOKEN = "TREE INFO"
     START_TREE_TOKEN = "START TREE"
     END_TREE_TOKEN = "END TREE"
-    START_NODE_TOKEN = "START NODE"
+    START_NODE_TOKEN = "START NODE:"
     END_NODE_TOKEN = "END NODE"
     NODE_TOKEN = "node"
     POSITION_TOKEN = "POSITION:"
@@ -37,13 +37,9 @@ class TreeParser:
     def __init__(self, analysis_result: "ExtendedAnalysisResult") -> None:
         self.tree: Optional[TreeInfo] = None
         self.node: Optional[NodeInfo] = None
-        self.node_cache: dict[str, NodeInfo] = {}
+        self.parent_id: Optional[int] = None
+        self.node_cache: dict[int, NodeInfo] = {}
         self.analysis_result = analysis_result
-        self.node_index = 0
-        self.node_already_visited = False
-        self.node_counter = 0
-        self.node_duplicate_counter = 0
-        self.num_edges_parsed = 0
 
     def parse_line(self, line: str) -> None:
         # Remove the PARSE_TOKEN and everything before it from the line.
@@ -54,7 +50,7 @@ class TreeParser:
         elif self.END_TREE_TOKEN in line:
             self.end_tree()
         elif self.START_NODE_TOKEN in line:
-            self.start_node()
+            self.start_node(line)
         elif self.END_NODE_TOKEN in line:
             self.end_node()
         elif self.POSITION_TOKEN in line:
@@ -90,35 +86,40 @@ class TreeParser:
 
         # Reset the parser
         self.tree = None
-        self.node_index = 0
-        self.node_cache = {}
-        self.node_counter = 0
-        self.node_duplicate_counter = 0
+        self.node_cache: Dict[int, NodeInfo] = {}
 
-    def start_node(self) -> None:
-        self.node = NodeInfo(self.node_index)
-        self.num_edges_parsed = 0
-        self.node_index += 1
+    def start_node(self, line: str) -> None:
+        # Remove the INDEX_TOKEN and everything before it from the line.
+        line = line.split(self.START_NODE_TOKEN, 1)[1]
 
-        if self.tree.root_node is None:
+        # Split the line into the index part, the parent part and the multi-visit part
+        index, remainder = line.split("PARENT:")
+        parent, multi_visit = remainder.split("VISITED_BEFORE:")
+        index, parent, multi_visit = (
+            int(index.strip()),
+            int(parent.strip()),
+            int(multi_visit.strip()),
+        )
+
+        # If the multi-visit part is not 0, then log a warning
+        if multi_visit != 0:
+            print(f"WARNING: Multi-visit is not 0: {multi_visit}")
+
+        # Create the node
+        self.node = NodeInfo(index)
+        self.parent_id = parent
+
+        # Set the node as the root node if its index is 0
+        if index == 0:
             self.tree.root_node = self.node
 
-        self.node_counter += 1
+        # Add the node to the node cache
+        assert index not in self.node_cache, "Node index already in cache!"
+        self.node_cache[index] = self.node
 
     def end_node(self) -> None:
-        # If this node did not have any edges, then it can also act as a leaf node
-        if (
-            self.node_cache[self.node.fen].is_also_terminal
-            and self.node_cache[self.node.fen].contains_only_terminal
-            and self.num_edges_parsed > 0
-        ):
-            self.node_cache[self.node.fen].contains_only_terminal = False
-        if self.num_edges_parsed == 0 and (not self.node_cache[self.node.fen].is_also_terminal):
-            self.node_cache[self.node.fen].is_also_terminal = True
-            self.node_cache[self.node.fen].contains_only_terminal = True
-
         self.node = None
-        self.node_already_visited = False
+        self.parent_id = None
 
     def parse_position(self, line: str) -> None:
         # Remove the POSITION_TOKEN and everything before it from the line.
@@ -139,23 +140,11 @@ class TreeParser:
 
             self.node.set_fen(root_board.fen(en_passant="fen"))
 
-            # Connect the node to its parent
-            root_board.pop()
-            parent_node = self.node_cache[root_board.fen(en_passant="fen")]
-
-            if self.node.fen in self.node_cache:
-                parent_node.connect_child_node(self.node_cache[self.node.fen])
-            else:
-                parent_node.connect_child_node(self.node)
-
-            del root_board
-
-        if self.node.fen in self.node_cache:
-            self.node_index -= 1
-            self.node_duplicate_counter += 1
-            self.node_already_visited = True
-        else:
-            self.node_cache[self.node.fen] = self.node
+        # Now that the position is set, we can connect the node to its parent
+        # Get the parent node from the cache
+        if self.parent_id != -1:
+            parent_node = self.node_cache[self.parent_id]
+            parent_node.connect_child_node(self.node)
 
     def parse_data_line(self, line: str) -> None:
         # Remove the node or edge token
@@ -193,46 +182,24 @@ class TreeParser:
         return result_dict
 
     def parse_node_line(self, line: str) -> None:
-        if not self.node_already_visited:
-            attribute_dict = self.parse_data_line(line)
+        attribute_dict = self.parse_data_line(line)
 
-            for attribute in attribute_dict:
-                setattr(self.node, attribute, attribute_dict[attribute])
+        for attribute in attribute_dict:
+            setattr(self.node, attribute, attribute_dict[attribute])
 
-            self.node.check_required_attributes()
-        elif self.node_already_visited and self.node_cache[self.node.fen].contains_only_terminal:
-            attribute_dict = self.parse_data_line(line)
-
-            for attribute in attribute_dict:
-                setattr(self.node_cache[self.node.fen], attribute, attribute_dict[attribute])
-
-            self.node_cache[self.node.fen].check_required_attributes()
+        self.node.check_required_attributes()
 
     def parse_edge_line(self, line: str) -> None:
-        if not self.node_already_visited:
-            attribute_dict = self.parse_data_line(line)
+        attribute_dict = self.parse_data_line(line)
 
-            # Create a new edge
-            edge = EdgeInfo(attribute_dict["move"], self.node)
-            del attribute_dict["move"]
+        # Create a new edge
+        edge = EdgeInfo(attribute_dict["move"], self.node)
+        del attribute_dict["move"]
 
-            for attribute in attribute_dict:
-                setattr(edge, attribute, attribute_dict[attribute])
+        for attribute in attribute_dict:
+            setattr(edge, attribute, attribute_dict[attribute])
 
-            edge.check_required_attributes()
-        elif self.node_already_visited and self.node_cache[self.node.fen].contains_only_terminal:
-            attribute_dict = self.parse_data_line(line)
-
-            # Create a new edge
-            edge = EdgeInfo(attribute_dict["move"], self.node_cache[self.node.fen])
-            del attribute_dict["move"]
-
-            for attribute in attribute_dict:
-                setattr(edge, attribute, attribute_dict[attribute])
-
-            edge.check_required_attributes()
-
-        self.num_edges_parsed += 1
+        edge.check_required_attributes()
 
 
 class Info:
@@ -281,7 +248,7 @@ class NodeInfo(Info):
     def __init__(self, index: int) -> None:
         super().__init__()
         # Initialize parent and child edges
-        self.parent_edges: List[EdgeInfo] = []
+        self.parent_edge: Optional[EdgeInfo] = None
         self.child_edges: List[EdgeInfo] = []
 
         # Initialize the board position
@@ -301,8 +268,9 @@ class NodeInfo(Info):
         return [edge.end_node for edge in self.child_edges if edge.end_node is not None]
 
     @property
-    def parent_nodes(self) -> List["NodeInfo"]:
-        return [edge.start_node for edge in self.parent_edges if edge.start_node is not None]
+    def parent_node(self) -> "NodeInfo":
+        assert self.parent_edge is not None
+        return self.parent_edge.start_node
 
     @property
     def orphan_edges(self) -> List["NodeInfo"]:
@@ -343,7 +311,9 @@ class NodeInfo(Info):
         # Assign the depths of the child nodes
         for edge in self.child_edges:
             if edge.end_node is not None:
-                edge.end_node.assign_depth(max(depth + 1, edge.end_node.depth), num_per_depth)
+                edge.end_node.assign_depth(
+                    max(depth + 1, edge.end_node.depth), num_per_depth
+                )
 
 
 class EdgeInfo(Info):
@@ -386,25 +356,30 @@ class EdgeInfo(Info):
         node.child_edges.append(self)
 
     def set_end_node(self, node: NodeInfo) -> None:
+        assert node.parent_edge is None
         self.end_node = node
-        node.parent_edges.append(self)
+        node.parent_edge = self
 
 
-def convert_tree_to_networkx(tree: TreeInfo, only_basic_info: bool = False) -> nx.DiGraph:
+def convert_tree_to_networkx(
+    tree: TreeInfo, only_basic_info: bool = False
+) -> nx.DiGraph:
     red = np.array([255, 0, 0])
     green = np.array([0, 255, 0])
     white = np.array([255, 255, 255])
 
     graph = nx.Graph()
     # Add all nodes to the graph
-    for fen in tree.node_cache:
-        node = tree.node_cache[fen]
+    for index in tree.node_cache:
+        node = tree.node_cache[index]
 
         if node.v_value is None:
             print("This should not happen!")
 
         # Compute the color of the new node
-        node_value_current_player = node.v_value if node.depth % 2 == 0 else -node.v_value
+        node_value_current_player = (
+            node.v_value if node.depth % 2 == 0 else -node.v_value
+        )
         if node_value_current_player <= 0:
             color = red + (white - red) * (1 + node_value_current_player)
         else:
@@ -418,14 +393,16 @@ def convert_tree_to_networkx(tree: TreeInfo, only_basic_info: bool = False) -> n
             x=node.depth_index * 30,
             y=node.depth * 5,
         )
-    for fen in tree.node_cache:
-        node = tree.node_cache[fen]
+    for index in tree.node_cache:
+        node = tree.node_cache[index]
         for edge in node.child_edges:
             if edge.end_node is not None:
                 if only_basic_info:
                     assert edge.start_node.index in graph
                     assert edge.end_node.index in graph
-                    graph.add_edge(edge.start_node.index, edge.end_node.index, size=edge.q_value)
+                    graph.add_edge(
+                        edge.start_node.index, edge.end_node.index, size=edge.q_value
+                    )
                 else:
                     assert edge.start_node in graph
                     assert edge.end_node in graph

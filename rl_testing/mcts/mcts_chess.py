@@ -7,7 +7,7 @@ import chess
 import numpy as np
 
 from rl_testing.engine_generators.generators import EngineGenerator
-from rl_testing.util.tree_parser import TreeInfo
+from rl_testing.mcts.tree_parser import TreeInfo
 from rl_testing.util.util import get_task_result_handler
 
 
@@ -132,7 +132,8 @@ class ChessMovesLeftEvaluator:
             return 0.0
 
         m = clamp(
-            self._moves_left_slope * (moves_left_estimate - self.parent_moves_left_estimate),
+            self._moves_left_slope
+            * (moves_left_estimate - self.parent_moves_left_estimate),
             -self._moves_left_max_effect,
             self._moves_left_max_effect,
         )
@@ -360,11 +361,14 @@ class ChessEnsembleEvaluator(ChessEvaluator):
             # Get the priors of the legal actions
             edges = tree_info.root_node.child_edges
             for edge in edges:
-                legal_move_dict[edge.move] = legal_move_dict.get(edge.move, 0) + edge.policy_value
+                legal_move_dict[edge.move] = (
+                    legal_move_dict.get(edge.move, 0) + edge.policy_value
+                )
 
         # Normalize the priors
         legal_move_priors = [
-            (move, legal_move_dict[move] / len(analysis_results)) for move in legal_move_dict
+            (move, legal_move_dict[move] / len(analysis_results))
+            for move in legal_move_dict
         ]
 
         return legal_move_priors
@@ -415,7 +419,9 @@ class ChessSearchNode:
         self.children = []
 
         # Apparently, WHITE is 1 and BLACK is 0
-        self.draw_constant = self.parameters.get_draw_score(depth % 2 == 1, self.player == 1)
+        self.draw_constant = self.parameters.get_draw_score(
+            depth % 2 == 1, self.player == 1
+        )
 
     @staticmethod
     def set_parameters(parameters: Parameters):
@@ -439,9 +445,9 @@ class ChessSearchNode:
         Returns:
             float: The constant for the U term in the MCTS formula.
         """
-        return self.parameters.get_cpuct(self._is_root_node) + self.parameters.get_cpuct_factor(
+        return self.parameters.get_cpuct(
             self._is_root_node
-        ) * math.log(
+        ) + self.parameters.get_cpuct_factor(self._is_root_node) * math.log(
             (parent_visit_count + self.parameters.get_cpuct_base(self._is_root_node))
             / self.parameters.get_cpuct_base(self._is_root_node)
         )
@@ -480,9 +486,13 @@ class ChessSearchNode:
             moves_left = self.moves_left_evaluator.get_default_M()
         else:
             value = self.q_value(self.draw_constant)
-            moves_left = self.moves_left_evaluator.get_M(self._num_moves_left_estimated, value)
+            moves_left = self.moves_left_evaluator.get_M(
+                self._num_moves_left_estimated, value
+            )
 
-        return self.prior * puct_multiplier / (1 + self.explore_count) + value + moves_left
+        return (
+            self.prior * puct_multiplier / (1 + self.explore_count) + value + moves_left
+        )
 
     def sort_key(self):
         """Returns the best action from this node, either proven or most visited.
@@ -527,7 +537,9 @@ class ChessSearchNode:
         else:
             win_minus_loss = evaluation_metrics.win_minus_loss
             draw_score = evaluation_metrics.draw_score
-            moves_left_estimated = evaluation_metrics.num_moves_left_estimated + distance_to_leaf
+            moves_left_estimated = (
+                evaluation_metrics.num_moves_left_estimated + distance_to_leaf
+            )
             value = evaluation_metrics.value
 
         if self.explore_count == 0:
@@ -535,7 +547,9 @@ class ChessSearchNode:
             self._draw_score = draw_score
             self._num_moves_left_estimated = moves_left_estimated
         else:
-            self._win_minus_loss += (win_minus_loss - self._win_minus_loss) / self.explore_count
+            self._win_minus_loss += (
+                win_minus_loss - self._win_minus_loss
+            ) / self.explore_count
             self._draw_score = (draw_score - self._draw_score) / self.explore_count
             self._num_moves_left_estimated = (
                 moves_left_estimated - self._num_moves_left_estimated
@@ -616,7 +630,10 @@ class ChessMCTSBot:
         visit_path = [root]
         working_board = board.copy()
         current_node = root
-        while not working_board.is_game_over(claim_draw=True) and current_node.explore_count > 0:
+        while (
+            not working_board.is_game_over(claim_draw=True)
+            and current_node.explore_count > 0
+        ):
             if not current_node.children:
                 # For a new node, initialize its state, then choose a child as normal.
                 legal_actions = await self.evaluator.prior(working_board)
@@ -745,7 +762,9 @@ class ChessMCTSBot:
                 # Chance node targets are for the respective decision-maker.
                 return_values = returns[visit_path[decision_node_idx].player]
                 node: ChessSearchNode = visit_path.pop()
-                node.backpropagate_value(return_values, distance_to_leaf=distance_to_leaf)
+                node.backpropagate_value(
+                    return_values, distance_to_leaf=distance_to_leaf
+                )
                 distance_to_leaf += 1
 
                 if solved and node.children:
@@ -757,7 +776,9 @@ class ChessMCTSBot:
                     for child in node.children:
                         if child.outcome is None:
                             all_solved = False
-                        elif best is None or child.outcome[player] > best.outcome[player]:
+                        elif (
+                            best is None or child.outcome[player] > best.outcome[player]
+                        ):
                             best = child
                     if best is not None and (
                         all_solved or best.outcome[player] == self.max_utility
