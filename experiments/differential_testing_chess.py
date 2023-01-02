@@ -64,6 +64,9 @@ async def analyze_positions(
     Tuple[Union[chess.Move, str], Dict[chess.Move, MoveStat], List[PositionStat]]
 ]:
     board_index = 0
+    # Required to ensure that the engine doesn't use cached results from
+    # previous analyses
+    analysis_counter = 0
 
     while True:
         # Fetch the next board from the queue
@@ -75,7 +78,10 @@ async def analyze_positions(
 
         # Needs to be in a try-except because the engine might crash unexpectedly
         try:
-            info = await engine.analyse(board, chess.engine.Limit(**search_limits))
+            analysis_counter += 1
+            info = await engine.analyse(
+                board, chess.engine.Limit(**search_limits), game=analysis_counter
+            )
             best_move = info["pv"][0]
             score = cp2q(info["score"].relative.score(mate_score=12800))
 
@@ -271,9 +277,9 @@ if __name__ == "__main__":
     parser.add_argument("--engine_config_name", type=str, default="local_400_nodes.ini")
     parser.add_argument("--data_config_name",   type=str, default="late_move_fen_database.ini")
     parser.add_argument("--num_positions",      type=int, default=100_000)
-    parser.add_argument("--network_path1",      type=str, default="network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42")  # noqa: E501
+    parser.add_argument("--network_path1",      type=str, default="T807301-c85375d37b369db8db6b0665d12647e7a7a3c9453f5ba46235966bc2ed433638")  # noqa: E501
     # parser.add_argument("--network_path2",      type=str, default="network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be")  # noqa: E501
-    parser.add_argument("--network_path2",      type=str, default="network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
+    parser.add_argument("--network_path2",      type=str, default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
     parser.add_argument("--result_subdir",      type=str, default="main_results")
     # fmt: on
     ##################################

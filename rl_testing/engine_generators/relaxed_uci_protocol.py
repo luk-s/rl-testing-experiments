@@ -352,7 +352,7 @@ async def popen_uci_relaxed(
     )
     try:
         await protocol.initialize()
-    except:
+    except:  # noqa: E722
         transport.close()
         raise
     return transport, protocol

@@ -55,6 +55,9 @@ async def analyze_positions(
     sleep_after_get: float = 0.0,
     engine_generator: Optional[EngineGenerator] = None,
 ) -> None:
+    # Required to ensure that the engine doesn't use cached results from
+    # previous analyses
+    analysis_counter = 0
 
     with open(file_path, "a") as file:
         csv_header = "fen,score,best_move\n"
@@ -75,7 +78,10 @@ async def analyze_positions(
             # Needs to be in a try-except because the engine might crash unexpectedly
             try:
                 # Start the analysis
-                info = await engine.analyse(board, chess.engine.Limit(**search_limits))
+                analysis_counter += 1
+                info = await engine.analyse(
+                    board, chess.engine.Limit(**search_limits), game=analysis_counter
+                )
                 fen = board.fen(en_passant="fen")
                 score = info["score"].relative.score(mate_score=12800)
                 best_move = info["pv"][0]

@@ -438,6 +438,9 @@ async def analyze_position(
     sleep_after_get: float = 0.1,
 ) -> None:
     board_counter = 1
+    # Required to ensure that the engine doesn't use cached results from
+    # previous analyses
+    analysis_counter = 0
 
     # Initialize the engine
     if network_name is not None:
@@ -455,7 +458,10 @@ async def analyze_position(
         )
         try:
             # Analyze the board
-            info = await engine.analyse(board, chess.engine.Limit(**search_limits))
+            analysis_counter += 1
+            info = await engine.analyse(
+                board, chess.engine.Limit(**search_limits), game=analysis_counter
+            )
         except chess.engine.EngineTerminatedError:
             if engine_generator is None:
                 logging.info("Can't restart engine due to missing generator")

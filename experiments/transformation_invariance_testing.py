@@ -132,6 +132,9 @@ async def analyze_position(
     identifier_str: str = "",
 ) -> None:
     board_counter = 1
+    # Required to ensure that the engine doesn't use cached results from
+    # previous analyses
+    analysis_counter = 0
 
     # Initialize the engine
     if network_name is not None:
@@ -150,8 +153,11 @@ async def analyze_position(
         )
         try:
             # Analyze the board
+            analysis_counter += 1
             info = await engine.analyse(
-                transformed_board, chess.engine.Limit(**search_limits)
+                transformed_board,
+                chess.engine.Limit(**search_limits),
+                game=analysis_counter,
             )
         except chess.engine.EngineTerminatedError:
             if engine_generator is None:

@@ -2,7 +2,7 @@ import argparse
 import asyncio
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 import logging
 import chess
 import chess.engine
@@ -81,6 +81,9 @@ async def analyze_positions(
     identifier_str: str = "",
 ) -> None:
     num_boards_analyzed = 0
+    # Required to ensure that the engine doesn't use cached results from
+    # previous analyses
+    analysis_counter = 0
 
     # Iterate over all boards
     while True:
@@ -101,7 +104,10 @@ async def analyze_positions(
 
         # Needs to be in a try-except because the engine might crash unexpectedly
         try:
-            info = await engine.analyse(board, chess.engine.Limit(**search_limits))
+            analysis_counter += 1
+            info = await engine.analyse(
+                board, chess.engine.Limit(**search_limits), game=analysis_counter
+            )
             best_move = info["pv"][0]
             score = cp2q(info["score"].relative.score(mate_score=12800))
         except chess.engine.EngineTerminatedError:
@@ -195,8 +201,6 @@ async def forced_moves_testing(
     if search_limits is None:
         search_limits = {"nodes": 1}
 
-    results = []
-    board_tuples_final = []
     original_board_queue, forced_move_board_queue = asyncio.Queue(), asyncio.Queue()
     original_result_queue, forced_move_result_queue = asyncio.Queue(), asyncio.Queue()
 
