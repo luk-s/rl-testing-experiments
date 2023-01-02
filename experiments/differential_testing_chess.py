@@ -29,26 +29,28 @@ async def get_positions(
     num_positions: int = 1,
     sleep_between_positions: float = 0.1,
     identifier_str: str = "",
-) -> List[chess.Board]:
-    boards = []
+) -> None:
+    board_cache = {}
 
     # Create random chess positions if necessary
-    for board_index in range(num_positions):
+    board_index = 0
+    while board_index < num_positions:
 
         # Create a random chess position
         board_candidate = data_generator.next()
 
         # Check if the generated position was valid
         if board_candidate != "failed":
-            boards.append(board_candidate)
             fen = board_candidate.fen(en_passant="fen")
+            if fen in board_cache:
+                continue
+            board_cache[fen] = True
             logging.info(f"[{identifier_str}] Created board {board_index}: " f"{fen}")
             for queue in queues:
                 await queue.put(board_candidate.copy())
 
             await asyncio.sleep(delay=sleep_between_positions)
-
-    return boards
+            board_index += 1
 
 
 async def analyze_positions(
