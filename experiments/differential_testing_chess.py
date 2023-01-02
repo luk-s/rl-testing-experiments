@@ -277,7 +277,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed",               type=int, default=42)
     # parser.add_argument("--engine_config_name", type=str, default="remote_400_nodes.ini")
     parser.add_argument("--engine_config_name", type=str, default="local_400_nodes.ini")
-    parser.add_argument("--data_config_name",   type=str, default="late_move_fen_database.ini")
+    parser.add_argument("--data_config_name",   type=str, default="database.ini")
     parser.add_argument("--num_positions",      type=int, default=100_000)
     parser.add_argument("--network_path1",      type=str, default="T807301-c85375d37b369db8db6b0665d12647e7a7a3c9453f5ba46235966bc2ed433638")  # noqa: E501
     # parser.add_argument("--network_path2",      type=str, default="network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be")  # noqa: E501
