@@ -93,10 +93,10 @@ class TreeParser:
         line = line.split(self.START_NODE_TOKEN, 1)[1]
 
         # Split the line into the index part, the parent part and the multi-visit part
-        index, remainder = line.split("PARENT:")
+        visit_index, remainder = line.split("PARENT:")
         parent, multi_visit = remainder.split("VISITED_BEFORE:")
-        index, parent, multi_visit = (
-            int(index.strip()),
+        visit_index, parent, multi_visit = (
+            int(visit_index.strip()),
             int(parent.strip()),
             int(multi_visit.strip()),
         )
@@ -106,16 +106,16 @@ class TreeParser:
             print(f"WARNING: Multi-visit is not 0: {multi_visit}")
 
         # Create the node
-        self.node = NodeInfo(index)
+        self.node = NodeInfo(visit_index)
         self.parent_id = parent
 
         # Set the node as the root node if its index is 0
-        if index == 0:
+        if visit_index == 0:
             self.tree.root_node = self.node
 
         # Add the node to the node cache
-        assert index not in self.node_cache, "Node index already in cache!"
-        self.node_cache[index] = self.node
+        assert visit_index not in self.node_cache, "Node index already in cache!"
+        self.node_cache[visit_index] = self.node
 
     def end_node(self) -> None:
         self.node = None
@@ -245,7 +245,7 @@ class NodeInfo(Info):
         "contains_only_terminal",
     ]
 
-    def __init__(self, index: int) -> None:
+    def __init__(self, visit_index: int) -> None:
         super().__init__()
         # Initialize parent and child edges
         self.parent_edge: Optional[EdgeInfo] = None
@@ -253,7 +253,7 @@ class NodeInfo(Info):
 
         # Initialize the board position
         self.fen: Optional[str] = None
-        self.index = index
+        self.visit_index = visit_index
 
         # Initialize depth information
         self.depth = -1
@@ -388,7 +388,7 @@ def convert_tree_to_networkx(
         color_str = f"#{color[0]:0{2}x}{color[1]:0{2}x}{color[2]:0{2}x}"
 
         graph.add_node(
-            node.index if only_basic_info else node,
+            node.visit_index if only_basic_info else node,
             color=color_str,
             x=node.depth_index * 30,
             y=node.depth * 5,
@@ -398,10 +398,12 @@ def convert_tree_to_networkx(
         for edge in node.child_edges:
             if edge.end_node is not None:
                 if only_basic_info:
-                    assert edge.start_node.index in graph
-                    assert edge.end_node.index in graph
+                    assert edge.start_node.visit_index in graph
+                    assert edge.end_node.visit_index in graph
                     graph.add_edge(
-                        edge.start_node.index, edge.end_node.index, size=edge.q_value
+                        edge.start_node.visit_index,
+                        edge.end_node.visit_index,
+                        size=edge.q_value,
                     )
                 else:
                     assert edge.start_node in graph

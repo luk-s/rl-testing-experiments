@@ -199,11 +199,7 @@ def _parse_uci_bestmove_relaxed(board: chess.Board, args: str) -> BestMove:
             move = parse_uci_relaxed(board, tokens[0].lower())
         try:
             # Houdini 1.5 sends NULL instead of skipping the token.
-            if (
-                len(tokens) >= 3
-                and tokens[1] == "ponder"
-                and tokens[2] not in ["(none)", "NULL"]
-            ):
+            if len(tokens) >= 3 and tokens[1] == "ponder" and tokens[2] not in ["(none)", "NULL"]:
                 ponder = board.parse_uci(tokens[2].lower())
         except ValueError:
             LOGGER.exception("Engine sent invalid ponder move")
@@ -268,7 +264,7 @@ class RelaxedUciProtocol(UciProtocol):
                     self._readyok(engine)
 
             def line_received(self, engine: UciProtocol, line: str) -> None:
-                # try:
+                # print(line)
                 if TreeParser.PARSE_TOKEN in line:
                     self.tree_parser.parse_line(line)
                 elif line.startswith("info "):
@@ -347,9 +343,7 @@ async def popen_uci_relaxed(
 
     Returns a subprocess transport and engine protocol pair.
     """
-    transport, protocol = await RelaxedUciProtocol.popen(
-        command, setpgrp=setpgrp, **popen_args
-    )
+    transport, protocol = await RelaxedUciProtocol.popen(command, setpgrp=setpgrp, **popen_args)
     try:
         await protocol.initialize()
     except:  # noqa: E722

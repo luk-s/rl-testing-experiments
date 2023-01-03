@@ -51,22 +51,24 @@ async def analyze_with_engine(
 
 if __name__ == "__main__":
     # fens = ["r1bq3r/ppp1n1pp/1b6/4P3/3k4/6P1/P4P1P/R2QR1K1 b - - 4 21"]
-    fens = ["8/1p3k1r/p1p5/2P1P1K1/7p/P6R/1P6/8 w - - 1 48"]
+    # fens = ["8/1p3k1r/p1p5/2P1P1K1/7p/P6R/1P6/8 w - - 1 48"]
     # fens = ["8/1p3k2/p1p5/2P1PK1r/7p/P6R/1P6/8 w - - 7 51"]
     # fens = ["7r/1p3k2/p1p5/2P1PK2/7p/P6R/1P6/8 b - - 7 50"]
+    fens = ["r3qb1r/pppbk1p1/2np2np/4p2Q/2BPP3/2P5/PP3PPP/RNB2RK1 w - - 4 11"]
 
     # network_name = "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
     # network_name = "network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be"
     # network_name = "network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2"
     network_name = (
-        "T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2"
+        # "T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2"
+        "T807301-c85375d37b369db8db6b0665d12647e7a7a3c9453f5ba46235966bc2ed433638"
     )
 
     # engine_config_name = "remote_25_depth_stockfish.ini"
     # search_limit = {"depth": 25}
     engine_config_name = "remote_debug_500_nodes.ini"
     # engine_config_name = "remote_400_nodes.ini"
-    search_limit = {"nodes": 1000}
+    search_limit = {"nodes": 400}
 
     # Analyze the positions with stockfish
     asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
@@ -92,4 +94,6 @@ if __name__ == "__main__":
     for fen, score, tree in zip(fens, scores, trees):
         print(f"board {fen :<74} score: {score}")
         graph = convert_tree_to_networkx(tree, only_basic_info=True)
+        print(f"Number of nodes: {len(graph.nodes)}")
+        print(f"Number of edges: {len(graph.edges)}")
         stylized_network, config = nw.visualize(graph)

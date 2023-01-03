@@ -167,6 +167,16 @@ async def analyze_results(
             ) = await forced_move_result_queue.get()
             await asyncio.sleep(delay=sleep_after_get)
 
+            # Check if any of the two scores is invalid
+            if best_move_original == "invalid" or best_move_forced == "invalid":
+                logging.info(
+                    f"[{identifier_str}] Invalid result for {fen_original} "
+                    f"({best_move_original}, {best_move_forced})"
+                )
+                original_result_queue.task_done()
+                forced_move_result_queue.task_done()
+                continue
+
             logging.info(f"[{identifier_str}] Received results for {fen_original}")
 
             # Write the results to the file
@@ -174,6 +184,9 @@ async def analyze_results(
                 f"{fen_original},{best_move_original},{score_original},"
                 f"{fen_forced},{best_move_forced},{score_forced}\n"
             )
+
+            original_result_queue.task_done()
+            forced_move_result_queue.task_done()
 
 
 async def forced_moves_testing(

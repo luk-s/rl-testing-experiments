@@ -12,14 +12,20 @@ from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import get_engine_generator
 from rl_testing.util.util import q2cp
 
-STOCKFISH_PATH = "/home/lukas/Software/stockfish/stockfish_15_linux_x64_avx2/stockfish_15_x64_avx2"
+STOCKFISH_PATH = (
+    "/home/lukas/Software/stockfish/stockfish_15_linux_x64_avx2/stockfish_15_x64_avx2"
+)
 
 
 def find_better_evaluations(
-    leela_scores1: List[Score], leela_scores2: List[Score], stockfish_scores: List[Score]
+    leela_scores1: List[Score],
+    leela_scores2: List[Score],
+    stockfish_scores: List[Score],
 ) -> List[str]:
     better = []
-    for leela1, leela2, stockfish in zip(leela_scores1, leela_scores2, stockfish_scores):
+    for leela1, leela2, stockfish in zip(
+        leela_scores1, leela_scores2, stockfish_scores
+    ):
         assert leela1 != leela2
         if stockfish == leela1:
             better.append("network1")
@@ -72,18 +78,24 @@ if __name__ == "__main__":
     # result_file = Path("results_ENGINE_local_5000_nodes_DATA_random_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_forced_moves_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_late_move_fen_database.txt")
-    result_file = Path("results_ENGINE_local_10000_nodes_DATA_late_move_fen_database.txt")
+    result_file = Path(
+        "results_ENGINE_local_10000_nodes_DATA_late_move_fen_database.txt"
+    )
     num_largest = 100
-    fen_key = "FEN"
+    fen_key = "fen"
     q_vals_to_flip = []  # ["Q2"]
     engine_config_name = "remote_25_depth_stockfish.ini"  # "remote_400_nodes.ini"
-    network_name = ""  # "network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2"
+    network_name = (
+        ""  # "network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2"
+    )
     search_limit = {"depth": 25}
 
     dataframe, _ = load_data(result_folder / result_file)
     for column_name in q_vals_to_flip:
         dataframe = flip_q_values(dataframe, column_name=column_name)
-    dataframe = compute_differences(dataframe=dataframe, column_name1="Q1", column_name2="Q2")
+    dataframe = compute_differences(
+        dataframe=dataframe, column_name1="score1", column_name2="score2"
+    )
 
     interesting_boards = []
     leela_cp_scores1, leela_cp_scores2 = [], []

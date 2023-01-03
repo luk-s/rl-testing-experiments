@@ -143,6 +143,15 @@ async def analyze_results(
             # assert that all elements of the fen list are equal
             assert all(fen == fens[0] for fen in fens)
 
+            # Check if any of the score fields are invalid
+            if any(score == "invalid" for score in scores):
+                logging.info(
+                    f"[{identifier_str}] Received invalid results for {fens[0]}"
+                )
+                for queue in input_queues:
+                    queue.task_done()
+                continue
+
             logging.info(f"[{identifier_str}] Received results for {fens[0]}")
 
             # Write the results to the file
@@ -150,6 +159,9 @@ async def analyze_results(
                 f"{best_moves[i]},{scores[i]}" for i in range(num_queues)
             ]
             file.write(",".join(result_list) + "\n")
+
+            for queue in input_queues:
+                queue.task_done()
 
 
 async def differential_testing(
