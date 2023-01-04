@@ -248,7 +248,7 @@ if __name__ == "__main__":
     result_directory.mkdir(parents=True, exist_ok=True)
     result_file_path = result_directory / Path(
         f"results_ENGINE_{engine_config_name}_DATA_{data_config_name}_"
-        f"{str(datetime.datetime.now())}.txt"
+        f"NETWORK_{args.network_name[:7]}_{str(datetime.datetime.now())}.txt"
     )
 
     # Store the experiment configuration in the result file

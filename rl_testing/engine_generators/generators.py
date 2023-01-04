@@ -1,21 +1,12 @@
 import asyncio
 from getpass import getpass
 from pathlib import Path
-from typing import Any, Tuple, Type, TypeVar
+from typing import Any, Tuple, TypeVar
 
 import asyncssh
-import chess
-import chess.engine
 from chess.engine import UciProtocol
-
-from rl_testing.config_parsers.engine_config_parser import (
-    EngineConfig,
-    RemoteEngineConfig,
-)
-from rl_testing.engine_generators.relaxed_uci_protocol import (
-    RelaxedUciProtocol,
-    popen_uci_relaxed,
-)
+from rl_testing.config_parsers.engine_config_parser import EngineConfig, RemoteEngineConfig
+from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol, popen_uci_relaxed
 
 TUciProtocol = TypeVar("TUciProtocol", bound="UciProtocol")
 
@@ -85,7 +76,8 @@ class RemoteEngineGenerator(EngineGenerator):
                 # Read in the password from the user
                 if self.password_required:
                     remote_password = getpass(
-                        prompt=f"Please specify the SSH password for the user {self.remote_user}:\n"
+                        prompt="Please specify the SSH password for "
+                        f"the user {self.remote_user}:\n"
                     )
                 # Start connection
                 self.connection = await asyncssh.connect(
