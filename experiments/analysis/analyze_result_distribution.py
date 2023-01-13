@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Tuple, Union
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -106,7 +106,8 @@ def plot_results(
 
                 if save:
                     plt.savefig(
-                        Path(save_path) / Path(f"{data_name}_{i+1}.png"), bbox_inches="tight"
+                        Path(save_path) / Path(f"{data_name.replace(' ','_')}_{i+1}.png"),
+                        bbox_inches="tight",
                     )
 
                 plt.close()
@@ -162,41 +163,16 @@ if __name__ == "__main__":
     result_folder = RESULT_DIRECTORY / Path("score_positions")
 
     result_file_names_group1 = [
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:44:42.797300.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:44:48.995695.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:44:52.017524.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:44:54.922070.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:45:05.943997.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:45:09.213697.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:45:12.512824.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:45:16.215909.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:45:24.894652.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:45:28.257608.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:45:30.615967.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:45:35.377315.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:45:46.589235.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:45:49.325532.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:45:52.084796.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469_2023-01-04 07:45:55.763196.txt",  # noqa: E501
+        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469*",  # noqa: E501
+        # "results_ENGINE_local_100_nodes_DATA_interesting_fen_database_NETWORK_T785469*",  # noqa: E501
+        # "results_ENGINE_local_1_node_DATA_interesting_fen_database_NETWORK_T785469*",  # noqa: E501
     ]
     result_file_names_group2 = [
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:40:59.588376.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:41:05.891056.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:41:10.537748.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:41:15.615587.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:41:41.153053.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:41:45.572232.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:41:48.833188.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:41:52.123055.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:42:01.075246.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:42:06.506032.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:42:09.854884.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:42:13.405640.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:42:35.792455.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:42:39.781547.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:42:43.718662.txt",  # noqa: E501
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301_2023-01-03 21:42:47.831981.txt",  # noqa: E501
+        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301*",  # noqa: E501
+        # "results_ENGINE_local_100_nodes_DATA_interesting_fen_database_NETWORK_T807301*",  # noqa: E501
+        # "results_ENGINE_local_1_node_DATA_interesting_fen_database_NETWORK_T807301*",  # noqa: E501
     ]
+    image_subdirectory = "400_nodes"
     ################
     #  CONFIG END  #
     ################
@@ -205,12 +181,21 @@ if __name__ == "__main__":
     dataframe_list2 = []
     result_dict_list = []
 
-    for result_file_names, dataframe_list in zip(
+    for result_file_patterns, dataframe_list in zip(
         [result_file_names_group1, result_file_names_group2], [dataframe_list1, dataframe_list2]
     ):
-        for result_file_name in result_file_names:
+        result_file_paths = []
+        # If the result file pattern ends with a '*', all files in the result folder that match the
+        # pattern are loaded. Otherwise, only the file with the exact name is loaded.
+        for result_file_pattern in result_file_patterns:
+            if result_file_pattern.endswith("*"):
+                result_file_paths += list(result_folder.glob(result_file_pattern))
+            else:
+                result_file_paths.append(result_folder / Path(result_file_pattern))
+
+        # Load all dataframes from the result files
+        for result_file_path in result_file_paths:
             # Load the data
-            result_file_path = result_folder / result_file_name
             dataframe, _ = load_data(result_path=result_file_path)
 
             dataframe_list.append(dataframe)
@@ -226,5 +211,5 @@ if __name__ == "__main__":
         plot=False,
         num_bins=200,
         save=True,
-        save_path=IMAGE_DIRECTORY,
+        save_path=IMAGE_DIRECTORY / Path(image_subdirectory),
     )

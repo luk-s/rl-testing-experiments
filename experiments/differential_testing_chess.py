@@ -1,9 +1,10 @@
 import argparse
 import asyncio
+import logging
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
-import logging
+
 import chess
 import chess.engine
 import numpy as np
@@ -12,13 +13,8 @@ from rl_testing.config_parsers import get_data_generator_config, get_engine_conf
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol
-from rl_testing.util.util import (
-    MoveStat,
-    PositionStat,
-    get_task_result_handler,
-    cp2q,
-)
 from rl_testing.util.experiment import store_experiment_params
+from rl_testing.util.util import MoveStat, PositionStat, cp2q, get_task_result_handler
 
 RESULT_DIR = Path(__file__).parent / Path("results/differential_testing")
 
@@ -62,9 +58,7 @@ async def analyze_positions(
     engine_generator: Optional[EngineGenerator] = None,
     network_name: Optional[str] = None,
     identifier_str: str = "",
-) -> List[
-    Tuple[Union[chess.Move, str], Dict[chess.Move, MoveStat], List[PositionStat]]
-]:
+) -> List[Tuple[Union[chess.Move, str], Dict[chess.Move, MoveStat], List[PositionStat]]]:
     board_index = 0
     # Required to ensure that the engine doesn't use cached results from
     # previous analyses
@@ -89,9 +83,7 @@ async def analyze_positions(
 
         except chess.engine.EngineTerminatedError:
             if engine_generator is None or network_name is None:
-                logging.info(
-                    f"[{identifier_str}]Can't restart engine due to missing generator"
-                )
+                logging.info(f"[{identifier_str}]Can't restart engine due to missing generator")
                 raise
 
             # Mark the current board as failed
@@ -125,9 +117,7 @@ async def analyze_results(
 
     # Create a file to store the results
     with open(file_path, "a") as file:
-        file_header = ["fen"] + [
-            f"best_move{i},score{i}" for i in range(1, num_queues + 1)
-        ]
+        file_header = ["fen"] + [f"best_move{i},score{i}" for i in range(1, num_queues + 1)]
         file.write(",".join(file_header) + "\n")
 
         # Repeatedly fetch results from the queues
@@ -145,9 +135,7 @@ async def analyze_results(
 
             # Check if any of the score fields are invalid
             if any(score == "invalid" for score in scores):
-                logging.info(
-                    f"[{identifier_str}] Received invalid results for {fens[0]}"
-                )
+                logging.info(f"[{identifier_str}] Received invalid results for {fens[0]}")
                 for queue in input_queues:
                     queue.task_done()
                 continue
@@ -155,9 +143,7 @@ async def analyze_results(
             logging.info(f"[{identifier_str}] Received results for {fens[0]}")
 
             # Write the results to the file
-            result_list = [fens[0]] + [
-                f"{best_moves[i]},{scores[i]}" for i in range(num_queues)
-            ]
+            result_list = [fens[0]] + [f"{best_moves[i]},{scores[i]}" for i in range(num_queues)]
             file.write(",".join(result_list) + "\n")
 
             for queue in input_queues:
@@ -288,12 +274,12 @@ if __name__ == "__main__":
     # fmt: off
     parser.add_argument("--seed",               type=int, default=42)
     # parser.add_argument("--engine_config_name", type=str, default="remote_400_nodes.ini")
-    parser.add_argument("--engine_config_name", type=str, default="local_400_nodes.ini")
+    parser.add_argument("--engine_config_name", type=str, default="local_dag_1_node.ini")
     parser.add_argument("--data_config_name",   type=str, default="database.ini")
     parser.add_argument("--num_positions",      type=int, default=100_000)
-    parser.add_argument("--network_path1",      type=str, default="T807301-c85375d37b369db8db6b0665d12647e7a7a3c9453f5ba46235966bc2ed433638")  # noqa: E501
+    parser.add_argument("--network_path1",      type=str, default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
     # parser.add_argument("--network_path2",      type=str, default="network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be")  # noqa: E501
-    parser.add_argument("--network_path2",      type=str, default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
+    parser.add_argument("--network_path2",      type=str, default="BT2-768x15-swa-3250000.pb")  # noqa: E501
     parser.add_argument("--result_subdir",      type=str, default="main_results")
     # fmt: on
     ##################################
@@ -316,8 +302,7 @@ if __name__ == "__main__":
     # Get the engine config and engine generator
     engine_config = get_engine_config(
         config_name=args.engine_config_name,
-        config_folder_path=Path(__file__).parent.absolute()
-        / Path("configs/engine_configs/"),
+        config_folder_path=Path(__file__).parent.absolute() / Path("configs/engine_configs/"),
     )
     engine_generator = get_engine_generator(engine_config)
 
