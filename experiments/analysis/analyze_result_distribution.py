@@ -163,16 +163,20 @@ if __name__ == "__main__":
     result_folder = RESULT_DIRECTORY / Path("score_positions")
 
     result_file_names_group1 = [
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469*",  # noqa: E501
+        # "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T785469*",  # noqa: E501
         # "results_ENGINE_local_100_nodes_DATA_interesting_fen_database_NETWORK_T785469*",  # noqa: E501
         # "results_ENGINE_local_1_node_DATA_interesting_fen_database_NETWORK_T785469*",  # noqa: E501
+        # "results_ENGINE_local_1000_nodes_DATA_interesting_fen_database_NETWORK_T785469*",  # noqa: E501
+        "results_ENGINE_local_2500_nodes_DATA_interesting_fen_database_NETWORK_T785469*",  # noqa: E501
     ]
     result_file_names_group2 = [
-        "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301*",  # noqa: E501
+        # "results_ENGINE_local_400_nodes_DATA_interesting_fen_database_NETWORK_T807301*",  # noqa: E501
         # "results_ENGINE_local_100_nodes_DATA_interesting_fen_database_NETWORK_T807301*",  # noqa: E501
         # "results_ENGINE_local_1_node_DATA_interesting_fen_database_NETWORK_T807301*",  # noqa: E501
+        # "results_ENGINE_local_1000_nodes_DATA_interesting_fen_database_NETWORK_T807301*",  # noqa: E501
+        "results_ENGINE_local_2500_nodes_DATA_interesting_fen_database_NETWORK_T807301*",  # noqa: E501
     ]
-    image_subdirectory = "400_nodes"
+    image_subdirectory = "2500_nodes"
     ################
     #  CONFIG END  #
     ################

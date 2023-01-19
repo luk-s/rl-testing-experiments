@@ -274,12 +274,12 @@ if __name__ == "__main__":
     # fmt: off
     parser.add_argument("--seed",               type=int, default=42)
     # parser.add_argument("--engine_config_name", type=str, default="remote_400_nodes.ini")
-    parser.add_argument("--engine_config_name", type=str, default="local_dag_1_node.ini")
+    parser.add_argument("--engine_config_name", type=str, default="local_400_nodes.ini")
     parser.add_argument("--data_config_name",   type=str, default="database.ini")
     parser.add_argument("--num_positions",      type=int, default=100_000)
     parser.add_argument("--network_path1",      type=str, default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
-    # parser.add_argument("--network_path2",      type=str, default="network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be")  # noqa: E501
-    parser.add_argument("--network_path2",      type=str, default="BT2-768x15-swa-3250000.pb")  # noqa: E501
+    parser.add_argument("--network_path2",      type=str, default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
+    # parser.add_argument("--network_path2",      type=str, default="BT2-768x15-swa-3250000.pb")  # noqa: E501
     parser.add_argument("--result_subdir",      type=str, default="main_results")
     # fmt: on
     ##################################

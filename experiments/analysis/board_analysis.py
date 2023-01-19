@@ -42,7 +42,7 @@ async def analyze_with_engine(
         info = await engine.analyse(board, chess.engine.Limit(**search_limits))
 
         # Extract the score
-        engine_scores.append(info["score"].relative)
+        engine_scores.append(info["score"].relative.score(mate_score=12800))
         if "mcts_tree" in info:
             trees.append(info["mcts_tree"])
 
