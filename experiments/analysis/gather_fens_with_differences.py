@@ -12,15 +12,8 @@ if __name__ == "__main__":
     ################
     result_folder = RESULT_DIRECTORY / Path("differential_testing/main_results")
 
-    result_file_names = [
-        Path("results_ENGINE_local_1_node_DATA_database.txt"),
-        Path("results_ENGINE_local_100_nodes_DATA_database.txt"),
-        Path("results_ENGINE_local_200_nodes_DATA_database.txt"),
-        Path("results_ENGINE_local_400_nodes_DATA_database.txt"),
-        Path("results_ENGINE_local_1000_nodes_DATA_database.txt"),
-        Path("results_ENGINE_local_2500_nodes_DATA_database.txt"),
-        # Path("results_ENGINE_local_5000_nodes_DATA_database.txt"),
-        # Path("results_ENGINE_local_10000_nodes_DATA_database.txt"),
+    result_file_patterns = [
+        "results_ENGINE_local_minibatch_1_*",
     ]
 
     score_difference_threshold = 0.5
@@ -30,6 +23,11 @@ if __name__ == "__main__":
     ################
 
     dataframe_list = []
+
+    # Get all result files
+    result_file_names = []
+    for result_file_pattern in result_file_patterns:
+        result_file_names += list(result_folder.glob(result_file_pattern))
 
     # Iterate over all result files
     for result_file_name in result_file_names:
@@ -55,5 +53,5 @@ if __name__ == "__main__":
     # Drop all rows with duplicate fens
     dataframe = dataframe.drop_duplicates(subset="fen")
 
-    # Store the dataframe
-    dataframe.to_csv(DATA_DIRECTORY / Path("interesting_fens.csv"), index=False)
+    # Store the dataframe as txt file
+    dataframe.to_csv(DATA_DIRECTORY / Path("interesting_fens.txt"), index=False, header=False)

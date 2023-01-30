@@ -40,6 +40,20 @@ def get_task_result_handler(
     )
 
 
+def get_random_state(random_state: Optional[np.random.Generator] = None) -> np.random.Generator:
+    """Get a random state. Use the provided random state if it is not None, otherwise use the default random state.
+
+    Args:
+        random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        np.random.Generator: The random state.
+    """
+    if random_state is None:
+        return np.random.default_rng()
+    return random_state
+
+
 def contains_move_stat(info: Dict[str, Any]) -> bool:
     return "string" in info and "node" not in info["string"]
 

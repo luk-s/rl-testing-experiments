@@ -14,6 +14,7 @@ from rl_testing.config_parsers import get_data_generator_config, get_engine_conf
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol
+from rl_testing.util.engine import MoveStat, NodeStat, engine_analyse
 from rl_testing.util.experiment import store_experiment_params
 from rl_testing.util.util import get_task_result_handler
 
@@ -50,6 +51,7 @@ async def analyze_positions(
     search_limits: Dict[str, Any],
     num_boards: int,
     file_path: Union[str, Path],
+    full_logs: bool = False,
     network_name: Optional[Union[str, Path]] = None,
     num_evals_per_position: int = 1,
     sleep_after_get: float = 0.0,
@@ -60,7 +62,18 @@ async def analyze_positions(
     analysis_counter = 0
     network_name_provided = network_name is not None
 
-    with open(file_path, "a") as file:
+    # If full logs will be provided, create a second file to store the node stats
+    if full_logs:
+        file_path2 = Path(file_path).with_suffix(".node_stats.txt")
+        file2 = open(file_path2, "a")
+
+    with open(file_path, "r+") as file:
+        # Read the existing config
+        config_str = file.read()
+
+        # Copy the config string into the second file if necessary
+        if full_logs:
+            file2.write(config_str)
         csv_header = (
             "fen,"
             + ",".join(f"score{i},best_move{i}" for i in range(num_evals_per_position))
@@ -90,9 +103,17 @@ async def analyze_positions(
                 best_moves = []
                 for _ in range(num_evals_per_position):
                     analysis_counter += 1
-                    info = await engine.analyse(
-                        board, chess.engine.Limit(**search_limits), game=analysis_counter
+                    result = await engine_analyse(
+                        engine,
+                        board,
+                        chess.engine.Limit(**search_limits),
+                        game=analysis_counter,
+                        intermediate_info=full_logs,
                     )
+                    if full_logs:
+                        info, node_stats = result
+                    else:
+                        info = result
                     fen = board.fen(en_passant="fen")
                     scores.append(info["score"].relative.score(mate_score=12800))
                     best_moves.append(info["pv"][0])
@@ -104,6 +125,20 @@ async def analyze_positions(
                     )
                     + "\n"
                 )
+                # Write the node stats to the second file if necessary
+                if full_logs:
+                    assert isinstance(node_stats, list)
+                    file2.write(f"FEN: {fen}\n")
+                    file2.write(f"MODEL: 1\n")
+
+                    # Iterate over the node stats
+                    for node_stat in node_stats:
+                        # First print the move stats of each node
+                        for move, move_stat in node_stat.move_stats.items():
+                            file2.write(f"{move_stat}\n")
+
+                        # Then print the corresponding node stat
+                        file2.write(f"{node_stat}\n")
 
             except chess.engine.EngineTerminatedError:
                 if engine_generator is None:
@@ -127,11 +162,13 @@ async def analyze_chess_positions(
     search_limits: Optional[Dict[str, Any]] = None,
     num_evals_per_position: int = 1,
     result_file_path: Optional[Union[str, Path]] = None,
+    full_logs: bool = False,
     num_positions: int = 1,
     sleep_between_positions: float = 0.1,
     logger: Optional[logging.Logger] = None,
 ) -> Tuple[List[chess.Board], List[Tuple[float, float]]]:
 
+    # If no logger has been provided, use the default one
     if logger is None:
         logger = logging.getLogger(__name__)
 
@@ -161,6 +198,7 @@ async def analyze_chess_positions(
             engine=engine,
             network_name=network_name,
             file_path=result_file_path,
+            full_logs=full_logs,
             num_evals_per_position=num_evals_per_position,
             search_limits=search_limits,
             num_boards=num_positions,
@@ -199,15 +237,17 @@ if __name__ == "__main__":
     # Weak local 2: "fbd5e1c049d5a46c098f0f7f12e79e3fb82a7a6cd1c9d1d0894d0aae2865826f"
 
     # fmt: off
-    parser.add_argument("--seed",                   type=int, default=42)
-    parser.add_argument("--engine_config_name",     type=str, default="local_100_nodes.ini")  # noqa: E501
+    parser.add_argument("--seed",                   type=int,  default=42)
+    # parser.add_argument("--engine_config_name",     type=str,  default="local_100_nodes.ini")  # noqa: E501
     # parser.add_argument("--engine_config_name",     type=str, default="remote_100_nodes.ini")  # noqa: E501
-    parser.add_argument("--data_config_name",       type=str, default="interesting_fen_database.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name",     type=str,  default="local_full_logs_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--data_config_name",       type=str,  default="interesting_fen_database.ini")  # noqa: E501
     # parser.add_argument("--network_name",           type=str, default="T807301-c85375d37b369db8db6b0665d12647e7a7a3c9453f5ba46235966bc2ed433638")  # noqa: E501
-    parser.add_argument("--network_name",           type=str, default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
-    parser.add_argument("--num_positions",          type=int, default=216)
-    parser.add_argument("--num_evals_per_position", type=int, default=100)
-    parser.add_argument("--result_subdir",          type=str, default="")
+    parser.add_argument("--network_name",           type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
+    parser.add_argument("--num_positions",      type=int,  default=158)
+    parser.add_argument("--full_logs",              type=bool, default=True)
+    parser.add_argument("--num_evals_per_position", type=int,  default=1)
+    parser.add_argument("--result_subdir",          type=str,  default="")
     # fmt: on
     ##################################
     #           CONFIG END           #
@@ -221,6 +261,10 @@ if __name__ == "__main__":
     logger = logging.getLogger()
 
     args = parser.parse_args()
+
+    # Getting full logs is really slow, so we only allow it if 'num_evals_per_position' is 1
+    if args.full_logs and args.num_evals_per_position != 1:
+        raise ValueError("Full logs can only be provided if 'num_evals_per_position' is 1")
 
     np.random.seed(args.seed)
 
@@ -273,6 +317,7 @@ if __name__ == "__main__":
             network_name=args.network_name,
             data_generator=data_generator,
             result_file_path=result_file_path,
+            full_logs=args.full_logs,
             search_limits=engine_config.search_limits,
             num_positions=args.num_positions,
             num_evals_per_position=args.num_evals_per_position,

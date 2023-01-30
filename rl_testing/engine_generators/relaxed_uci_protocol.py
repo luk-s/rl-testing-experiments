@@ -312,7 +312,10 @@ class RelaxedUciProtocol(UciProtocol):
                 self2.analysis.set_finished(best)
 
             def cancel(self, engine: UciProtocol) -> None:
-                engine.send_line("stop")
+                try:
+                    engine.send_line("stop")
+                except BrokenPipeError:
+                    print("Broken pipe error")
 
             def engine_terminated(self, engine: UciProtocol, exc: Exception) -> None:
                 LOGGER.debug(

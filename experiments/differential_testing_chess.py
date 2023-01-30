@@ -13,8 +13,9 @@ from rl_testing.config_parsers import get_data_generator_config, get_engine_conf
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol
+from rl_testing.util.engine import MoveStat, NodeStat, engine_analyse
 from rl_testing.util.experiment import store_experiment_params
-from rl_testing.util.util import MoveStat, PositionStat, cp2q, get_task_result_handler
+from rl_testing.util.util import cp2q, get_task_result_handler
 
 RESULT_DIR = Path(__file__).parent / Path("results/differential_testing")
 
@@ -54,12 +55,15 @@ async def analyze_positions(
     output_queue: asyncio.Queue,
     engine: RelaxedUciProtocol,
     search_limits: Dict[str, Any],
+    full_logs: bool = False,
     sleep_after_get: float = 0.0,
     engine_generator: Optional[EngineGenerator] = None,
     network_name: Optional[str] = None,
     identifier_str: str = "",
-) -> List[Tuple[Union[chess.Move, str], Dict[chess.Move, MoveStat], List[PositionStat]]]:
+) -> None:
     board_index = 0
+    invalid_placeholder = ["invalid"] * (3 if full_logs else 2)
+
     # Required to ensure that the engine doesn't use cached results from
     # previous analyses
     analysis_counter = 0
@@ -75,9 +79,18 @@ async def analyze_positions(
         # Needs to be in a try-except because the engine might crash unexpectedly
         try:
             analysis_counter += 1
-            info = await engine.analyse(
-                board, chess.engine.Limit(**search_limits), game=analysis_counter
+            result = await engine_analyse(
+                engine,
+                board,
+                chess.engine.Limit(**search_limits),
+                game=analysis_counter,
+                intermediate_info=full_logs,
             )
+            if full_logs:
+                info, node_stats = result
+            else:
+                info = result
+
             best_move = info["pv"][0]
             score = cp2q(info["score"].relative.score(mate_score=12800))
 
@@ -87,7 +100,7 @@ async def analyze_positions(
                 raise
 
             # Mark the current board as failed
-            await output_queue.put((fen, "invalid", "invalid"))
+            await output_queue.put((fen, *invalid_placeholder))
 
             # Try to restart the engine
             logging.info(f"[{identifier_str}] Trying to restart engine")
@@ -98,9 +111,12 @@ async def analyze_positions(
         else:
             # Check if the proposed best move is valid
             if engine.invalid_best_move:
-                await output_queue.put((fen, "invalid", "invalid"))
+                await output_queue.put((fen, *invalid_placeholder))
             else:
-                await output_queue.put((fen, best_move, score))
+                if full_logs:
+                    await output_queue.put((fen, best_move, score, node_stats))
+                else:
+                    await output_queue.put((fen, best_move, score))
         finally:
             input_queue.task_done()
 
@@ -110,21 +126,39 @@ async def analyze_positions(
 async def analyze_results(
     input_queues: List[asyncio.Queue],
     file_path: Union[str, Path],
+    full_logs: bool = False,
     sleep_after_get: float = 0.1,
     identifier_str: str = "",
 ) -> None:
     num_queues = len(input_queues)
 
-    # Create a file to store the results
-    with open(file_path, "a") as file:
+    # If full logs will be provided, create a second file to store the node stats
+    if full_logs:
+        file_path2 = Path(file_path).with_suffix(".node_stats.txt")
+        file2 = open(file_path2, "a")
+
+    # Create a file to store the results. "r+" means that you first need to read the existing config
+    # in the file in order to not overwrite it.
+    with open(file_path, "r+") as file:
+        # Read the existing config
+        config_str = file.read()
+
+        # Copy the config string into the second file if necessary
+        if full_logs:
+            file2.write(config_str)
+
         file_header = ["fen"] + [f"best_move{i},score{i}" for i in range(1, num_queues + 1)]
         file.write(",".join(file_header) + "\n")
 
         # Repeatedly fetch results from the queues
         while True:
-            fens, best_moves, scores = [], [], []
+            fens, best_moves, scores, node_stats = [], [], [], []
             for queue in input_queues:
-                fen, best_move, score = await queue.get()
+                if full_logs:
+                    fen, best_move, score, node_stats_from_one_model = await queue.get()
+                    node_stats.append(node_stats_from_one_model)
+                else:
+                    fen, best_move, score = await queue.get()
                 fens.append(fen)
                 best_moves.append(best_move)
                 scores.append(score)
@@ -142,9 +176,27 @@ async def analyze_results(
 
             logging.info(f"[{identifier_str}] Received results for {fens[0]}")
 
-            # Write the results to the file
+            # Write the main results to the file
             result_list = [fens[0]] + [f"{best_moves[i]},{scores[i]}" for i in range(num_queues)]
             file.write(",".join(result_list) + "\n")
+
+            # Write the node stats to the second file if necessary
+            if full_logs:
+                file2.write(f"FEN: {fens[0]}\n")
+
+                # Iterate over the node stats for each model
+                for index, node_stats_from_one_model in enumerate(node_stats):
+                    node_stats_from_one_model: List[NodeStat]
+                    file2.write(f"MODEL: {index + 1}\n")
+
+                    # Iterate over the node stats of this model
+                    for node_stat in node_stats_from_one_model:
+                        # First print the move stats of each node
+                        for move, move_stat in node_stat.move_stats.items():
+                            file2.write(f"{move_stat}\n")
+
+                        # Then print the corresponding node stat
+                        file2.write(f"{node_stat}\n")
 
             for queue in input_queues:
                 queue.task_done()
@@ -159,6 +211,7 @@ async def differential_testing(
     *,
     search_limits: Optional[Dict[str, Any]] = None,
     num_positions: int = 1,
+    full_logs: bool = False,
     sleep_between_positions: float = 0.1,
     logger: Optional[logging.Logger] = None,
 ) -> None:
@@ -200,6 +253,7 @@ async def differential_testing(
                 output_queue=output_queue,
                 engine=engine,
                 search_limits=search_limits,
+                full_logs=full_logs,
                 sleep_after_get=sleep_time,
                 engine_generator=engine_generator,
                 network_name=network_name,
@@ -221,6 +275,7 @@ async def differential_testing(
         analyze_results(
             input_queues=[result_queue1, result_queue2],
             file_path=result_file_path,
+            full_logs=full_logs,
             sleep_after_get=0.1,
             identifier_str="RESULT",
         )
@@ -272,15 +327,21 @@ if __name__ == "__main__":
     # Weak local 2: "fbd5e1c049d5a46c098f0f7f12e79e3fb82a7a6cd1c9d1d0894d0aae2865826f"
 
     # fmt: off
-    parser.add_argument("--seed",               type=int, default=42)
-    # parser.add_argument("--engine_config_name", type=str, default="remote_400_nodes.ini")
-    parser.add_argument("--engine_config_name", type=str, default="local_400_nodes.ini")
-    parser.add_argument("--data_config_name",   type=str, default="database.ini")
-    parser.add_argument("--num_positions",      type=int, default=100_000)
-    parser.add_argument("--network_path1",      type=str, default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
-    parser.add_argument("--network_path2",      type=str, default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
-    # parser.add_argument("--network_path2",      type=str, default="BT2-768x15-swa-3250000.pb")  # noqa: E501
-    parser.add_argument("--result_subdir",      type=str, default="main_results")
+    parser.add_argument("--seed",               type=int,  default=42)
+    # parser.add_argument("--engine_config_name", type=str,  default="remote_400_nodes.ini")
+    parser.add_argument("--engine_config_name", type=str,  default="remote_full_logs_400_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name", type=str,  default="local_400_nodes.ini")
+    # parser.add_argument("--data_config_name",   type=str,  default="database.ini")
+    parser.add_argument("--data_config_name",   type=str,  default="interesting_fen_database.ini")
+    # parser.add_argument("--num_positions",      type=int,  default=100_000)
+    #parser.add_argument("--num_positions",      type=int,  default=158)
+    parser.add_argument("--num_positions",      type=int,  default=10)
+    # parser.add_argument("--full_logs",          type=bool, default=False)
+    parser.add_argument("--full_logs",          type=bool, default=True)
+    parser.add_argument("--network_path1",      type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
+    parser.add_argument("--network_path2",      type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
+    # parser.add_argument("--network_path2",      type=str,  default="BT2-768x15-swa-3250000.pb")  # noqa: E501
+    parser.add_argument("--result_subdir",      type=str,  default="main_results")
     # fmt: on
     ##################################
     #           CONFIG END           #
@@ -341,6 +402,7 @@ if __name__ == "__main__":
             search_limits=engine_config.search_limits,
             num_positions=args.num_positions,
             result_file_path=result_file_path,
+            full_logs=args.full_logs,
         )
     )
 
