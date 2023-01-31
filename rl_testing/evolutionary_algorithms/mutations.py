@@ -190,6 +190,72 @@ def mutate_remove_one_piece(
     return board
 
 
+def mutate_move_one_piece(
+    board: chess.Board,
+    color: Optional[chess.Color] = None,
+    _random_state: Optional[np.random.Generator] = None,
+) -> chess.Board:
+    """Move one piece to an empty square. This doesn't need to be a legal move.
+
+    Args:
+        board (chess.Board): The board to mutate.
+        color (Optional[chess.Color], optional): The color of the piece to move. Defaults to None which means choose randomly.
+        _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        chess.Board: The mutated board.
+    """
+
+    random_state = get_random_state(_random_state)
+
+    # Assign a color if none is given
+    if color is None:
+        color = random_state.choice([chess.WHITE, chess.BLACK])
+
+    # Get the pieces for the given color
+    pieces_dict = board.piece_map()
+
+    # Filter all pieces of the given color
+    pieces_dict = {square: piece for square, piece in pieces_dict.items() if piece.color == color}
+
+    # Filter all pieces that are not pinned
+    pieces_dict = {
+        square: piece
+        for square, piece in pieces_dict.items()
+        if not board.is_pinned(piece.color, square)
+    }
+
+    # It's not enough to just move a piece to a random adjacent square, because this might lead to
+    # a check which might be illegal if the same color is to move. So we repeat it until we find a
+    # valid move.
+    if pieces_dict:
+        while True:
+            start_square = random_state.choice(list(pieces_dict.keys()))
+            piece = pieces_dict[start_square]
+
+            # Get all empty squares
+            empty_squares = list(set(chess.SQUARES) - set(board.piece_map().keys()))
+
+            # Move the selected piece to a random square
+            if empty_squares:
+                piece = board.remove_piece_at(start_square)
+                target_square = random_state.choice(empty_squares)
+                board.set_piece_at(target_square, piece)
+
+                # Check validity of new position
+                if board.is_valid():
+                    logging.debug(
+                        f"Moved {piece.symbol()} from {chess.square_name(start_square)} to {chess.square_name(target_square)}\n"
+                    )
+                    break
+                else:
+                    # Undo the move if it is not valid
+                    board.remove_piece_at(target_square)
+                    board.set_piece_at(start_square, piece)
+
+    return board
+
+
 def mutate_move_one_piece_legal(
     board: chess.Board,
     color: Optional[chess.Color] = None,
@@ -425,6 +491,7 @@ def validity_wrapper(
         )
         return board
 
+    inner_function.__name__ = function.__name__
     return inner_function
 
 

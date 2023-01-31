@@ -1,6 +1,7 @@
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
+import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -10,89 +11,65 @@ from rl_testing.util.util import fen_to_file_name
 IMAGE_DIRECTORY = Path(__file__).parent / Path("images")
 RESULT_DIRECTORY = Path(__file__).parent.parent / Path("results")
 
+Fen = str
+NetworkName = str
 
-def load_log_data(file_path: Path) -> Tuple[Dict[str, Dict[str, List[NodeStat]]], List[str]]:
+
+def load_log_data(file_path: Path) -> Tuple[Dict[Fen, List[NodeStat]], NetworkName]:
     # Read all lines of the result file
     with open(file_path, "r") as f:
-        lines = f.readlines()
+        line = f.readline()
 
-    line_index = 0
+        # We are not interested in the first few config lines, except for the network name
+        while "network_name" not in line:
+            line = f.readline()
+        network_name = line.split(" = ")[1].strip().split("-")[0].strip()
 
-    # We are not interested in the first few config lines, except for the two network paths
-    network_mapping = {}
-    while "network_path" not in lines[line_index]:
-        line_index += 1
-    network_mapping["MODEL: 1"] = lines[line_index].split(" = ")[1].strip()
-    network_mapping["MODEL: 2"] = lines[line_index + 1].split(" = ")[1].strip()
-    network_names = [network_mapping[key] for key in network_mapping]
+        # Initialize the result dictionary
+        result_dict: Dict[str, List[NodeStat]] = {}
 
-    # Initialize the result dictionary
-    result_dict: Dict[str, Dict[str, List[NodeStat]]] = {}
+        # Consume all lines including the first empty line
+        while line != "":
+            line = f.readline().strip()
+        line = f.readline().strip()
 
-    # Consume all lines until the first empty line
-    while lines[line_index].strip() != "":
-        line_index += 1
+        current_fen = None
+        move_stats = []
 
-    # Discard all lines until the first empty line
-    lines = lines[line_index + 1 :]
-    current_fen = None
-    current_network = None
-    move_stats = []
+        # Iterate over all lines
+        while line != "":
+            if "FEN:" in line:
+                # This is a new fen
+                current_fen = line.split("FEN: ")[1]
+                result_dict[current_fen] = []
+            elif "MODEL:" in line:
+                pass
+            elif "MoveStat" in line:
+                # This is a new move stat
+                move_stats.append(MoveStat.from_string(line))
+            elif "NodeStat" in line:
+                # This is a new node stat
+                node_stat = NodeStat.from_string(line, move_stats=move_stats)
+                move_stats = []
+                result_dict[current_fen].append(node_stat)
+            else:
+                # This should not happen
+                raise ValueError(f"Unknown line: {line}")
 
-    # Iterate over all lines
-    for line in lines:
-        if "FEN:" in line:
-            # This is a new fen
-            current_fen = line.split("FEN: ")[1].strip()
-            result_dict[current_fen] = {}
-            current_network = None
-        elif "MODEL:" in line:
-            # This is a new network
-            current_network = network_mapping[line.strip()]
-            result_dict[current_fen][current_network] = []
-        elif "MoveStat" in line:
-            # This is a new move stat
-            move_stats.append(MoveStat.from_string(line))
-        elif "NodeStat" in line:
-            # This is a new node stat
-            node_stat = NodeStat.from_string(line, move_stats=move_stats)
-            move_stats = []
-            result_dict[current_fen][current_network].append(node_stat)
-        else:
-            # This should not happen
-            raise ValueError(f"Unknown line: {line}")
+            line = f.readline().strip()
 
-    del lines
-    return result_dict, network_names
+    return result_dict, network_name
 
 
-if __name__ == "__main__":
-    ################
-    # CONFIG START #
-    ################
-    result_folder = RESULT_DIRECTORY / Path("differential_testing/main_results")
-    result_folder_stockfish = RESULT_DIRECTORY / Path("board_analysis")
-    result_file = Path(
-        "STRANGE_results_ENGINE_remote_full_logs_400_nodes_DATA_interesting_fen_database.node_stats.txt"
-    )
-    result_file_stockfish = Path("logs_board_analysis.csv")
-    image_subdirectory = "full_logs/400_nodes"
-    ################
-    #  CONFIG END  #
-    ################
-
+def plot_full_logs(
+    log_data: Dict[Fen, Dict[NetworkName, List[NodeStat]]],
+    stockfish_scores: pd.DataFrame,
+    image_directory: Path,
+    models_ordered: List[NetworkName],
+    model_color_map: Dict[NetworkName, Any],
+):
     # Create the image directory if it does not exist
-    image_directory = IMAGE_DIRECTORY / Path(image_subdirectory)
     image_directory.mkdir(parents=True, exist_ok=True)
-
-    # Load the log data
-    log_data, network_names = load_log_data(result_folder / result_file)
-
-    print("Done")
-
-    # Load the stockfish scores
-    stockfish_scores = pd.read_csv(result_folder_stockfish / result_file_stockfish)
-    stockfish_scores["fen"] = stockfish_scores["fen"].str.strip()
 
     # Create one plot per fen
     for fen in log_data:
@@ -105,8 +82,10 @@ if __name__ == "__main__":
         ax.set_ylabel("Value of the root node")
         ax.set_ylim(-1.1, 1.1)
         ax.grid(True)
-        for network in log_data[fen]:
-            node_stats = log_data[fen][network]
+        for network_name in models_ordered:
+            if network_name not in log_data[fen]:
+                continue
+            node_stats = log_data[fen][network_name]
             x_values = list(map(lambda node_stat: node_stat.visits, node_stats))
             y_values = list(map(lambda node_stat: node_stat.q_value, node_stats))
             if " b " in fen:
@@ -120,7 +99,8 @@ if __name__ == "__main__":
             ax.plot(
                 x_values,
                 y_values,
-                label=network[:7],
+                label=network_name,
+                color=model_color_map[network_name],
             )
 
         # Plot the true score generated by stockfish
@@ -144,3 +124,62 @@ if __name__ == "__main__":
             image_directory / Path(f"{fen_to_file_name(fen)}.png"), bbox_inches="tight", dpi=150
         )
         plt.close(fig)
+
+
+if __name__ == "__main__":
+    ################
+    # CONFIG START #
+    ################
+    result_folder = RESULT_DIRECTORY / Path("score_positions")
+    result_folder_stockfish = RESULT_DIRECTORY / Path("board_analysis")
+    result_file_patterns = [
+        "results_ENGINE_local_full_logs_400_nodes_DATA_interesting_fen_database_NETWORK*"
+    ]
+    result_file_stockfish = Path("logs_board_analysis.csv")
+    image_subdirectory = "full_logs/400_nodes_combined"
+
+    color_map = matplotlib.cm.get_cmap("RdPu")
+
+    model_color_map: Dict[NetworkName, Any] = {
+        "T608927": color_map(0.2),
+        "T611246": color_map(0.36),
+        "T771717": color_map(0.52),
+        "T785469": color_map(0.68),
+        "T807301": color_map(0.84),
+        "T807785": color_map(1.0),
+    }
+
+    models_ordered = list(model_color_map.keys())
+
+    ################
+    #  CONFIG END  #
+    ################
+
+    # Create the image directory if it does not exist
+    image_directory = IMAGE_DIRECTORY / Path(image_subdirectory)
+
+    # Iterate over the result folder and find all result files which match the pattern
+    result_files: List[Path] = []
+    for result_file_pattern in result_file_patterns:
+        result_files.extend(result_folder.glob(result_file_pattern))
+
+    # Remove all files which don't end with node_stats.txt
+    result_files = [
+        result_file for result_file in result_files if result_file.name.endswith("node_stats.txt")
+    ]
+
+    # Load the log data
+    result_data: Dict[Fen, Dict[NetworkName, List[NodeStat]]] = {}
+    for result_file in result_files:
+        print(f"Loading {result_file}")
+        log_data, network_name = load_log_data(result_folder / result_file)
+        for fen in log_data:
+            if fen not in result_data:
+                result_data[fen] = {}
+            result_data[fen][network_name] = log_data[fen]
+
+    # Load the stockfish scores
+    stockfish_scores = pd.read_csv(result_folder_stockfish / result_file_stockfish)
+    stockfish_scores["fen"] = stockfish_scores["fen"].str.strip()
+
+    plot_full_logs(result_data, stockfish_scores, image_directory, models_ordered, model_color_map)

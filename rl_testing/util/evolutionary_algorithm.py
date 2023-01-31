@@ -24,4 +24,5 @@ def clear_fitness_values_wrapper(
 
         return mutated_individual
 
+    inner_function.__name__ = function.__name__
     return inner_function

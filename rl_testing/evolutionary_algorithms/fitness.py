@@ -3,7 +3,6 @@ from typing import Any, Callable, List, Tuple
 
 import chess
 import numpy as np
-
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 
 
@@ -11,11 +10,11 @@ class Fitness(metaclass=abc.ABCMeta):
     def __subclasshook__(cls, subclass):
         return (
             (hasattr(subclass, "use_async") and callable(subclass.use_async))
-            and (hasattr(subclass, "is_bigger_better") and callable(subclass.is_bigger_better))
             and (hasattr(subclass, "best_individual") and callable(subclass.best_individual))
+            and (hasattr(subclass, "worst_individual") and callable(subclass.best_individual))
             and (
                 (hasattr(subclass, "evaluate") and callable(subclass.evaluate))
-                or (hasattr(subclass, "evaluate_async") and callable(subclass.evaluate))
+                or (hasattr(subclass, "evaluate_async") and callable(subclass.evaluate_async))
             )
             or NotImplemented
         )
@@ -26,11 +25,11 @@ class Fitness(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def is_bigger_better(self) -> bool:
+    def best_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def best_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+    def worst_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
         raise NotImplementedError
 
     def evaluate(self, individual: Individual) -> float:
@@ -41,16 +40,17 @@ class Fitness(metaclass=abc.ABCMeta):
 
 
 class PieceNumberFitness(Fitness):
+    def __init__(self, more_pieces_better: bool = True) -> None:
+        self._more_pieces_better = more_pieces_better
+
     def use_async(self) -> bool:
         return False
 
-    def is_bigger_better(self) -> bool:
-        return False
-
     def evaluate(self, board: BoardIndividual) -> float:
-        return float(len(board.piece_map()))
+        num_pieces = float(len(board.piece_map()))
+        return num_pieces if self._more_pieces_better else -num_pieces
 
-    def find_individual(
+    def _find_individual(
         self, individuals: List[BoardIndividual], direction: Callable
     ) -> Tuple[BoardIndividual, float]:
         # Make sure that all individuals have a fitness value and compute it if not.
@@ -62,12 +62,69 @@ class PieceNumberFitness(Fitness):
         return individuals[direction(fitness_vals)], individuals[direction(fitness_vals)].fitness
 
     def best_individual(self, individuals: List[BoardIndividual]) -> Tuple[BoardIndividual, float]:
-        return self.find_individual(individuals, np.argmax)
+        return self._find_individual(individuals, np.argmax)
 
     def worst_individual(
         self, individuals: List[BoardIndividual]
     ) -> Tuple[BoardIndividual, float]:
-        return self.find_individual(individuals, np.argmin)
+        return self._find_individual(individuals, np.argmin)
+
+
+class EditDistanceFitness(Fitness):
+    def __init__(self, target: str) -> None:
+        self._target = self.prepare_fen(target)
+        self.distance_cache: dict[Tuple[str, str], int] = {}
+        self.max_cache_size = 100000
+
+    def prepare_fen(self, fen: str) -> str:
+        return " ".join(fen.split(" ")[:3])
+
+    def use_async(self) -> bool:
+        return False
+
+    def evaluate(self, individual: BoardIndividual) -> float:
+        if len(self.distance_cache) > self.max_cache_size:
+            self.distance_cache: dict[Tuple[str, str], int] = {}
+        return self.levenshtein_distance(self._target, self.prepare_fen(individual.fen()))
+
+    def _find_individual(
+        self, individuals: List[BoardIndividual], direction: Callable
+    ) -> Tuple[BoardIndividual, float]:
+        # Make sure that all individuals have a fitness value and compute it if not.
+        for individual in individuals:
+            if individual.fitness is None:
+                individual.fitness = self.evaluate(individual)
+
+        fitness_vals = np.array([individual.fitness for individual in individuals])
+        return individuals[direction(fitness_vals)], individuals[direction(fitness_vals)].fitness
+
+    def best_individual(self, individuals: List[BoardIndividual]) -> Tuple[BoardIndividual, float]:
+        return self._find_individual(individuals, np.argmin)
+
+    def worst_individual(
+        self, individuals: List[BoardIndividual]
+    ) -> Tuple[BoardIndividual, float]:
+        return self._find_individual(individuals, np.argmax)
+
+    def levenshtein_distance(self, string1: str, string2):
+        if (string1, string2) in self.distance_cache:
+            return self.distance_cache[(string1, string2)]
+        if len(string2) == 0:
+            return len(string1)
+        if len(string1) == 0:
+            return len(string2)
+
+        if string1[0] == string2[0]:
+            return self.levenshtein_distance(string1[1:], string2[1:])
+
+        distance = min(
+            0.5 + self.levenshtein_distance(string1[1:], string2),
+            0.5 + self.levenshtein_distance(string1, string2[1:]),
+            1 + self.levenshtein_distance(string1[1:], string2[1:]),
+        )
+
+        self.distance_cache[(string1, string2)] = distance
+        return distance
 
 
 if __name__ == "__main__":

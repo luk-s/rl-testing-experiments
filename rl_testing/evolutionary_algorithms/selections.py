@@ -11,7 +11,7 @@ def select_tournament(
     individuals: List[Individual],
     rounds: int,
     tournament_size: int,
-    is_bigger_better: bool,
+    find_best_individual: Callable[[List[Individual]], Tuple[Individual, float]],
     _random_state: Optional[np.random.Generator] = None,
 ) -> List[Individual]:
     """
@@ -24,7 +24,8 @@ def select_tournament(
         individuals (List[Individual]): A list of individuals to select from.
         rounds (int): The number of times to select an individual.
         tournament_size (int): The number of individuals to choose from.
-        is_bigger_better (bool): Whether a higher fitness is better.
+        find_best_individual (Callable[[List[Individual]], Tuple[Individual, float]]): A function that finds the best
+            individual in a list of individuals.
         _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
 
     Returns:
@@ -32,12 +33,11 @@ def select_tournament(
 
     """
     random_state = get_random_state(_random_state)
-    optimization_direction = max if is_bigger_better else min
 
     chosen = []
     for i in range(rounds):
         aspirants = random_state.choice(individuals, tournament_size, replace=False)
-        chosen.append(optimization_direction(aspirants, key=attrgetter("fitness")))
+        chosen.append(find_best_individual(aspirants)[0])
     return chosen
 
 

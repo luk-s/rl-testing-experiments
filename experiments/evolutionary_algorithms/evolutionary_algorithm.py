@@ -1,12 +1,14 @@
 import argparse
 import logging
+import multiprocessing
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import chess
 import numpy as np
-from deap import base, creator, tools
+import yaml
 
+import wandb
 from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import get_engine_generator
 from rl_testing.evolutionary_algorithms.crossovers import (
@@ -15,14 +17,20 @@ from rl_testing.evolutionary_algorithms.crossovers import (
     crossover_one_eighth_board,
     crossover_one_quarter_board,
 )
-from rl_testing.evolutionary_algorithms.fitness import PieceNumberFitness
+from rl_testing.evolutionary_algorithms.fitness import (
+    EditDistanceFitness,
+    Fitness,
+    PieceNumberFitness,
+)
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual
 from rl_testing.evolutionary_algorithms.mutations import (
     Mutator,
     mutate_add_one_piece,
     mutate_castling_rights,
     mutate_flip_board,
+    mutate_move_one_piece,
     mutate_move_one_piece_adjacent,
+    mutate_move_one_piece_legal,
     mutate_player_to_move,
     mutate_remove_one_piece,
     mutate_rotate_board,
@@ -31,6 +39,13 @@ from rl_testing.evolutionary_algorithms.selections import Selector, select_tourn
 from rl_testing.util.experiment import store_experiment_params
 
 RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm")
+WANDB_CONFIG_FILE = Path(__file__).parent.parent / Path(
+    "configs/hyperparameter_tuning_configs/config_ea_edit_distance.yaml"
+)
+BestFitnessValue = float
+WorstFitnessValue = float
+AverageFitnessValue = float
+UniqueIndividualFraction = float
 
 
 def get_random_state(random_state: Optional[np.random.Generator] = None) -> np.random.Generator:
@@ -77,14 +92,11 @@ def get_random_individuals(
     return individuals
 
 
-def evolutionary_algorithm():
-    random_state = np.random.default_rng(42)
-
-    POPULATION_SIZE = 100
-    CROSSOVER_PROB, MUTATION_PROB, N_GENERATIONS = 0.2, 0.5, 50
-
+def setup_operators(
+    random_state: np.random.Generator, population_size: int, tournament_fraction: float
+) -> Tuple[Fitness, Mutator, Crossover, Selector]:
     # Initialize the fitness function
-    fitness = PieceNumberFitness()
+    fitness = EditDistanceFitness("3r3k/7p/2p1np2/4p1p1/1Pq1P3/2Q2P2/P4RNP/2R4K b - - 0 42")
 
     # Initialize the mutation functions
     mutate = Mutator(
@@ -95,10 +107,12 @@ def evolutionary_algorithm():
         [
             mutate_player_to_move,
             mutate_add_one_piece,
+            mutate_move_one_piece,
+            mutate_move_one_piece_adjacent,
+            mutate_move_one_piece_legal,
             mutate_remove_one_piece,
             mutate_flip_board,
             mutate_rotate_board,
-            mutate_move_one_piece_adjacent,
         ],
         probability=0.2,
         retries=5,
@@ -137,58 +151,134 @@ def evolutionary_algorithm():
     )
     select.register_selection_function(
         select_tournament,
-        rounds=POPULATION_SIZE,
-        tournament_size=POPULATION_SIZE // 3,
-        is_bigger_better=fitness.is_bigger_better(),
+        rounds=population_size,
+        tournament_size=int(population_size * tournament_fraction),
+        find_best_individual=fitness.best_individual,
     )
 
+    return fitness, mutate, crossover, select
+
+
+def evolutionary_algorithm(
+    population_size: int,
+    crossover_prob: float,
+    mutation_prob: float,
+    num_generations: int,
+    tournament_fraction: float,
+    num_workers: Optional[int] = None,
+    seed: Optional[int] = None,
+) -> Tuple[
+    List[BoardIndividual],
+    List[BestFitnessValue],
+    List[AverageFitnessValue],
+    List[WorstFitnessValue],
+    List[UniqueIndividualFraction],
+]:
+    for parameter in [
+        crossover_prob,
+        mutation_prob,
+        tournament_fraction,
+    ]:
+        assert 0 <= parameter <= 1, f"Parameter {parameter = } must be between 0 and 1."
+
+    if num_workers is None:
+        num_workers = multiprocessing.cpu_count()
+
+    random_state = np.random.default_rng(seed)
+
+    # population_size = 1000
+    # crossover_prob = 0.2
+    # mutation_prob = 0.5
+    # n_generations = 50
+
+    # Initialize the operators
+    fitness, mutate, crossover, select = setup_operators(
+        random_state, population_size, tournament_fraction
+    )
+
+    pool = multiprocessing.Pool(processes=num_workers)
+
+    best_fitness_values = []
+    average_fitness_values = []
+    worst_fitness_values = []
+    unique_individual_fractions = []
+
     # Create the population
-    population = get_random_individuals("data/random_positions.txt", POPULATION_SIZE, random_state)
+    population = get_random_individuals("data/random_positions.txt", population_size, random_state)
 
     # Evaluate the entire population
     fitness_values = map(fitness.evaluate, population)
     for individual, fitness_val in zip(population, fitness_values):
         individual.fitness = fitness_val
 
-    for generation in range(N_GENERATIONS):
-        print(f"{generation = }")
+    for generation in range(num_generations):
+        # print(f"{generation = }")
         # Select the next generation individuals
         offspring = select(population)
 
         # Clone the selected individuals
-        offspring = list(map(chess.Board.copy, offspring))
+        offspring: List[BoardIndividual] = list(map(chess.Board.copy, offspring))
 
         # Apply crossover on the offspring
+        mated_children: List[BoardIndividual] = []
         for child1, child2 in zip(offspring[::2], offspring[1::2]):
-            if random_state.random() < CROSSOVER_PROB:
-                crossover(child1, child2)
+            if random_state.random() < crossover_prob:
+                mated1, mated2 = crossover(child1, child2)
+                mated_children.append(mated1)
+                mated_children.append(mated2)
+            else:
+                mated_children.append(child1)
+                mated_children.append(child2)
 
         # Apply mutation on the offspring
-        for mutant in offspring:
-            if random_state.random() < MUTATION_PROB:
-                mutate(mutant)
+        mutated_children: List[BoardIndividual] = []
+        for mutant in mated_children:
+            if random_state.random() < mutation_prob:
+                mutated_children.append(mutate(mutant))
+            else:
+                mutated_children.append(mutant)
 
         # Evaluate the individuals with an invalid fitness
         unevaluated_individuals = [
-            individual for individual in offspring if individual.fitness is None
+            individual for individual in mutated_children if individual.fitness is None
         ]
-        fitness_values = map(fitness.evaluate, unevaluated_individuals)
+        fitness_values = pool.map(fitness.evaluate, unevaluated_individuals)
         for individual, fitness_val in zip(unevaluated_individuals, fitness_values):
             individual.fitness = fitness_val
 
         # The population is entirely replaced by the offspring
-        population = offspring
+        population = mutated_children
 
         # Print the best individual and its fitness
         best_individual, best_fitness = fitness.best_individual(population)
-        print(f"{best_individual = }, {best_fitness = }")
+        best_fitness_values.append(best_fitness)
+        # print(f"{best_individual = }, {best_fitness = }")
 
         # Print the worst individual and its fitness
         worst_individual, worst_fitness = fitness.worst_individual(population)
-        print(f"{worst_individual = }, {worst_fitness = }")
-        print()
+        worst_fitness_values.append(worst_fitness)
+        # print(f"{worst_individual = }, {worst_fitness = }")
 
-    return population
+        # Print the average fitness
+        average_fitness = sum(individual.fitness for individual in population) / population_size
+        average_fitness_values.append(average_fitness)
+        # print(f"{average_fitness = }")
+
+        # Print the number of unique individuals
+        unique_individuals = set([p.fen() for p in population])
+        unique_individual_fractions.append(len(unique_individuals) / population_size)
+        # print(f"Number of unique individuals = {len(unique_individuals)}")
+        # print()
+
+    pool.close()
+
+    return (
+        population,
+        best_fitness_values,
+        average_fitness_values,
+        worst_fitness_values,
+        unique_individual_fractions,
+    )
 
 
 if __name__ == "__main__":
@@ -256,8 +346,71 @@ if __name__ == "__main__":
         namespace=args, result_file_path=result_file_path, source_file_path=__file__
     )
 
-    # Run the experiment
-    population = evolutionary_algorithm()
+    # Read the weights and biases config file
+    with open(WANDB_CONFIG_FILE, "r") as f:
+        wandb_config = yaml.safe_load(f)
+
+    run = wandb.init(config=wandb_config, project="rl-testing")
+
+    # Initialize the result lists
+    (
+        populations,
+        best_fitness_value_series,
+        average_fitness_value_series,
+        worst_fitness_value_series,
+        unique_individual_fractions,
+    ) = ([], [], [], [], [])
+
+    # Run the evolutionary algorithm 'num_runs_per_config' times
+    for seed in range(wandb.config.num_runs_per_config):
+        print(f"Starting run {seed + 1}/{wandb.config.num_runs_per_config}")
+        (
+            population,
+            best_fitness_values,
+            average_fitness_values,
+            worst_fitness_values,
+            unique_individual_fraction,
+        ) = evolutionary_algorithm(
+            population_size=wandb.config.population_size,
+            crossover_prob=wandb.config.crossover_prob,
+            mutation_prob=wandb.config.mutation_prob,
+            num_generations=wandb.config.num_generations,
+            tournament_fraction=wandb.config.tournament_fraction,
+            num_workers=wandb.config.num_workers,
+            seed=seed,
+        )
+        populations.append(population)
+        best_fitness_value_series.append(best_fitness_values)
+        average_fitness_value_series.append(average_fitness_values)
+        worst_fitness_value_series.append(worst_fitness_values)
+        unique_individual_fractions.append(unique_individual_fraction)
+
+    # Average the fitness values and unique individual fractions over all runs
+    # and compute the standard deviation
+    best_fitness_values = np.mean(best_fitness_value_series, axis=0)
+    average_fitness_values = np.mean(average_fitness_value_series, axis=0)
+    worst_fitness_values = np.mean(worst_fitness_value_series, axis=0)
+    unique_individual_fraction = np.mean(unique_individual_fractions, axis=0)
+    best_fitness_values_std = np.std(best_fitness_value_series, axis=0)
+    average_fitness_values_std = np.std(average_fitness_value_series, axis=0)
+    worst_fitness_values_std = np.std(worst_fitness_value_series, axis=0)
+    unique_individual_fraction_std = np.std(unique_individual_fractions, axis=0)
+
+    # Log the results
+    for i in range(len(best_fitness_values)):
+        wandb.log(
+            {
+                "best_fitness_value_avg": best_fitness_values[i],
+                "best_fitness_value_std": best_fitness_values_std[i],
+                "average_fitness_value_avg": average_fitness_values[i],
+                "average_fitness_value_std": average_fitness_values_std[i],
+                "worst_fitness_value_avg": worst_fitness_values[i],
+                "worst_fitness_value_std": worst_fitness_values_std[i],
+                "unique_individual_fraction_avg": unique_individual_fraction[i],
+                "unique_individual_fraction_std": unique_individual_fraction_std[i],
+            },
+            step=i,
+        )
+
     fitness_values = [individual.fitness for individual in population]
     best_individual = population[np.argmin(fitness_values)]
-    print(str(best_individual))
