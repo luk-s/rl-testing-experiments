@@ -2,7 +2,7 @@ import argparse
 import logging
 import multiprocessing
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import chess
 import numpy as np
@@ -42,10 +42,32 @@ RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm
 WANDB_CONFIG_FILE = Path(__file__).parent.parent / Path(
     "configs/hyperparameter_tuning_configs/config_ea_edit_distance.yaml"
 )
+DEBUG = False
+DEBUG_CONFIG = {
+    "crossover_prob": 0.3379889108848678,
+    "mutation_prob": 0.9247393367296812,
+    "num_generations": 29,
+    "num_runs_per_config": 15,
+    "num_workers": 8,
+    "population_size": 777,
+    "tournament_fraction": 0.6969565124339143,
+}
+
 BestFitnessValue = float
 WorstFitnessValue = float
 AverageFitnessValue = float
 UniqueIndividualFraction = float
+
+
+class FakeConfig:
+    def __init__(self, config: Dict[str, Any]) -> None:
+        # Assert that all keys of the config dictionary are strings
+        assert all(
+            [isinstance(key, str) for key in config]
+        ), "All dictionary keys must be strings!"
+
+        for key in config:
+            setattr(self, key, config[key])
 
 
 def get_random_state(random_state: Optional[np.random.Generator] = None) -> np.random.Generator:
@@ -212,7 +234,8 @@ def evolutionary_algorithm(
         individual.fitness = fitness_val
 
     for generation in range(num_generations):
-        # print(f"{generation = }")
+        if DEBUG:
+            print(f"{generation = }")
         # Select the next generation individuals
         offspring = select(population)
 
@@ -252,23 +275,27 @@ def evolutionary_algorithm(
         # Print the best individual and its fitness
         best_individual, best_fitness = fitness.best_individual(population)
         best_fitness_values.append(best_fitness)
-        # print(f"{best_individual = }, {best_fitness = }")
+        if DEBUG:
+            print(f"{best_individual = }, {best_fitness = }")
 
         # Print the worst individual and its fitness
         worst_individual, worst_fitness = fitness.worst_individual(population)
         worst_fitness_values.append(worst_fitness)
-        # print(f"{worst_individual = }, {worst_fitness = }")
+        if DEBUG:
+            print(f"{worst_individual = }, {worst_fitness = }")
 
         # Print the average fitness
         average_fitness = sum(individual.fitness for individual in population) / population_size
         average_fitness_values.append(average_fitness)
-        # print(f"{average_fitness = }")
+        if DEBUG:
+            print(f"{average_fitness = }")
 
         # Print the number of unique individuals
         unique_individuals = set([p.fen() for p in population])
         unique_individual_fractions.append(len(unique_individuals) / population_size)
-        # print(f"Number of unique individuals = {len(unique_individuals)}")
-        # print()
+        if DEBUG:
+            print(f"Number of unique individuals = {len(unique_individuals)}")
+            print()
 
     pool.close()
 
@@ -350,7 +377,11 @@ if __name__ == "__main__":
     with open(WANDB_CONFIG_FILE, "r") as f:
         wandb_config = yaml.safe_load(f)
 
-    run = wandb.init(config=wandb_config, project="rl-testing")
+    if not DEBUG:
+        run = wandb.init(config=wandb_config, project="rl-testing")
+        wandb_config = wandb.config
+    else:
+        wandb_config = FakeConfig(DEBUG_CONFIG)
 
     # Initialize the result lists
     (
@@ -362,8 +393,8 @@ if __name__ == "__main__":
     ) = ([], [], [], [], [])
 
     # Run the evolutionary algorithm 'num_runs_per_config' times
-    for seed in range(wandb.config.num_runs_per_config):
-        print(f"Starting run {seed + 1}/{wandb.config.num_runs_per_config}")
+    for seed in range(wandb_config.num_runs_per_config):
+        print(f"Starting run {seed + 1}/{wandb_config.num_runs_per_config}")
         (
             population,
             best_fitness_values,
@@ -371,12 +402,12 @@ if __name__ == "__main__":
             worst_fitness_values,
             unique_individual_fraction,
         ) = evolutionary_algorithm(
-            population_size=wandb.config.population_size,
-            crossover_prob=wandb.config.crossover_prob,
-            mutation_prob=wandb.config.mutation_prob,
-            num_generations=wandb.config.num_generations,
-            tournament_fraction=wandb.config.tournament_fraction,
-            num_workers=wandb.config.num_workers,
+            population_size=wandb_config.population_size,
+            crossover_prob=wandb_config.crossover_prob,
+            mutation_prob=wandb_config.mutation_prob,
+            num_generations=wandb_config.num_generations,
+            tournament_fraction=wandb_config.tournament_fraction,
+            num_workers=wandb_config.num_workers,
             seed=seed,
         )
         populations.append(population)
@@ -397,20 +428,21 @@ if __name__ == "__main__":
     unique_individual_fraction_std = np.std(unique_individual_fractions, axis=0)
 
     # Log the results
-    for i in range(len(best_fitness_values)):
-        wandb.log(
-            {
-                "best_fitness_value_avg": best_fitness_values[i],
-                "best_fitness_value_std": best_fitness_values_std[i],
-                "average_fitness_value_avg": average_fitness_values[i],
-                "average_fitness_value_std": average_fitness_values_std[i],
-                "worst_fitness_value_avg": worst_fitness_values[i],
-                "worst_fitness_value_std": worst_fitness_values_std[i],
-                "unique_individual_fraction_avg": unique_individual_fraction[i],
-                "unique_individual_fraction_std": unique_individual_fraction_std[i],
-            },
-            step=i,
-        )
+    if not DEBUG:
+        for i in range(len(best_fitness_values)):
+            wandb.log(
+                {
+                    "best_fitness_value_avg": best_fitness_values[i],
+                    "best_fitness_value_std": best_fitness_values_std[i],
+                    "average_fitness_value_avg": average_fitness_values[i],
+                    "average_fitness_value_std": average_fitness_values_std[i],
+                    "worst_fitness_value_avg": worst_fitness_values[i],
+                    "worst_fitness_value_std": worst_fitness_values_std[i],
+                    "unique_individual_fraction_avg": unique_individual_fraction[i],
+                    "unique_individual_fraction_std": unique_individual_fraction_std[i],
+                },
+                step=i,
+            )
 
     fitness_values = [individual.fitness for individual in population]
     best_individual = population[np.argmin(fitness_values)]

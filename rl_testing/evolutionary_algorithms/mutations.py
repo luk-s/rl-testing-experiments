@@ -102,6 +102,7 @@ def mutate_castling_rights(
 def mutate_add_one_piece(
     board: chess.Board,
     color: Optional[chess.Color] = None,
+    max_tries: int = 10,
     _random_state: Optional[np.random.Generator] = None,
 ) -> chess.Board:
     """Add one missing piece. If there are no missing pieces, do nothing.
@@ -109,6 +110,7 @@ def mutate_add_one_piece(
     Args:
         board (chess.Board): The board to mutate.
         color (Optional[chess.Color], optional): The color of the piece to add. Defaults to None which means choose randomly.
+        max_tries (int, optional): The maximum number of tries to find a valid square. Defaults to 10.
         _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
 
     Returns:
@@ -132,11 +134,11 @@ def mutate_add_one_piece(
     empty_squares = list(set(chess.SQUARES) - set(pieces_dict.keys()))
 
     # Add one missing piece for the selected color at random
-    if missing_pieces:
+    if missing_pieces and sum(piece_count.values()) > 0:
         # It's not enough to just add a piece at a random empty square, because of additional
         # rules like e.g. a pawn can't be added to the first or last rank. So we repeat it until
         # we find a valid square.
-        while True:
+        for _ in range(max_tries):
             piece = random_state.choice(missing_pieces)
             square = random_state.choice(empty_squares)
             board.set_piece_at(square, chess.Piece.from_symbol(piece))
@@ -193,6 +195,7 @@ def mutate_remove_one_piece(
 def mutate_move_one_piece(
     board: chess.Board,
     color: Optional[chess.Color] = None,
+    max_tries: int = 10,
     _random_state: Optional[np.random.Generator] = None,
 ) -> chess.Board:
     """Move one piece to an empty square. This doesn't need to be a legal move.
@@ -200,6 +203,7 @@ def mutate_move_one_piece(
     Args:
         board (chess.Board): The board to mutate.
         color (Optional[chess.Color], optional): The color of the piece to move. Defaults to None which means choose randomly.
+        max_tries (int, optional): The maximum number of tries to find a valid square. Defaults to 10.
         _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
 
     Returns:
@@ -229,7 +233,7 @@ def mutate_move_one_piece(
     # a check which might be illegal if the same color is to move. So we repeat it until we find a
     # valid move.
     if pieces_dict:
-        while True:
+        for _ in range(max_tries):
             start_square = random_state.choice(list(pieces_dict.keys()))
             piece = pieces_dict[start_square]
 
@@ -305,6 +309,7 @@ def mutate_move_one_piece_legal(
 def mutate_move_one_piece_adjacent(
     board: chess.Board,
     color: Optional[chess.Color] = None,
+    max_tries: int = 10,
     _random_state: Optional[np.random.Generator] = None,
 ) -> chess.Board:
     """Move one piece to an adjacent board square. This doesn't need to be a legal move.
@@ -312,6 +317,7 @@ def mutate_move_one_piece_adjacent(
     Args:
         board (chess.Board): The board to mutate.
         color (Optional[chess.Color], optional): The color of the piece to move. Defaults to None which means choose randomly.
+        max_tries (int, optional): The maximum number of tries to find a valid square. Defaults to 10.
         _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
 
     Returns:
@@ -341,7 +347,7 @@ def mutate_move_one_piece_adjacent(
     # a check which might be illegal if the same color is to move. So we repeat it until we find a
     # valid move.
     if pieces_dict:
-        while True:
+        for _ in range(max_tries):
             start_square = random_state.choice(list(pieces_dict.keys()))
             piece = pieces_dict[start_square]
 
