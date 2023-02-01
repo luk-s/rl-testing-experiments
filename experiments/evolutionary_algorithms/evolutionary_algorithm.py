@@ -1,6 +1,8 @@
 import argparse
 import logging
 import multiprocessing
+import time
+from itertools import chain
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -35,7 +37,10 @@ from rl_testing.evolutionary_algorithms.mutations import (
     mutate_remove_one_piece,
     mutate_rotate_board,
 )
-from rl_testing.evolutionary_algorithms.selections import Selector, select_tournament
+from rl_testing.evolutionary_algorithms.selections import (
+    Selector,
+    select_tournament_fast,
+)
 from rl_testing.util.experiment import store_experiment_params
 
 RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm")
@@ -115,7 +120,9 @@ def get_random_individuals(
 
 
 def setup_operators(
-    random_state: np.random.Generator, population_size: int, tournament_fraction: float
+    random_state: np.random.Generator,
+    population_size: int,
+    tournament_fraction: float,
 ) -> Tuple[Fitness, Mutator, Crossover, Selector]:
     # Initialize the fitness function
     fitness = EditDistanceFitness("3r3k/7p/2p1np2/4p1p1/1Pq1P3/2Q2P2/P4RNP/2R4K b - - 0 42")
@@ -172,13 +179,23 @@ def setup_operators(
         _random_state=random_state,
     )
     select.register_selection_function(
-        select_tournament,
-        rounds=population_size,
+        select_tournament_fast,
         tournament_size=int(population_size * tournament_fraction),
-        find_best_individual=fitness.best_individual,
+        is_bigger_better=fitness.is_bigger_better,
     )
 
     return fitness, mutate, crossover, select
+
+
+def log_time(start_time: float, message: str = ""):
+    """Log the time since the start of the program.
+
+    Args:
+        start_time (float): The time the program started.
+    """
+    end_time = time.time()
+    time_elapsed = end_time - start_time
+    logging.info(f"Time {message}: {time_elapsed:.2f} seconds.")
 
 
 def evolutionary_algorithm(
@@ -196,6 +213,7 @@ def evolutionary_algorithm(
     List[WorstFitnessValue],
     List[UniqueIndividualFraction],
 ]:
+    start_time = time.time()
     for parameter in [
         crossover_prob,
         mutation_prob,
@@ -218,109 +236,145 @@ def evolutionary_algorithm(
         random_state, population_size, tournament_fraction
     )
 
-    pool = multiprocessing.Pool(processes=num_workers)
+    with multiprocessing.Pool(processes=num_workers) as pool:
 
-    best_fitness_values = []
-    average_fitness_values = []
-    worst_fitness_values = []
-    unique_individual_fractions = []
+        best_fitness_values = []
+        average_fitness_values = []
+        worst_fitness_values = []
+        unique_individual_fractions = []
+        chunk_size = population_size // num_workers // 5
 
-    # Create the population
-    population = get_random_individuals("data/random_positions.txt", population_size, random_state)
+        # Create the population
+        log_time(start_time, "before creating population")
+        population = get_random_individuals(
+            "data/random_positions.txt", population_size, random_state
+        )
+        log_time(start_time, "after creating population")
 
-    # Evaluate the entire population
-    fitness_values = map(fitness.evaluate, population)
-    for individual, fitness_val in zip(population, fitness_values):
-        individual.fitness = fitness_val
-
-    for generation in range(num_generations):
-        if DEBUG:
-            print(f"{generation = }")
-        # Select the next generation individuals
-        offspring = select(population)
-
-        # Clone the selected individuals
-        offspring: List[BoardIndividual] = list(map(BoardIndividual.copy, offspring))
-
-        # Apply crossover on the offspring
-        mated_children: List[BoardIndividual] = []
-        couple_candidates = list(zip(offspring[::2], offspring[1::2]))
-        random_values = random_state.random(size=len(offspring) // 2)
-
-        # Filter out the individuals that will mate
-        mating_candidates = [
-            couple_candidates[i]
-            for i, random_value in enumerate(random_values)
-            if random_value < crossover_prob
-        ]
-        single_children = [
-            couple_candidates[i]
-            for i, random_value in enumerate(random_values)
-            if random_value >= crossover_prob
-        ]
-
-        # Apply crossover on the mating candidates
-        mated_tuples = pool.map(crossover, mating_candidates)
-        for individual1, individual2 in mated_tuples + single_children:
-            mated_children.append(individual1)
-            mated_children.append(individual2)
-
-        # Apply mutation on the offspring
-        mutated_children: List[BoardIndividual] = []
-        random_values = random_state.random(size=len(mated_children))
-
-        # Filter out the individuals that will mutate
-        mutation_candidates = [
-            mated_children[i]
-            for i, random_value in enumerate(random_values)
-            if random_value < mutation_prob
-        ]
-        non_mutation_candidates = [
-            mated_children[i]
-            for i, random_value in enumerate(random_values)
-            if random_value >= mutation_prob
-        ]
-
-        # Apply mutation on the mutation candidates
-        mutated_children = pool.map(mutate, mutation_candidates) + non_mutation_candidates
-
-        # Evaluate the individuals with an invalid fitness
-        unevaluated_individuals = [
-            individual for individual in mutated_children if individual.fitness is None
-        ]
-        fitness_values = pool.map(fitness.evaluate, unevaluated_individuals)
-        for individual, fitness_val in zip(unevaluated_individuals, fitness_values):
+        # Evaluate the entire population
+        for individual, fitness_val in zip(
+            population, pool.imap(fitness.evaluate, population, chunksize=chunk_size)
+        ):
             individual.fitness = fitness_val
 
-        # The population is entirely replaced by the offspring
-        population = mutated_children
+        for generation in range(num_generations):
+            logging.info(f"{generation = }")
+            # Select the next generation individuals
+            log_time(start_time, "before selecting")
 
-        # Print the best individual and its fitness
-        best_individual, best_fitness = fitness.best_individual(population)
-        best_fitness_values.append(best_fitness)
-        if DEBUG:
-            print(f"{best_individual = }, {best_fitness = }")
+            # prepare the chunk sizes for the selection
+            chunk_sizes = [population_size // num_workers] * num_workers + [
+                population_size % num_workers
+            ]
+            # Select the individuals in parallel
+            offspring = []
+            results_async = [
+                pool.apply_async(
+                    select,
+                    # args=(population, chunk_size_i),
+                    kwds={"individuals": population, "rounds": chunk_size_i},
+                )
+                for chunk_size_i in chunk_sizes
+            ]
+            for result_async in results_async:
+                offspring += result_async.get()
 
-        # Print the worst individual and its fitness
-        worst_individual, worst_fitness = fitness.worst_individual(population)
-        worst_fitness_values.append(worst_fitness)
-        if DEBUG:
-            print(f"{worst_individual = }, {worst_fitness = }")
+            # Clone the selected individuals
+            log_time(start_time, "before cloning")
+            offspring: List[BoardIndividual] = list(map(BoardIndividual.copy, offspring))
+            log_time(start_time, "after cloning")
 
-        # Print the average fitness
-        average_fitness = sum(individual.fitness for individual in population) / population_size
-        average_fitness_values.append(average_fitness)
-        if DEBUG:
-            print(f"{average_fitness = }")
+            # Apply crossover on the offspring
+            mated_children: List[BoardIndividual] = []
+            couple_candidates = list(zip(offspring[::2], offspring[1::2]))
+            random_values = random_state.random(size=len(offspring) // 2)
 
-        # Print the number of unique individuals
-        unique_individuals = set([p.fen() for p in population])
-        unique_individual_fractions.append(len(unique_individuals) / population_size)
-        if DEBUG:
-            print(f"Number of unique individuals = {len(unique_individuals)}")
-            print()
+            # Filter out the individuals that will mate
+            mating_candidates = [
+                couple_candidates[i]
+                for i, random_value in enumerate(random_values)
+                if random_value < crossover_prob
+            ]
+            single_children = [
+                couple_candidates[i]
+                for i, random_value in enumerate(random_values)
+                if random_value >= crossover_prob
+            ]
 
-    pool.close()
+            # Apply crossover on the mating candidates
+            log_time(start_time, "before mating")
+            for individual1, individual2 in chain(
+                single_children, pool.imap(crossover, mating_candidates, chunksize=chunk_size)
+            ):
+                mated_children.append(individual1)
+                mated_children.append(individual2)
+            log_time(start_time, "after mating")
+
+            # Apply mutation on the offspring
+            mutated_children: List[BoardIndividual] = []
+            random_values = random_state.random(size=len(mated_children))
+
+            # Filter out the individuals that will mutate
+            mutation_candidates = [
+                mated_children[i]
+                for i, random_value in enumerate(random_values)
+                if random_value < mutation_prob
+            ]
+            non_mutation_candidates = [
+                mated_children[i]
+                for i, random_value in enumerate(random_values)
+                if random_value >= mutation_prob
+            ]
+
+            # Apply mutation on the mutation candidates
+            log_time(start_time, "before mutating")
+            unevaluated_individuals = []
+            mutated_children = []
+            for individual in chain(
+                pool.imap(mutate, mutation_candidates, chunksize=chunk_size),
+                non_mutation_candidates,
+            ):
+                if individual.fitness is None:
+                    unevaluated_individuals.append(individual)
+                mutated_children.append(individual)
+            log_time(start_time, "after mutating")
+
+            # Evaluate the individuals with an invalid fitness
+            log_time(start_time, "before evaluating")
+            for individual, fitness_val in zip(
+                unevaluated_individuals, pool.imap(fitness.evaluate, unevaluated_individuals)
+            ):
+                individual.fitness = fitness_val
+            log_time(start_time, "after evaluating")
+
+            # The population is entirely replaced by the offspring
+            population = mutated_children
+
+            log_time(start_time, "before finding best individual")
+            # Print the best individual and its fitness
+            best_individual, best_fitness = fitness.best_individual(population)
+            best_fitness_values.append(best_fitness)
+            logging.info(f"{best_individual = }, {best_fitness = }")
+
+            log_time(start_time, "before finding worst individual")
+            # Print the worst individual and its fitness
+            worst_individual, worst_fitness = fitness.worst_individual(population)
+            worst_fitness_values.append(worst_fitness)
+            logging.info(f"{worst_individual = }, {worst_fitness = }")
+
+            log_time(start_time, "before finding average fitness")
+            # Print the average fitness
+            average_fitness = (
+                sum(individual.fitness for individual in population) / population_size
+            )
+            average_fitness_values.append(average_fitness)
+            logging.info(f"{average_fitness = }")
+
+            log_time(start_time, "before finding unique individuals")
+            # Print the number of unique individuals
+            unique_individuals = set([p.fen() for p in population])
+            unique_individual_fractions.append(len(unique_individuals) / population_size)
+            logging.info(f"Number of unique individuals = {len(unique_individuals)}\n")
 
     return (
         population,

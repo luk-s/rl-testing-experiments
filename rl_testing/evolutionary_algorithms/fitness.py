@@ -3,6 +3,7 @@ from typing import Any, Callable, List, Tuple
 
 import chess
 import numpy as np
+
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 
 
@@ -12,6 +13,7 @@ class Fitness(metaclass=abc.ABCMeta):
             (hasattr(subclass, "use_async") and callable(subclass.use_async))
             and (hasattr(subclass, "best_individual") and callable(subclass.best_individual))
             and (hasattr(subclass, "worst_individual") and callable(subclass.best_individual))
+            and (hasattr(subclass, "is_bigger_better"))
             and (
                 (hasattr(subclass, "evaluate") and callable(subclass.evaluate))
                 or (hasattr(subclass, "evaluate_async") and callable(subclass.evaluate_async))
@@ -22,6 +24,11 @@ class Fitness(metaclass=abc.ABCMeta):
     @property
     @abc.abstractmethod
     def use_async(self) -> bool:
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def is_bigger_better(self) -> bool:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -43,8 +50,13 @@ class PieceNumberFitness(Fitness):
     def __init__(self, more_pieces_better: bool = True) -> None:
         self._more_pieces_better = more_pieces_better
 
+    @property
     def use_async(self) -> bool:
         return False
+
+    @property
+    def is_bigger_better(self) -> bool:
+        return self._more_pieces_better
 
     def evaluate(self, board: BoardIndividual) -> float:
         num_pieces = float(len(board.piece_map()))
@@ -79,7 +91,12 @@ class EditDistanceFitness(Fitness):
     def prepare_fen(self, fen: str) -> str:
         return " ".join(fen.split(" ")[:3])
 
+    @property
     def use_async(self) -> bool:
+        return False
+
+    @property
+    def is_bigger_better(self) -> bool:
         return False
 
     def evaluate(self, individual: BoardIndividual) -> float:
@@ -93,7 +110,10 @@ class EditDistanceFitness(Fitness):
         # Make sure that all individuals have a fitness value and compute it if not.
         for individual in individuals:
             if individual.fitness is None:
-                individual.fitness = self.evaluate(individual)
+                raise ValueError(
+                    "Individuals must have a fitness value before calling this method."
+                )
+                # individual.fitness = self.evaluate(individual)
 
         fitness_vals = np.array([individual.fitness for individual in individuals])
         return individuals[direction(fitness_vals)], individuals[direction(fitness_vals)].fitness
