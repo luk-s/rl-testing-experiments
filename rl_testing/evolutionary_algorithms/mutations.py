@@ -526,10 +526,8 @@ class MutationFunction:
         self.retries = retries
         self.random_state = get_random_state(_random_state)
 
-        self.function = validity_wrapper(function, self.retries)
-
-        if clear_fitness_values:
-            self.function = clear_fitness_values_wrapper(self.function)
+        self.function = function
+        self.clear_fitness_values = clear_fitness_values
 
         self.args = args
         self.kwargs = kwargs
@@ -547,14 +545,31 @@ class MutationFunction:
         Returns:
             BoardIndividual: The mutated board.
         """
-        return self.function(
-            board,
-            _random_state=self.random_state,
-            *self.args,
-            *new_args,
-            **self.kwargs,
-            **new_kwargs,
+        for _ in range(self.retries + 1):
+            # Clone the original board
+            board_candidate = board.copy()
+
+            # Retry the mutation if the board is invalid
+            board_candidate = self.function(
+                board_candidate,
+                _random_state=self.random_state,
+                *self.args,
+                *new_args,
+                **self.kwargs,
+                **new_kwargs,
+            )
+
+            # Check if the board is valid
+            if board_candidate.is_valid():
+                if self.clear_fitness_values:
+                    del board_candidate.fitness
+                return board_candidate
+
+        logging.debug(
+            f"Board {board_candidate.fen()} is invalid after mutation '{self.function.__name__}', returning original board"
         )
+        return board
+        return
 
 
 class Mutator:

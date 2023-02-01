@@ -3,6 +3,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import chess
 import numpy as np
+
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.util import get_random_state
 
@@ -327,10 +328,8 @@ class CrossoverFunction:
         self.retries = retries
         self.random_state = get_random_state(_random_state)
 
-        self.function = validity_wrapper(function, self.retries)
-
-        if clear_fitness_values:
-            self.function = clear_fitness_values_wrapper(self.function)
+        self.clear_fitness_values = clear_fitness_values
+        self.function = function
 
         self.args = args
         self.kwargs = kwargs
@@ -349,15 +348,34 @@ class CrossoverFunction:
         Returns:
             Tuple[BoardIndividual, BoardIndividual]: The mated boards.
         """
-        return self.function(
-            board1,
-            board2,
-            _random_state=self.random_state,
-            *self.args,
-            *new_args,
-            **self.kwargs,
-            **new_kwargs,
+        for _ in range(self.retries + 1):
+            # Clone the original board
+            board_candidate1 = board1.copy()
+            board_candidate2 = board2.copy()
+
+            # Retry the crossover if the board is invalid
+            board_candidate1, board_candidate2 = self.function(
+                board_candidate1,
+                board_candidate2,
+                _random_state=self.random_state,
+                *self.args,
+                *new_args,
+                **self.kwargs,
+                **new_kwargs,
+            )
+
+            # Check if the board is valid
+            if board_candidate1.is_valid() and board_candidate2.is_valid():
+                if self.clear_fitness_values:
+                    del board_candidate1.fitness
+                    del board_candidate2.fitness
+                return board_candidate1, board_candidate2
+
+        logging.debug(
+            f"Board {board_candidate1.fen()} or Board {board_candidate2.fen()}"
+            f" is invalid after crossover '{self.function.__name__}', returning original boards"
         )
+        return board1, board2
 
 
 class Crossover:
@@ -434,17 +452,17 @@ class Crossover:
             )
 
     def __call__(
-        self, individual1: Individual, individual2: Individual, *new_args: Any, **new_kwargs: Any
+        self, individual_tuple: Tuple[Individual, Individual], *new_args: Any, **new_kwargs: Any
     ) -> Tuple[Individual, Individual]:
         """Calls the crossover function on the two individuals according to the crossover strategy.
 
         Args:
-            individual1 (Individual): The first individual.
-            individual2 (Individual): The second individual.
+            individual_tuple (Tuple[Individual, Individual]): The two individuals to mate.
 
         Returns:
             Tuple[Individual, Individual]: The two individuals after the crossover.
         """
+        individual1, individual2 = individual_tuple
         crossover_functions_to_apply = []
 
         if self.crossover_strategy == "all":

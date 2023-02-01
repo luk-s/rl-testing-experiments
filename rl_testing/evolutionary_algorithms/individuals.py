@@ -6,7 +6,7 @@ import chess
 
 class Individual(metaclass=abc.ABCMeta):
     def __subclasshook__(cls, subclass):
-        return hasattr(subclass, "fitness") or NotImplemented
+        return hasattr(subclass, "fitness") and hasattr(subclass, "copy") or NotImplemented
 
     @property
     @abc.abstractmethod
@@ -16,6 +16,10 @@ class Individual(metaclass=abc.ABCMeta):
     @fitness.setter
     @abc.abstractmethod
     def fitness(self, value: float) -> None:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def copy(self) -> "Individual":
         raise NotImplementedError
 
 
@@ -35,6 +39,11 @@ class BoardIndividual(chess.Board, Individual):
         self._fitness = None
 
     fitness = property(get_fitness, set_fitness, del_fitness, "Fitness of the individual.")
+
+    def copy(self) -> "BoardIndividual":
+        board = super().copy()
+        board._fitness = self._fitness
+        return board
 
     def test(self):
         print(super())

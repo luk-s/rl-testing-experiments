@@ -240,26 +240,49 @@ def evolutionary_algorithm(
         offspring = select(population)
 
         # Clone the selected individuals
-        offspring: List[BoardIndividual] = list(map(chess.Board.copy, offspring))
+        offspring: List[BoardIndividual] = list(map(BoardIndividual.copy, offspring))
 
         # Apply crossover on the offspring
         mated_children: List[BoardIndividual] = []
-        for child1, child2 in zip(offspring[::2], offspring[1::2]):
-            if random_state.random() < crossover_prob:
-                mated1, mated2 = crossover(child1, child2)
-                mated_children.append(mated1)
-                mated_children.append(mated2)
-            else:
-                mated_children.append(child1)
-                mated_children.append(child2)
+        couple_candidates = list(zip(offspring[::2], offspring[1::2]))
+        random_values = random_state.random(size=len(offspring) // 2)
+
+        # Filter out the individuals that will mate
+        mating_candidates = [
+            couple_candidates[i]
+            for i, random_value in enumerate(random_values)
+            if random_value < crossover_prob
+        ]
+        single_children = [
+            couple_candidates[i]
+            for i, random_value in enumerate(random_values)
+            if random_value >= crossover_prob
+        ]
+
+        # Apply crossover on the mating candidates
+        mated_tuples = pool.map(crossover, mating_candidates)
+        for individual1, individual2 in mated_tuples + single_children:
+            mated_children.append(individual1)
+            mated_children.append(individual2)
 
         # Apply mutation on the offspring
         mutated_children: List[BoardIndividual] = []
-        for mutant in mated_children:
-            if random_state.random() < mutation_prob:
-                mutated_children.append(mutate(mutant))
-            else:
-                mutated_children.append(mutant)
+        random_values = random_state.random(size=len(mated_children))
+
+        # Filter out the individuals that will mutate
+        mutation_candidates = [
+            mated_children[i]
+            for i, random_value in enumerate(random_values)
+            if random_value < mutation_prob
+        ]
+        non_mutation_candidates = [
+            mated_children[i]
+            for i, random_value in enumerate(random_values)
+            if random_value >= mutation_prob
+        ]
+
+        # Apply mutation on the mutation candidates
+        mutated_children = pool.map(mutate, mutation_candidates) + non_mutation_candidates
 
         # Evaluate the individuals with an invalid fitness
         unevaluated_individuals = [
