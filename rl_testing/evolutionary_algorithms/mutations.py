@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import chess
 import numpy as np
@@ -463,6 +463,49 @@ def mutate_flip_board(
     return board
 
 
+def mutate_substitute_piece(
+    board: chess.Board,
+    _random_state: Optional[np.random.Generator] = None,
+):
+    """Substitute a piece on the board with another piece of arbitrary type and same color.
+
+    Args:
+        board (chess.Board): The board to mutate.
+        _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+    """
+    random_state = get_random_state(_random_state)
+
+    # Make sure that the board is valid. This allows us to assume that there are at least two kings on the board.
+    assert board.is_valid(), "Board is not valid"
+
+    # Get all pieces on the board
+    pieces_dict = board.piece_map()
+
+    # Filter out kings
+    pieces_dict = {k: v for k, v in pieces_dict.items() if v.symbol() not in ["k", "K"]}
+
+    # If there are more than just kings on the board, select a random piece to substitute
+    if pieces_dict:
+        # Select a random piece
+        square, piece = random_state.choice(list(pieces_dict.items()))
+
+        # Select a random piece type
+        piece_type = random_state.choice(list(chess.PIECE_TYPES[:-1]))
+
+        # Create a new piece with the same color as the original piece
+        new_piece = chess.Piece(piece_type, piece.color)
+
+        # Remove the original piece
+        board.remove_piece_at(square)
+
+        # Add the new piece
+        board.set_piece_at(square, new_piece)
+
+        logging.debug(f"Substituted {piece.symbol()} with {new_piece.symbol()} at {square}\n")
+
+    return board
+
+
 def validity_wrapper(
     function: Callable[[chess.Board, Any], chess.Board],
     retries: int = 0,
@@ -569,7 +612,6 @@ class MutationFunction:
             f"Board {board_candidate.fen()} is invalid after mutation '{self.function.__name__}', returning original board"
         )
         return board
-        return
 
 
 class Mutator:
@@ -592,8 +634,10 @@ class Mutator:
         """
         self.random_state = get_random_state(_random_state)
         self.mutation_functions: List[MutationFunction] = []
+        self.mutation_functions_dict: Dict[str, MutationFunction] = {}
         self.num_mutation_functions = num_mutation_functions
         self.mutation_strategy = mutation_strategy
+        self.global_probability: Optional[float] = None
 
         assert self.mutation_strategy in [
             "all",
@@ -643,6 +687,54 @@ class Mutator:
                     **kwargs,
                 )
             )
+
+            self.mutation_functions_dict[function.__name__] = self.mutation_functions[-1]
+
+    def change_mutation_function_parameters(
+        self,
+        function_names: Union[str, List[str]],
+        **kwargs: Any,
+    ) -> None:
+        """Changes the parameters of one or multiple mutation functions
+
+        Args:
+            function_names (str): The name of the mutation functions to change the parameters of.
+            **kwargs: The new parameters to set.
+        """
+        if not isinstance(function_names, list):
+            function_names = [function_names]
+
+        # Separate the named arguments from the keyword arguments
+        named_arg_tuples = []
+        if "probability" in kwargs:
+            named_arg_tuples.append(("probability", kwargs["probability"]))
+            del kwargs["probability"]
+        if "retries" in kwargs:
+            named_arg_tuples.append(("retries", kwargs["retries"]))
+            del kwargs["retries"]
+        if "clear_fitness_values" in kwargs:
+            named_arg_tuples.append(("clear_fitness_values", kwargs["clear_fitness_values"]))
+            del kwargs["clear_fitness_values"]
+
+        for function_name in function_names:
+            function = self.mutation_functions_dict[function_name]
+
+            # Set the named arguments
+            for named_arg_tuple in named_arg_tuples:
+                setattr(function, named_arg_tuple[0], named_arg_tuple[1])
+
+            # Set the keyword arguments
+            function.kwargs = {**function.kwargs, **kwargs}
+
+    def set_global_probability(self, probability: float) -> None:
+        """Sets the probability of all mutation functions.
+
+        Args:
+            probability (float): The probability to set.
+        """
+        self.global_probability = probability
+        for mutation_function in self.mutation_functions:
+            mutation_function.probability = probability
 
     def __call__(self, individual: Individual, *args: Any, **kwargs: Any) -> Individual:
         """Mutates an individual.

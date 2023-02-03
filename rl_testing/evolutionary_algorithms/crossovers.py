@@ -399,8 +399,10 @@ class Crossover:
         self.crossover_strategy = crossover_strategy
         self.num_crossover_functions = num_crossover_functions
         self.random_state = get_random_state(_random_state)
+        self.global_probability: Optional[float] = None
 
         self.crossover_functions: List[CrossoverFunction] = []
+        self.crossover_functions_dict: Dict[str, CrossoverFunction] = {}
 
         assert self.crossover_strategy in [
             "all",
@@ -450,6 +452,53 @@ class Crossover:
                     **kwargs,
                 )
             )
+            self.crossover_functions_dict[function.__name__] = self.crossover_functions[-1]
+
+    def change_mutation_function_parameters(
+        self,
+        function_names: Union[str, List[str]],
+        **kwargs: Any,
+    ) -> None:
+        """Changes the parameters of one or multiple mutation functions
+
+        Args:
+            function_names (str): The name of the mutation functions to change the parameters of.
+            **kwargs: The new parameters to set.
+        """
+        if not isinstance(function_names, list):
+            function_names = [function_names]
+
+        # Separate the named arguments from the keyword arguments
+        named_arg_tuples = []
+        if "probability" in kwargs:
+            named_arg_tuples.append(("probability", kwargs["probability"]))
+            del kwargs["probability"]
+        if "retries" in kwargs:
+            named_arg_tuples.append(("retries", kwargs["retries"]))
+            del kwargs["retries"]
+        if "clear_fitness_values" in kwargs:
+            named_arg_tuples.append(("clear_fitness_values", kwargs["clear_fitness_values"]))
+            del kwargs["clear_fitness_values"]
+
+        for function_name in function_names:
+            function = self.crossover_functions_dict[function_name]
+
+            # Set the named arguments
+            for named_arg_tuple in named_arg_tuples:
+                setattr(function, named_arg_tuple[0], named_arg_tuple[1])
+
+            # Set the keyword arguments
+            function.kwargs = {**function.kwargs, **kwargs}
+
+    def set_global_probability(self, probability: float) -> None:
+        """Sets the probability of all crossover functions.
+
+        Args:
+            probability (float): The probability to set.
+        """
+        self.global_probability = probability
+        for crossover_function in self.crossover_functions:
+            crossover_function.probability = probability
 
     def __call__(
         self, individual_tuple: Tuple[Individual, Individual], *new_args: Any, **new_kwargs: Any

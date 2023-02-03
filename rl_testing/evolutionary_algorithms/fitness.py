@@ -1,10 +1,15 @@
 import abc
-from typing import Any, Callable, List, Tuple
+import asyncio
+import logging
+from typing import Any, Callable, Dict, List, Tuple
 
 import chess
+import chess.engine
 import numpy as np
 
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
+from rl_testing.util.engine import engine_analyse
+from rl_testing.util.util import cp2q
 
 
 class Fitness(metaclass=abc.ABCMeta):
@@ -45,6 +50,20 @@ class Fitness(metaclass=abc.ABCMeta):
     async def evaluate_async(self, individual: Individual) -> float:
         raise NotImplementedError
 
+    def _find_individual(
+        self, individuals: List[Individual], direction: Callable
+    ) -> Tuple[Individual, float]:
+        # Make sure that all individuals have a fitness value and compute it if not.
+        for individual in individuals:
+            if individual.fitness is None:
+                raise ValueError(
+                    "Individuals must have a fitness value before calling this method."
+                )
+                # individual.fitness = self.evaluate(individual)
+
+        fitness_vals = np.array([individual.fitness for individual in individuals])
+        return individuals[direction(fitness_vals)], individuals[direction(fitness_vals)].fitness
+
 
 class PieceNumberFitness(Fitness):
     def __init__(self, more_pieces_better: bool = True) -> None:
@@ -61,17 +80,6 @@ class PieceNumberFitness(Fitness):
     def evaluate(self, board: BoardIndividual) -> float:
         num_pieces = float(len(board.piece_map()))
         return num_pieces if self._more_pieces_better else -num_pieces
-
-    def _find_individual(
-        self, individuals: List[BoardIndividual], direction: Callable
-    ) -> Tuple[BoardIndividual, float]:
-        # Make sure that all individuals have a fitness value and compute it if not.
-        for individual in individuals:
-            if individual.fitness is None:
-                individual.fitness = self.evaluate(individual)
-
-        fitness_vals = np.array([individual.fitness for individual in individuals])
-        return individuals[direction(fitness_vals)], individuals[direction(fitness_vals)].fitness
 
     def best_individual(self, individuals: List[BoardIndividual]) -> Tuple[BoardIndividual, float]:
         return self._find_individual(individuals, np.argmax)
@@ -104,20 +112,6 @@ class EditDistanceFitness(Fitness):
             self.distance_cache: dict[Tuple[str, str], int] = {}
         return self.levenshtein_distance(self._target, self.prepare_fen(individual.fen()))
 
-    def _find_individual(
-        self, individuals: List[BoardIndividual], direction: Callable
-    ) -> Tuple[BoardIndividual, float]:
-        # Make sure that all individuals have a fitness value and compute it if not.
-        for individual in individuals:
-            if individual.fitness is None:
-                raise ValueError(
-                    "Individuals must have a fitness value before calling this method."
-                )
-                # individual.fitness = self.evaluate(individual)
-
-        fitness_vals = np.array([individual.fitness for individual in individuals])
-        return individuals[direction(fitness_vals)], individuals[direction(fitness_vals)].fitness
-
     def best_individual(self, individuals: List[BoardIndividual]) -> Tuple[BoardIndividual, float]:
         return self._find_individual(individuals, np.argmin)
 
@@ -145,6 +139,62 @@ class EditDistanceFitness(Fitness):
 
         self.distance_cache[(string1, string2)] = distance
         return distance
+
+
+class BoardSimilarityFitness(Fitness):
+    def __init__(self, target: str) -> None:
+        self.piece_map = chess.Board(target).piece_map()
+
+    @property
+    def use_async(self) -> bool:
+        return False
+
+    @property
+    def is_bigger_better(self) -> bool:
+        return False
+
+    def best_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+        return self._find_individual(individuals, np.argmin)
+
+    def worst_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+        return self._find_individual(individuals, np.argmax)
+
+    def evaluate(self, individual: BoardIndividual) -> float:
+        fitness = 0.0
+        test_piece_map = individual.piece_map()
+
+        for square in chess.SQUARES:
+            if square in self.piece_map and square not in test_piece_map:
+                fitness += 0.5
+            elif square not in self.piece_map and square in test_piece_map:
+                fitness += 1.0
+            elif square in self.piece_map and square in test_piece_map:
+                if self.piece_map[square].color != test_piece_map[square].color:
+                    fitness += 1.0
+                elif self.piece_map[square].piece_type != test_piece_map[square].piece_type:
+                    fitness += 0.5
+
+        return fitness
+
+
+class HashFitness(Fitness):
+    @property
+    def use_async(self) -> bool:
+        return False
+
+    @property
+    def is_bigger_better(self) -> bool:
+        return True
+
+    def best_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+        return self._find_individual(individuals, np.argmax)
+
+    def worst_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+        return self._find_individual(individuals, np.argmin)
+
+    def evaluate(self, individual: BoardIndividual) -> float:
+        assert hasattr(individual, "__hash__"), "Individual must have implemented a hash method"
+        return hash(individual)
 
 
 if __name__ == "__main__":

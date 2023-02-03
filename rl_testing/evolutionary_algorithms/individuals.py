@@ -45,8 +45,14 @@ class BoardIndividual(chess.Board, Individual):
         board._fitness = self._fitness
         return board
 
-    def test(self):
-        print(super())
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, BoardIndividual):
+            return NotImplemented
+
+        return self.fen(en_passant="fen") == other.fen(en_passant="fen")
+
+    def __hash__(self) -> int:
+        return hash(self.fen(en_passant="fen"))
 
 
 if __name__ == "__main__":

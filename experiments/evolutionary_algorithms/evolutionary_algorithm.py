@@ -6,7 +6,6 @@ from itertools import chain
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import chess
 import numpy as np
 import yaml
 
@@ -20,8 +19,10 @@ from rl_testing.evolutionary_algorithms.crossovers import (
     crossover_one_quarter_board,
 )
 from rl_testing.evolutionary_algorithms.fitness import (
+    BoardSimilarityFitness,
     EditDistanceFitness,
     Fitness,
+    HashFitness,
     PieceNumberFitness,
 )
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual
@@ -36,6 +37,7 @@ from rl_testing.evolutionary_algorithms.mutations import (
     mutate_player_to_move,
     mutate_remove_one_piece,
     mutate_rotate_board,
+    mutate_substitute_piece,
 )
 from rl_testing.evolutionary_algorithms.selections import (
     Selector,
@@ -47,15 +49,19 @@ RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm
 WANDB_CONFIG_FILE = Path(__file__).parent.parent / Path(
     "configs/hyperparameter_tuning_configs/config_ea_edit_distance.yaml"
 )
-DEBUG = False
+DEBUG = True
 DEBUG_CONFIG = {
-    "crossover_prob": 0.3379889108848678,
-    "mutation_prob": 0.9247393367296812,
-    "num_generations": 29,
-    "num_runs_per_config": 15,
+    "num_runs_per_config": 1,
     "num_workers": 8,
-    "population_size": 777,
-    "tournament_fraction": 0.6969565124339143,
+    "probability_decay": False,
+    "num_generations": 50,
+    "population_size": 5990,
+    "mutation_prob": 0.8359542054011151,
+    "crossover_prob": 0.6,
+    # "mutation_prob": 0.5153169719430473,
+    "tournament_fraction": 1 / 5990 * 3,
+    # "tournament_fraction": 0.18229452371470656,
+    # "tournament_fraction": 0.0035739063534925286,
 }
 
 BestFitnessValue = float
@@ -124,8 +130,14 @@ def setup_operators(
     population_size: int,
     tournament_fraction: float,
 ) -> Tuple[Fitness, Mutator, Crossover, Selector]:
+    # Some constants
+    mutate_global_prob = 0.2
+    crossover_global_prob = 0.6
+
     # Initialize the fitness function
-    fitness = EditDistanceFitness("3r3k/7p/2p1np2/4p1p1/1Pq1P3/2Q2P2/P4RNP/2R4K b - - 0 42")
+    # fitness = EditDistanceFitness("3r3k/7p/2p1np2/4p1p1/1Pq1P3/2Q2P2/P4RNP/2R4K b - - 0 42")
+    # fitness = BoardSimilarityFitness("3r3k/7p/2p1np2/4p1p1/1Pq1P3/2Q2P2/P4RNP/2R4K b - - 0 42")
+    fitness = HashFitness()
 
     # Initialize the mutation functions
     mutate = Mutator(
@@ -142,8 +154,8 @@ def setup_operators(
             mutate_remove_one_piece,
             mutate_flip_board,
             mutate_rotate_board,
+            mutate_substitute_piece,
         ],
-        probability=0.2,
         retries=5,
         clear_fitness_values=True,
     )
@@ -151,11 +163,11 @@ def setup_operators(
         [
             mutate_castling_rights,
         ],
-        probability=0.2,
         probability_per_direction=0.5,
         retries=5,
         clear_fitness_values=True,
     )
+    mutate.set_global_probability(mutate_global_prob)
 
     # Initialize the crossover functions
     crossover = Crossover(
@@ -168,10 +180,10 @@ def setup_operators(
             crossover_one_quarter_board,
             crossover_one_eighth_board,
         ],
-        probability=0.3,
         retries=5,
         clear_fitness_values=True,
     )
+    crossover.set_global_probability(crossover_global_prob)
 
     # Initialize the selection functions
     select = Selector(
@@ -198,12 +210,69 @@ def log_time(start_time: float, message: str = ""):
     logging.info(f"Time {message}: {time_elapsed:.2f} seconds.")
 
 
+def __should_decrease_probability(
+    fitness: float,
+    difference_threshold: float,
+    __fitness_history: List[float] = [],
+) -> bool:
+    """Check if the probability of a mutation or crossover should be decreased. This function should not be called
+    by the user.
+
+    ATTENTION! This makes use of the peculiar behavior of Python that default arguments are bound
+    at the time of the function definition and not at the time of the function call. See
+    https://stackoverflow.com/questions/9158294/good-uses-for-mutable-function-argument-default-values
+    This means that the default argument is shared between all calls of the function.
+    In this case this is exactly what we want because we want to keep track of the fitness history
+
+    Args:
+        best_fitness (float): The best fitness value of the current generation.
+        difference_threshold (float): The threshold for the difference between the best and worst fitness value of the last
+            10 generations. If the difference is smaller than this threshold, the probability should be decreased.
+        __fitness_history (List[float]): The fitness history of the current generation. Should not be provided by the user.
+
+    Returns:
+        bool: True if the probability should be decreased, False otherwise.
+    """
+    # Add the best fitness value of the current generation to the history
+    __fitness_history.append(fitness)
+
+    if len(__fitness_history) < 10:
+        return False
+
+    # Get the maximum and minimum fitness value of the last 10 generations
+    largest_fitness = max(__fitness_history[-10:])
+    smallest_fitness = min(__fitness_history[-10:])
+
+    # Check if the difference between the best and worst fitness value of the last 10 generations is smaller than the
+    # threshold
+    if abs(largest_fitness - smallest_fitness) <= difference_threshold:
+        __fitness_history.clear()
+        return True
+
+    return False
+
+
+def should_decrease_probability(best_fitness: float, difference_threshold: float):
+    """Check if the probability of a mutation or crossover should be decreased.
+
+    Args:
+        best_fitness (float): The best fitness value of the current generation.
+        difference_threshold (float): The threshold for the difference between the best and worst fitness value of the last
+            10 generations. If the difference is smaller than this threshold, the probability should be decreased.
+
+    Returns:
+        bool: True if the probability should be decreased, False otherwise.
+    """
+    return __should_decrease_probability(best_fitness, difference_threshold)
+
+
 def evolutionary_algorithm(
     population_size: int,
     crossover_prob: float,
     mutation_prob: float,
     num_generations: int,
     tournament_fraction: float,
+    probability_decay: bool,
     num_workers: Optional[int] = None,
     seed: Optional[int] = None,
 ) -> Tuple[
@@ -258,7 +327,7 @@ def evolutionary_algorithm(
             individual.fitness = fitness_val
 
         for generation in range(num_generations):
-            logging.info(f"{generation = }")
+            logging.info(f"\n\nGeneration {generation}")
             # Select the next generation individuals
             log_time(start_time, "before selecting")
 
@@ -328,8 +397,8 @@ def evolutionary_algorithm(
 
             # Apply mutation on the mutation candidates
             log_time(start_time, "before mutating")
-            unevaluated_individuals = []
-            mutated_children = []
+            unevaluated_individuals: List[BoardIndividual] = []
+            mutated_children: List[BoardIndividual] = []
             for individual in chain(
                 pool.imap(mutate, mutation_candidates, chunksize=chunk_size),
                 non_mutation_candidates,
@@ -374,7 +443,19 @@ def evolutionary_algorithm(
             # Print the number of unique individuals
             unique_individuals = set([p.fen() for p in population])
             unique_individual_fractions.append(len(unique_individuals) / population_size)
-            logging.info(f"Number of unique individuals = {len(unique_individuals)}\n")
+            logging.info(f"Number of unique individuals = {len(unique_individuals)}")
+
+            # Check if the probabilities of mutation and crossover are too high
+            if probability_decay and should_decrease_probability(
+                best_fitness, difference_threshold=0.5
+            ):
+                assert mutate.global_probability is not None, "Global mutation probability is None"
+                assert (
+                    crossover.global_probability is not None
+                ), "Global crossover probability is None"
+                mutate.set_global_probability(mutate.global_probability / 2)
+                crossover.set_global_probability(crossover.global_probability / 2)
+                logging.info(f"{mutate.global_probability = }, {crossover.global_probability = }")
 
     return (
         population,
@@ -484,6 +565,7 @@ if __name__ == "__main__":
             mutation_prob=wandb_config.mutation_prob,
             num_generations=wandb_config.num_generations,
             tournament_fraction=wandb_config.tournament_fraction,
+            probability_decay=wandb_config.probability_decay,
             num_workers=wandb_config.num_workers,
             seed=seed,
         )
