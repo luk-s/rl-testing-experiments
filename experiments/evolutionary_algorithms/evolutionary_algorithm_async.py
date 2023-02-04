@@ -507,8 +507,8 @@ if __name__ == "__main__":
     # fmt: off
     # Engine parameters
     parser.add_argument("--seed",               type=int,  default=43)
-    parser.add_argument("--engine_config_name1", type=str,  default="remote_400_nodes.ini")  # noqa: E501
-    parser.add_argument("--engine_config_name2", type=str,  default="remote_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name1", type=str,  default="local_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name2", type=str,  default="local_400_nodes.ini")  # noqa: E501
     parser.add_argument("--network_path1",      type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
     parser.add_argument("--network_path2",      type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
     parser.add_argument("--num_engines1" ,      type=int,  default=2)
