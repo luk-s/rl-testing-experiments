@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Tuple
 
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 from rl_testing.util.engine import MoveStat, NodeStat
@@ -13,6 +14,8 @@ RESULT_DIRECTORY = Path(__file__).parent.parent / Path("results")
 
 Fen = str
 NetworkName = str
+Average = float
+Std = float
 
 
 def load_log_data(file_path: Path) -> Tuple[Dict[Fen, List[NodeStat]], NetworkName]:
@@ -126,6 +129,115 @@ def plot_full_logs(
         plt.close(fig)
 
 
+def plot_average_stockfish_deviation(
+    log_data: Dict[Fen, Dict[NetworkName, List[NodeStat]]],
+    stockfish_scores: pd.DataFrame,
+    image_directory: Path,
+    models_ordered: List[NetworkName],
+    model_color_map: Dict[NetworkName, Any],
+    x_value_max: int = 400,
+):
+    # Create the image directory if it does not exist
+    image_directory.mkdir(parents=True, exist_ok=True)
+
+    # Create and populate the result dictionary
+    all_data_dict: Dict[NetworkName, List[List[float]]] = {}
+    result_dict: Dict[NetworkName, Tuple[List[Average], List[Std]]] = {}
+    for network_name in models_ordered:
+        all_data_dict[network_name] = []
+        all_data_dict[network_name] = [[] for _ in range(x_value_max)]
+
+    # Summarize data over all fens
+    for fen in log_data:
+        print(f"Processing {fen}")
+
+        # Extract the stockfish score
+        stockfish_score = stockfish_scores.loc[stockfish_scores["fen"] == fen, "score"].values[0]
+        if " b " in fen:
+            stockfish_score = -stockfish_score
+
+        # Compute deviation from stockfish score for each fen
+        for network_name in models_ordered:
+            if network_name not in log_data[fen]:
+                continue
+            node_stats = log_data[fen][network_name]
+            x_values = list(map(lambda node_stat: node_stat.visits, node_stats))
+            y_values = list(map(lambda node_stat: node_stat.q_value, node_stats))
+            if " b " in fen:
+                y_values = [-y for y in y_values]
+
+            # Compute absolute deviation of y_values from stockfish score
+            deviations = [abs(y - stockfish_score) for y in y_values]
+
+            # TODO: I'm not sure how this can happen, but it does and it needs to be fixed
+            if x_values[0] > x_values[1]:
+                x_values = x_values[1:]
+                deviations = deviations[1:]
+
+            # Add the deviations to the result dictionary
+            for x, deviation in zip(x_values, deviations):
+                if x > x_value_max:
+                    break
+                all_data_dict[network_name][x - 1].append(deviation)
+
+            assert 390 <= x_values[-1] <= 410
+
+    # For each model, compute the average deviation for each x value over all fens
+    for network_name in models_ordered:
+        averages = []
+        stds = []
+        for x in range(x_value_max):
+            averages.append(np.mean(all_data_dict[network_name][x]))
+            stds.append(np.std(all_data_dict[network_name][x]))
+
+        result_dict[network_name] = (averages, stds)
+
+    # Create the image
+    fig, ax = plt.subplots()
+    ax.set_title(f"Average deviation from Stockfish score")
+    ax.set_xlabel("Search tree size")
+    ax.set_ylabel("Average deviation from Stockfish score")
+    ax.set_ylim(-0.1, 2)
+    ax.grid(True)
+
+    for network_name in models_ordered:
+        ax.plot(
+            range(1, x_value_max + 1),
+            result_dict[network_name][0][:x_value_max],
+            label=network_name,
+            color=model_color_map[network_name],
+        )
+
+    ax.legend()
+    plt.tight_layout()
+
+    fig.savefig(
+        image_directory / Path(f"summary_plot_{x_value_max}_nodes.png"),
+        bbox_inches="tight",
+        dpi=150,
+    )
+
+    # Add standard deviations to the same plot and save it again
+    for network_name in models_ordered:
+        ax.fill_between(
+            range(1, x_value_max + 1),
+            np.array(result_dict[network_name][0][:x_value_max])
+            - np.array(result_dict[network_name][1][:x_value_max]),
+            np.array(result_dict[network_name][0][:x_value_max])
+            + np.array(result_dict[network_name][1][:x_value_max]),
+            alpha=0.2,
+            color=model_color_map[network_name],
+        )
+
+    fig.savefig(
+        image_directory / Path(f"summary_plot_{x_value_max}_nodes_std.png"),
+        bbox_inches="tight",
+        dpi=150,
+    )
+
+    plt.close(fig)
+
+
 if __name__ == "__main__":
     ################
     # CONFIG START #
@@ -137,6 +249,7 @@ if __name__ == "__main__":
     ]
     result_file_stockfish = Path("logs_board_analysis.csv")
     image_subdirectory = "full_logs/400_nodes_combined"
+    image_subdirectory2 = "full_logs/400_nodes_average_deviation"
 
     color_map = matplotlib.cm.get_cmap("RdPu")
 
@@ -157,6 +270,7 @@ if __name__ == "__main__":
 
     # Create the image directory if it does not exist
     image_directory = IMAGE_DIRECTORY / Path(image_subdirectory)
+    image_directory2 = IMAGE_DIRECTORY / Path(image_subdirectory2)
 
     # Iterate over the result folder and find all result files which match the pattern
     result_files: List[Path] = []
@@ -182,4 +296,8 @@ if __name__ == "__main__":
     stockfish_scores = pd.read_csv(result_folder_stockfish / result_file_stockfish)
     stockfish_scores["fen"] = stockfish_scores["fen"].str.strip()
 
-    plot_full_logs(result_data, stockfish_scores, image_directory, models_ordered, model_color_map)
+    # plot_full_logs(result_data, stockfish_scores, image_directory, models_ordered, model_color_map)
+
+    plot_average_stockfish_deviation(
+        result_data, stockfish_scores, image_directory2, models_ordered, model_color_map
+    )

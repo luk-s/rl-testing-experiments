@@ -50,7 +50,8 @@ if __name__ == "__main__":
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_forced_moves_fen_database.txt")
     # result_file = Path("results_ENGINE_local_dag_1_node_DATA_database.txt")
     # result_file = Path("results_ENGINE_local_minibatch_1_1_node_DATA_database.txt")
-    result_file = Path("results_ENGINE_local_minibatch_1_400_nodes_DATA_database.txt")
+    # result_file = Path("results_ENGINE_local_minibatch_1_400_nodes_DATA_database.txt")
+    result_file = Path("results_ENGINE_local_2500_nodes_DATA_database.txt")
 
     column_name1, column_name2 = "score1", "score2"
     result_path = result_folder / result_file
