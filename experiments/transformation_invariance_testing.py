@@ -13,14 +13,14 @@ from chess import flip_anti_diagonal, flip_diagonal, flip_horizontal, flip_verti
 from rl_testing.config_parsers import get_data_generator_config, get_engine_config
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
-from rl_testing.util.board_transformations import (
+from rl_testing.util.chess import (
     remove_pawns,
     rotate_90_clockwise,
     rotate_180_clockwise,
     rotate_270_clockwise,
 )
-from rl_testing.util.util import cp2q, get_task_result_handler
 from rl_testing.util.experiment import store_experiment_params
+from rl_testing.util.util import cp2q, get_task_result_handler
 
 RESULT_DIR = Path(__file__).parent / Path("results/transformation_testing")
 
@@ -98,24 +98,18 @@ async def create_positions(
             # Apply the transformations to the board
             transformed_boards = [board_candidate]
             for transformation_function in transformation_functions:
-                transformed_boards.append(
-                    board_candidate.transform(transformation_function)
-                )
+                transformed_boards.append(board_candidate.transform(transformation_function))
 
             fen = board_candidate.fen(en_passant="fen")
 
-            logging.info(
-                f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}"
-            )
+            logging.info(f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}")
             for transformed_board in transformed_boards[1:]:
                 fen = transformed_board.fen(en_passant="fen")
                 logging.info(f"[{identifier_str}] Created transformed board: " f"{fen}")
 
             for queue in queues:
                 for transform_index, transformed_board in enumerate(transformed_boards):
-                    await queue.put(
-                        (board_candidate.copy(), transform_index, transformed_board)
-                    )
+                    await queue.put((board_candidate.copy(), transform_index, transformed_board))
 
             await asyncio.sleep(delay=sleep_between_positions)
 
@@ -204,9 +198,7 @@ async def evaluate_candidates(
 
     # The order of the queues is important! The 'receive' function will return the data in the
     # same order as the queues are given to the initializer.
-    receiver_cache = ReceiverCache(
-        queue=engine_queue, num_transformations=num_transforms
-    )
+    receiver_cache = ReceiverCache(queue=engine_queue, num_transformations=num_transforms)
 
     with open(file_path, "a") as file:
 
@@ -371,9 +363,7 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
 
     # Create result directory
-    config_folder_path = Path(__file__).parent.absolute() / Path(
-        "configs/engine_configs/"
-    )
+    config_folder_path = Path(__file__).parent.absolute() / Path("configs/engine_configs/")
 
     # Build the engine generator
     engine_config = get_engine_config(
@@ -390,8 +380,7 @@ if __name__ == "__main__":
 
     # Extract the transformations
     transformation_functions = [
-        transformation_dict[transformation_name]
-        for transformation_name in args.transformations
+        transformation_dict[transformation_name] for transformation_name in args.transformations
     ]
 
     # Create results-file-name

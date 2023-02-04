@@ -54,10 +54,10 @@ def select_tournament_fast(
     # This does the same like the function 'select_tournament' but is much faster.
     tournament_winner_indices = []
     for current_batch_size in batch_sizes:
-        # Compute a 2d of random numbers
+        # Compute a 2d array of random numbers
         random_numbers = random_state.random((current_batch_size, len(individuals)))
 
-        # For each row, find the 'tournament_size' largest random numbers
+        # For each row, find the indices of the 'tournament_size' largest random numbers
         tournament_indices = np.argpartition(random_numbers, tournament_size, axis=1)[
             :, -tournament_size:
         ]

@@ -3,10 +3,12 @@ from typing import Optional, Union
 
 import chess
 import numpy as np
+
 from rl_testing.config_parsers.data_generator_config_parser import (
     RandomBoardGeneratorConfig,
 )
 from rl_testing.data_generators.generators import BoardGenerator
+from rl_testing.util.chess import is_really_valid
 
 FILES = "abcdefgh"
 RANKS = list(range(1, 9))
@@ -158,7 +160,7 @@ def random_valid_board(
         fen = random_board_position_fen(num_pieces=num_pieces, _rng=_rng)
         try:
             board = chess.Board(fen=fen)
-            if board.is_valid() and board.outcome(claim_draw=True) is None:
+            if is_really_valid(board) and board.outcome(claim_draw=True) is None:
                 return board
         except ValueError as ve:
             print(ve)

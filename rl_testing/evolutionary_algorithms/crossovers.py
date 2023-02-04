@@ -5,6 +5,7 @@ import chess
 import numpy as np
 
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
+from rl_testing.util.chess import is_really_valid
 from rl_testing.util.util import get_random_state
 
 
@@ -248,7 +249,7 @@ def validity_wrapper(
             )
 
             # Check if the board is valid
-            if board_candidate1.is_valid() and board_candidate2.is_valid():
+            if is_really_valid(board_candidate1) and is_really_valid(board_candidate2):
                 return board_candidate1, board_candidate2
 
         logging.debug(
@@ -309,6 +310,7 @@ class CrossoverFunction:
         function: Callable[[chess.Board, chess.Board, Any], Tuple[chess.Board, chess.Board]],
         probability: float = 1.0,
         retries: int = 0,
+        check_game_not_over: bool = False,
         clear_fitness_values: bool = False,
         _random_state: Optional[np.random.Generator] = None,
         *args,
@@ -329,6 +331,7 @@ class CrossoverFunction:
         self.random_state = get_random_state(_random_state)
 
         self.clear_fitness_values = clear_fitness_values
+        self.check_game_not_over = check_game_not_over
         self.function = function
 
         self.args = args
@@ -365,11 +368,15 @@ class CrossoverFunction:
             )
 
             # Check if the board is valid
-            if board_candidate1.is_valid() and board_candidate2.is_valid():
-                if self.clear_fitness_values:
-                    del board_candidate1.fitness
-                    del board_candidate2.fitness
-                return board_candidate1, board_candidate2
+            if is_really_valid(board_candidate1) and is_really_valid(board_candidate2):
+                if not self.check_game_not_over or (
+                    len(list(board_candidate1.legal_moves)) > 0
+                    and len(list(board_candidate2.legal_moves)) > 0
+                ):
+                    if self.clear_fitness_values:
+                        del board_candidate1.fitness
+                        del board_candidate2.fitness
+                    return board_candidate1, board_candidate2
 
         logging.debug(
             f"Board {board_candidate1.fen()} or Board {board_candidate2.fen()}"
@@ -422,6 +429,7 @@ class Crossover:
         ],
         probability: float = 1.0,
         retries: int = 0,
+        check_game_not_over: bool = False,
         clear_fitness_values: bool = True,
         *args: List[Any],
         **kwargs: Dict[str, Any],
@@ -446,6 +454,7 @@ class Crossover:
                     function,
                     probability=probability,
                     retries=retries,
+                    check_game_not_over=check_game_not_over,
                     clear_fitness_values=clear_fitness_values,
                     _random_state=self.random_state,
                     *args,

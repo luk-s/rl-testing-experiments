@@ -14,7 +14,7 @@ def remove_pawns(board: chess.Board) -> Union[chess.Board, str]:
     new_board.set_piece_map(piece_map)
     new_board.turn = board.turn
 
-    if not new_board.is_valid():
+    if not is_really_valid(new_board):
         return "failed"
 
     return new_board
@@ -30,6 +30,19 @@ def rotate_180_clockwise(board: chess.Bitboard) -> chess.Bitboard:
 
 def rotate_270_clockwise(board: chess.Bitboard) -> chess.Bitboard:
     return rotate_180_clockwise(rotate_90_clockwise(board))
+
+
+def is_really_valid(board: chess.Board) -> bool:
+    check_squares = list(board.checkers())
+    if len(check_squares) > 2:
+        return False
+    if (
+        len(check_squares) == 2
+        and board.piece_at(check_squares[0]).piece_type
+        == board.piece_at(check_squares[1]).piece_type
+    ):
+        return False
+    return board.is_valid()
 
 
 if __name__ == "__main__":

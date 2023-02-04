@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import chess
 from chess.engine import EngineTerminatedError, InfoDict, Limit
+
 from rl_testing.engine_generators.relaxed_uci_protocol import (
     ExtendedAnalysisResult,
     RelaxedUciProtocol,
@@ -388,7 +389,7 @@ async def engine_analyse(
     # Wait for the analysis to finish and return the info object.
     with analysis:
         try:
-            await asyncio.wait_for(analysis.wait(), 100)
+            await asyncio.wait_for(analysis.wait(), 30)
         except asyncio.TimeoutError:
             raise EngineTerminatedError
 

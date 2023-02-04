@@ -3,8 +3,10 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import chess
 import numpy as np
+
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
-from rl_testing.util.board_transformations import (
+from rl_testing.util.chess import (
+    is_really_valid,
     rotate_90_clockwise,
     rotate_180_clockwise,
     rotate_270_clockwise,
@@ -35,7 +37,7 @@ def mutate_player_to_move(
 
     random_state = get_random_state(_random_state)
 
-    board.turn = not board.turn
+    board.push(chess.Move.null())
 
     return board
 
@@ -142,7 +144,7 @@ def mutate_add_one_piece(
             piece = random_state.choice(missing_pieces)
             square = random_state.choice(empty_squares)
             board.set_piece_at(square, chess.Piece.from_symbol(piece))
-            if board.is_valid():
+            if is_really_valid(board):
                 logging.debug(f"Added {piece} to {chess.square_name(square)}\n")
                 break
             board.remove_piece_at(square)
@@ -247,7 +249,7 @@ def mutate_move_one_piece(
                 board.set_piece_at(target_square, piece)
 
                 # Check validity of new position
-                if board.is_valid():
+                if is_really_valid(board):
                     logging.debug(
                         f"Moved {piece.symbol()} from {chess.square_name(start_square)} to {chess.square_name(target_square)}\n"
                     )
@@ -366,7 +368,7 @@ def mutate_move_one_piece_adjacent(
                 board.set_piece_at(target_square, piece)
 
                 # Check validity of new position
-                if board.is_valid():
+                if is_really_valid(board):
                     logging.debug(
                         f"Moved {piece.symbol()} from {chess.square_name(start_square)} to {chess.square_name(target_square)}\n"
                     )
@@ -476,7 +478,7 @@ def mutate_substitute_piece(
     random_state = get_random_state(_random_state)
 
     # Make sure that the board is valid. This allows us to assume that there are at least two kings on the board.
-    assert board.is_valid(), "Board is not valid"
+    assert is_really_valid(board), "Board is not valid"
 
     # Get all pieces on the board
     pieces_dict = board.piece_map()
@@ -532,7 +534,7 @@ def validity_wrapper(
             board_candidate = function(board_candidate, *args, **kwargs)
 
             # Check if the board is valid
-            if board_candidate.is_valid():
+            if is_really_valid(board_candidate):
                 return board_candidate
 
         logging.debug(
@@ -550,6 +552,7 @@ class MutationFunction:
         function: Callable[[chess.Board, Any], chess.Board],
         probability: float = 1.0,
         retries: int = 0,
+        check_game_not_over: bool = False,
         clear_fitness_values: bool = False,
         _random_state: Optional[np.random.Generator] = None,
         *args,
@@ -571,6 +574,7 @@ class MutationFunction:
 
         self.function = function
         self.clear_fitness_values = clear_fitness_values
+        self.check_game_not_over = check_game_not_over
 
         self.args = args
         self.kwargs = kwargs
@@ -603,7 +607,9 @@ class MutationFunction:
             )
 
             # Check if the board is valid
-            if board_candidate.is_valid():
+            if is_really_valid(board_candidate) and (
+                not self.check_game_not_over or len(list(board_candidate.legal_moves)) > 0
+            ):
                 if self.clear_fitness_values:
                     del board_candidate.fitness
                 return board_candidate
@@ -658,6 +664,7 @@ class Mutator:
         ],
         probability: float = 1.0,
         retries: int = 0,
+        check_game_not_over: bool = False,
         clear_fitness_values: bool = False,
         *args,
         **kwargs,
@@ -681,6 +688,7 @@ class Mutator:
                     function,
                     probability=probability,
                     retries=retries,
+                    check_game_not_over=check_game_not_over,
                     clear_fitness_values=clear_fitness_values,
                     _random_state=self.random_state,
                     *args,

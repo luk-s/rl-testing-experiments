@@ -279,7 +279,7 @@ class NodeInfo(Info):
     def set_fen(self, fen: str) -> None:
         # Check if the fen string is valid.
         temp_board = chess.Board(fen)
-        if temp_board.is_valid():
+        if is_really_valid(temp_board):
             self.fen = fen
         else:
             raise ValueError(f"Fen string {fen} is not valid.")
@@ -311,9 +311,7 @@ class NodeInfo(Info):
         # Assign the depths of the child nodes
         for edge in self.child_edges:
             if edge.end_node is not None:
-                edge.end_node.assign_depth(
-                    max(depth + 1, edge.end_node.depth), num_per_depth
-                )
+                edge.end_node.assign_depth(max(depth + 1, edge.end_node.depth), num_per_depth)
 
 
 class EdgeInfo(Info):
@@ -361,9 +359,7 @@ class EdgeInfo(Info):
         node.parent_edge = self
 
 
-def convert_tree_to_networkx(
-    tree: TreeInfo, only_basic_info: bool = False
-) -> nx.DiGraph:
+def convert_tree_to_networkx(tree: TreeInfo, only_basic_info: bool = False) -> nx.DiGraph:
     red = np.array([255, 0, 0])
     green = np.array([0, 255, 0])
     white = np.array([255, 255, 255])
@@ -377,9 +373,7 @@ def convert_tree_to_networkx(
             print("This should not happen!")
 
         # Compute the color of the new node
-        node_value_current_player = (
-            node.v_value if node.depth % 2 == 0 else -node.v_value
-        )
+        node_value_current_player = node.v_value if node.depth % 2 == 0 else -node.v_value
         if node_value_current_player <= 0:
             color = red + (white - red) * (1 + node_value_current_player)
         else:

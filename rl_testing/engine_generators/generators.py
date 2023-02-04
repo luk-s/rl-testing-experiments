@@ -5,8 +5,15 @@ from typing import Any, Tuple, TypeVar
 
 import asyncssh
 from chess.engine import UciProtocol
-from rl_testing.config_parsers.engine_config_parser import EngineConfig, RemoteEngineConfig
-from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol, popen_uci_relaxed
+
+from rl_testing.config_parsers.engine_config_parser import (
+    EngineConfig,
+    RemoteEngineConfig,
+)
+from rl_testing.engine_generators.relaxed_uci_protocol import (
+    RelaxedUciProtocol,
+    popen_uci_relaxed,
+)
 
 TUciProtocol = TypeVar("TUciProtocol", bound="UciProtocol")
 

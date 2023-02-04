@@ -40,8 +40,8 @@ class BoardIndividual(chess.Board, Individual):
 
     fitness = property(get_fitness, set_fitness, del_fitness, "Fitness of the individual.")
 
-    def copy(self) -> "BoardIndividual":
-        board = super().copy()
+    def copy(self, *args, **kwargs) -> "BoardIndividual":
+        board = super().copy(*args, **kwargs)
         board._fitness = self._fitness
         return board
 
