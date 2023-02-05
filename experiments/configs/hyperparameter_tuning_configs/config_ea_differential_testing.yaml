@@ -2,7 +2,7 @@ program: experiments/evolutionary_algorithms/evolutionary_algorithm_async.py
 method: bayes
 parameters:
   num_runs_per_config:
-    value: 3
+    value: 6
   num_workers:
     value: 8
   probability_decay:
@@ -32,8 +32,8 @@ name: smallest_edit_distance
 description: "A first hyperparameter test"
 metric:
   name: best_fitness_value_avg
-  goal: minimize
-  target: 1.0
+  goal: maximize
+  target: 2.0
 command:
   - ${env}
   - ${interpreter}
