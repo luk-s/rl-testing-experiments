@@ -400,7 +400,7 @@ class DifferentialTestingFitness(Fitness):
                     await output_queue.put((fen, *invalid_placeholder))
                 else:
                     best_move = info["pv"][0]
-                    await output_queue.put((fen, best_move, score_cp))
+                    await output_queue.put((fen, best_move, cp2q(score_cp)))
             finally:
                 input_queue.task_done()
 

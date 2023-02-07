@@ -1,7 +1,7 @@
 import argparse
-from typing import Union, Tuple
-from pathlib import Path
 import subprocess
+from pathlib import Path
+from typing import Any, Dict, Tuple, Union
 
 
 def get_git_infos() -> Tuple[str, str, bool]:
@@ -14,9 +14,7 @@ def get_git_infos() -> Tuple[str, str, bool]:
     """
     try:
         # Get the current git branch
-        branch_bytes = subprocess.check_output(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"]
-        )
+        branch_bytes = subprocess.check_output(["git", "rev-parse", "--abbrev-ref", "HEAD"])
         branch = branch_bytes.decode("utf-8").strip()
 
         # Get the current git commit hash
@@ -24,9 +22,7 @@ def get_git_infos() -> Tuple[str, str, bool]:
         commit_hash = commit_hash_bytes.decode("utf-8").strip()
 
         # Check if there are uncommitted changes
-        uncommitted_changes_bytes = subprocess.check_output(
-            ["git", "status", "--porcelain"]
-        )
+        uncommitted_changes_bytes = subprocess.check_output(["git", "status", "--porcelain"])
         uncommitted_changes = uncommitted_changes_bytes.decode("utf-8").strip()
         uncommitted_changes = bool(uncommitted_changes)
     except subprocess.CalledProcessError:
@@ -58,3 +54,22 @@ def store_experiment_params(
         for key, value in argument_dict.items():
             result_file.write(f"{key} = {value}\n")
         result_file.write("\n")
+
+
+def get_experiment_params_dict(
+    namespace: argparse.Namespace,
+    source_file_path: Union[str, Path],
+) -> Dict[str, Any]:
+    # Get the git infos
+    branch, commit_hash, uncommitted_changes = get_git_infos()
+
+    # Convert the namespace to a dictionary
+    argument_dict = vars(namespace)
+
+    # Add the git infos to the argument dictionary
+    argument_dict["experiment file"] = source_file_path
+    argument_dict["git branch"] = branch
+    argument_dict["git commit hash"] = commit_hash
+    argument_dict["uncommitted changes"] = uncommitted_changes
+
+    return argument_dict

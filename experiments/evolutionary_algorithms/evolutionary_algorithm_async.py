@@ -48,13 +48,16 @@ from rl_testing.evolutionary_algorithms.selections import (
 )
 from rl_testing.util.chess import is_really_valid
 from rl_testing.util.evolutionary_algorithm import should_decrease_probability
-from rl_testing.util.experiment import store_experiment_params
+from rl_testing.util.experiment import (
+    get_experiment_params_dict,
+    store_experiment_params,
+)
 
 RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm")
 WANDB_CONFIG_FILE = Path(__file__).parent.parent / Path(
     "configs/hyperparameter_tuning_configs/config_ea_edit_distance.yaml"
 )
-DEBUG = True
+DEBUG = False
 DEBUG_CONFIG = {
     "num_runs_per_config": 1,
     "num_workers": 8,
@@ -506,16 +509,16 @@ if __name__ == "__main__":
 
     # fmt: off
     # Engine parameters
-    parser.add_argument("--seed",               type=int,  default=43)
-    # parser.add_argument("--engine_config_name1", type=str,  default="local_400_nodes.ini")  # noqa: E501
-    # parser.add_argument("--engine_config_name2", type=str,  default="local_400_nodes.ini")  # noqa: E501
-    parser.add_argument("--engine_config_name1", type=str,  default="remote_400_nodes.ini")  # noqa: E501
-    parser.add_argument("--engine_config_name2", type=str,  default="remote_400_nodes.ini")  # noqa: E501
-    parser.add_argument("--network_path1",      type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
-    parser.add_argument("--network_path2",      type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
-    parser.add_argument("--num_engines1" ,      type=int,  default=2)
-    parser.add_argument("--num_engines2" ,      type=int,  default=2)
-    parser.add_argument("--result_subdir",      type=str,  default="main_results")
+    parser.add_argument("--seed",                type=int,  default=42)
+    parser.add_argument("--engine_config_name1", type=str,  default="local_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name2", type=str,  default="local_400_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name1", type=str,  default="remote_400_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name2", type=str,  default="remote_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--network_path1",       type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
+    parser.add_argument("--network_path2",       type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
+    parser.add_argument("--num_engines1" ,       type=int,  default=2)
+    parser.add_argument("--num_engines2" ,       type=int,  default=2)
+    parser.add_argument("--result_subdir",       type=str,  default="main_results")
 
     # Evolutionary algorithm parameters
 
@@ -574,6 +577,17 @@ if __name__ == "__main__":
     store_experiment_params(
         namespace=args, result_file_path=result_file_path, source_file_path=__file__
     )
+
+    # Get the experiment config as a dictionary
+    experiment_config = get_experiment_params_dict(namespace=args, source_file_path=__file__)
+
+    # Log the experiment config
+    experiment_config_str = "{\n"
+    for key, value in experiment_config.items():
+        experiment_config_str += f"    {key}: {value},\n"
+    experiment_config_str += "\n}"
+
+    logger.info(f"\nExperiment config:\n{experiment_config_str}")
 
     # Read the weights and biases config file
     with open(WANDB_CONFIG_FILE, "r") as f:
