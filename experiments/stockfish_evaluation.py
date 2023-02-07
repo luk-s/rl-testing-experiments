@@ -80,10 +80,12 @@ async def analyze_positions(
                     board, chess.engine.Limit(**search_limits), game=analysis_counter
                 )
                 fen = board.fen(en_passant="fen")
-                score = info["score"].relative.score(mate_score=12800)
-                best_move = info["pv"][0]
-                file.write(f"{fen},{score},{best_move}\n")
-                logging.info("Wrote result to file!")
+                score_cp = info["score"].relative.score(mate_score=12800)
+                # Check if the computed score is valid
+                if engine_generator is None or engine_generator.cp_score_valid(score_cp):
+                    best_move = info["pv"][0]
+                    file.write(f"{fen},{score_cp},{best_move}\n")
+                    logging.info("Wrote result to file!")
 
             except chess.engine.EngineTerminatedError:
                 if engine_generator is None:

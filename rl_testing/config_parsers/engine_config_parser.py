@@ -19,7 +19,7 @@ class EngineConfig(Config):
         "engine_config",
         "search_limits",
     ]
-    OPTIONAL_ATTRIBUTES = ["network_path", "initialize_network"]
+    OPTIONAL_ATTRIBUTES = ["network_path", "initialize_network", "cp_score_max", "cp_score_min"]
 
     def __init__(
         self,
@@ -34,6 +34,8 @@ class EngineConfig(Config):
         self.engine_config = {}
         self.search_limits = {}
         self.initialize_network = True
+        self.cp_score_max = 12801
+        self.cp_score_min = -12801
 
         # Assign the parameters from the provided config file
         if _initialize:

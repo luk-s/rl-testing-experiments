@@ -115,16 +115,20 @@ async def analyze_positions(
                     else:
                         info = result
                     fen = board.fen(en_passant="fen")
-                    scores.append(info["score"].relative.score(mate_score=12800))
-                    best_moves.append(info["pv"][0])
+                    score_cp = info["score"].relative.score(mate_score=12800)
+                    # Check if the computed score is valid
+                    if engine_generator is None or engine_generator.cp_score_valid(score_cp):
+                        scores.append(score_cp)
+                        best_moves.append(info["pv"][0])
 
-                file.write(
-                    f"{fen},"
-                    + ",".join(
-                        f"{score},{best_move}" for score, best_move in zip(scores, best_moves)
+                if scores:
+                    file.write(
+                        f"{fen},"
+                        + ",".join(
+                            f"{score},{best_move}" for score, best_move in zip(scores, best_moves)
+                        )
+                        + "\n"
                     )
-                    + "\n"
-                )
                 # Write the node stats to the second file if necessary
                 if full_logs:
                     assert isinstance(node_stats, list)

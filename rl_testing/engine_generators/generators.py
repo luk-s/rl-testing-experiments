@@ -27,6 +27,8 @@ class EngineGenerator:
         self.engine_config = config.engine_config
         self.network_path = config.network_path
         self.initialize_network = config.initialize_network
+        self.cp_score_max = config.cp_score_max
+        self.cp_score_min = config.cp_score_min
         self.transport_channel_map: Dict[SSHSubprocessProtocol, SSHSubprocessTransport] = {}
 
     async def _create_engine(
@@ -69,6 +71,9 @@ class EngineGenerator:
 
     async def close(self):
         pass
+
+    def cp_score_valid(self, score: float) -> bool:
+        return self.cp_score_min <= score <= self.cp_score_max
 
     def kill_engine(self, engine: SSHSubprocessProtocol):
         if engine not in self.transport_channel_map:

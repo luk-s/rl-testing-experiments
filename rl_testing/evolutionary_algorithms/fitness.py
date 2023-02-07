@@ -344,6 +344,7 @@ class DifferentialTestingFitness(Fitness):
             identifier_str (str, optional): A string to identify this particular engine. Defaults to "".
         """
         invalid_placeholder = ["invalid", "invalid"]
+        nan_placeholder = ["nan", "nan"]
 
         # Setup the engine
         engine = await DifferentialTestingFitness.setup_engine(engine_generator, network_name)
@@ -388,13 +389,18 @@ class DifferentialTestingFitness(Fitness):
                 )
 
             else:
+                score_cp = info["score"].relative.score(mate_score=12800)
+
+                # Check if the computed score is valid
+                if engine_generator is not None and not engine_generator.cp_score_valid(score_cp):
+                    await output_queue.put((fen, *nan_placeholder))
+
                 # Check if the proposed best move is valid
-                if engine.invalid_best_move:
+                elif engine.invalid_best_move:
                     await output_queue.put((fen, *invalid_placeholder))
                 else:
                     best_move = info["pv"][0]
-                    score = cp2q(info["score"].relative.score(mate_score=12800))
-                    await output_queue.put((fen, best_move, score))
+                    await output_queue.put((fen, best_move, score_cp))
             finally:
                 input_queue.task_done()
 
@@ -445,7 +451,9 @@ class DifferentialTestingFitness(Fitness):
             fen, _, score = await self.output_queue2.get()
 
             # Both results are valid
-            if output_dict[fen] != "invalid" and score != "invalid":
+            if (output_dict[fen] != "invalid" and score != "invalid") and (
+                output_dict[fen] != "nan" and score != "nan"
+            ):
                 fitness = abs(output_dict[fen] - score)
 
                 # Add the fitness value to all individuals with the same fen

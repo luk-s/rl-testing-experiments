@@ -172,17 +172,24 @@ async def analyze_position(
             # Add an error to the receiver queue
             await producer_queue.put((base_board, transform_index, "invalid"))
         else:
-            # Add the board to the receiver queue
-            # The 12800 is used as maximum value because we use the q2cp function
-            # to convert q_values to centipawns. This formula has values in
-            # [-12800, 12800] for q_values in [-1, 1]
-            await producer_queue.put(
-                (
-                    base_board,
-                    transform_index,
-                    cp2q(info["score"].relative.score(mate_score=12800)),
+            score_cp = info["score"].relative.score(mate_score=12800)
+
+            # Check if the computed score is valid
+            if engine_generator is not None and not engine_generator.cp_score_valid(score_cp):
+                await producer_queue.put((base_board, transform_index, "invalid"))
+
+            else:
+                # Add the board to the receiver queue
+                # The 12800 is used as maximum value because we use the q2cp function
+                # to convert q_values to centipawns. This formula has values in
+                # [-12800, 12800] for q_values in [-1, 1]
+                await producer_queue.put(
+                    (
+                        base_board,
+                        transform_index,
+                        cp2q(score_cp),
+                    )
                 )
-            )
         finally:
             consumer_queue.task_done()
             board_counter += 1

@@ -284,8 +284,14 @@ class ChessEnsembleEvaluator(ChessEvaluator):
                 # Set the failure flag
                 await producer_queue.put("invalid")
             else:
-                # Add the board to the list of analysis results
-                await producer_queue.put(info["mcts_tree"])
+                score_cp = info["score"].white().score(mate_score=12800)
+
+                # Check if the computed score is valid
+                if engine_generator is not None and not engine_generator.cp_score_valid(score_cp):
+                    await producer_queue.put("invalid")
+                else:
+                    # Add the board to the list of analysis results
+                    await producer_queue.put(info["mcts_tree"])
             finally:
                 consumer_queue.task_done()
 

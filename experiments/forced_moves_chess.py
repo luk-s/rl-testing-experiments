@@ -107,7 +107,7 @@ async def analyze_positions(
                 board, chess.engine.Limit(**search_limits), game=analysis_counter
             )
             best_move = info["pv"][0]
-            score = cp2q(info["score"].relative.score(mate_score=12800))
+            score_cp = info["score"].relative.score(mate_score=12800)
         except chess.engine.EngineTerminatedError:
             if engine_generator is None or network_name is None:
                 logging.info(f"[{identifier_str}] Can't restart engine due to missing generator")
@@ -127,11 +127,15 @@ async def analyze_positions(
             engine = await engine_generator.get_initialized_engine()
 
         else:
+            # Check if the computed score is valid
+            if engine_generator is not None and not engine_generator.cp_score_valid(score_cp):
+                await output_queue.put((fen, "invalid", "invalid"))
+
             # Check if the proposed best move is valid
-            if engine.invalid_best_move:
+            elif engine.invalid_best_move:
                 await output_queue.put((fen, "invalid", "invalid"))
             else:
-                await output_queue.put((fen, best_move, score))
+                await output_queue.put((fen, best_move, cp2q(score_cp)))
         finally:
             input_queue.task_done()
 
