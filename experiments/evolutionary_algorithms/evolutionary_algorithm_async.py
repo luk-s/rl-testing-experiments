@@ -9,9 +9,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import chess.engine
 import numpy as np
+import wandb
 import yaml
 
-import wandb
 from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.evolutionary_algorithms.crossovers import (
@@ -54,17 +54,17 @@ RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm
 WANDB_CONFIG_FILE = Path(__file__).parent.parent / Path(
     "configs/hyperparameter_tuning_configs/config_ea_edit_distance.yaml"
 )
-DEBUG = False
+DEBUG = True
 DEBUG_CONFIG = {
     "num_runs_per_config": 1,
     "num_workers": 8,
     "probability_decay": True,
     "num_generations": 50,
     "population_size": 1000,
-    "mutation_prob": 0.8,
-    "crossover_prob": 0.6,
+    "mutation_prob": 0.6,
+    "crossover_prob": 0.5,
     # "mutation_prob": 0.5153169719430473,
-    "tournament_fraction": 1e-3 * 15,
+    "tournament_fraction": 0.2,
     # "tournament_fraction": 0.18229452371470656,
     # "tournament_fraction": 0.0035739063534925286,
 }
@@ -507,8 +507,10 @@ if __name__ == "__main__":
     # fmt: off
     # Engine parameters
     parser.add_argument("--seed",               type=int,  default=43)
-    parser.add_argument("--engine_config_name1", type=str,  default="local_400_nodes.ini")  # noqa: E501
-    parser.add_argument("--engine_config_name2", type=str,  default="local_400_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name1", type=str,  default="local_400_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name2", type=str,  default="local_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name1", type=str,  default="remote_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name2", type=str,  default="remote_400_nodes.ini")  # noqa: E501
     parser.add_argument("--network_path1",      type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
     parser.add_argument("--network_path2",      type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
     parser.add_argument("--num_engines1" ,      type=int,  default=2)

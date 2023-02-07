@@ -1,9 +1,11 @@
 import asyncio
+import logging
 from getpass import getpass
 from pathlib import Path
-from typing import Any, Tuple, TypeVar
+from typing import Any, Dict, Tuple, TypeVar
 
 import asyncssh
+from asyncssh import SSHSubprocessProtocol, SSHSubprocessTransport
 from chess.engine import UciProtocol
 
 from rl_testing.config_parsers.engine_config_parser import (
@@ -25,6 +27,7 @@ class EngineGenerator:
         self.engine_config = config.engine_config
         self.network_path = config.network_path
         self.initialize_network = config.initialize_network
+        self.transport_channel_map: Dict[SSHSubprocessProtocol, SSHSubprocessTransport] = {}
 
     async def _create_engine(
         self, **kwargs: Any
@@ -41,7 +44,9 @@ class EngineGenerator:
             )
 
         # Create the engine
-        _, engine = await self._create_engine(**kwargs)
+        subprocess_transport, engine = await self._create_engine(**kwargs)
+
+        self.transport_channel_map[engine] = subprocess_transport
 
         # Initialize the engine
         if not engine.initialized:
@@ -64,6 +69,17 @@ class EngineGenerator:
 
     async def close(self):
         pass
+
+    def kill_engine(self, engine: SSHSubprocessProtocol):
+        if engine not in self.transport_channel_map:
+            raise ValueError("Engine not found in transport channel map!")
+
+        try:
+            self.transport_channel_map[engine].kill()
+        except OSError:
+            logging.warning("SSH channel already closed!")
+
+        del self.transport_channel_map[engine]
 
 
 class RemoteEngineGenerator(EngineGenerator):

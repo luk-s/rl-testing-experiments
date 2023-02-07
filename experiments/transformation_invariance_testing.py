@@ -158,6 +158,10 @@ async def analyze_position(
                 logging.info("Can't restart engine due to missing generator")
                 raise
 
+            # Try to kill the failed engine
+            logging.info(f"[{identifier_str}] Trying to kill engine")
+            engine_generator.kill_engine(engine=engine)
+
             # Try to restart the engine
             logging.info("Trying to restart engine")
 

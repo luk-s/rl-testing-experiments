@@ -102,6 +102,10 @@ async def analyze_positions(
             # Mark the current board as failed
             await output_queue.put((fen, *invalid_placeholder))
 
+            # Try to kill the failed engine
+            logging.info(f"[{identifier_str}] Trying to kill engine")
+            engine_generator.kill_engine(engine=engine)
+
             # Try to restart the engine
             logging.info(f"[{identifier_str}] Trying to restart engine")
 
@@ -329,17 +333,17 @@ if __name__ == "__main__":
     # fmt: off
     parser.add_argument("--seed",               type=int,  default=42)
     # parser.add_argument("--engine_config_name", type=str,  default="remote_400_nodes.ini")
-    # parser.add_argument("--engine_config_name", type=str,  default="remote_full_logs_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name", type=str,  default="remote_full_logs_400_nodes.ini")  # noqa: E501
     # parser.add_argument("--engine_config_name", type=str,  default="default_remote.ini")
-    parser.add_argument("--engine_config_name", type=str,  default="remote_100_nodes.ini")
+    # parser.add_argument("--engine_config_name", type=str,  default="remote_100_nodes.ini")
     # parser.add_argument("--engine_config_name", type=str,  default="local_400_nodes.ini")
     # parser.add_argument("--data_config_name",   type=str,  default="database.ini")
     parser.add_argument("--data_config_name",   type=str,  default="interesting_fen_database.ini")
     # parser.add_argument("--num_positions",      type=int,  default=100_000)
     #parser.add_argument("--num_positions",      type=int,  default=158)
-    parser.add_argument("--num_positions",      type=int,  default=2)
+    parser.add_argument("--num_positions",      type=int,  default=3)
     # parser.add_argument("--full_logs",          type=bool, default=False)
-    parser.add_argument("--full_logs",          type=bool, default=False)
+    parser.add_argument("--full_logs",          type=bool, default=True)
     parser.add_argument("--network_path1",      type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
     parser.add_argument("--network_path2",      type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
     # parser.add_argument("--network_path2",      type=str,  default="BT2-768x15-swa-3250000.pb")  # noqa: E501

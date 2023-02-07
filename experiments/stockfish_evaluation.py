@@ -13,11 +13,9 @@ from rl_testing.config_parsers import get_data_generator_config, get_engine_conf
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol
-from rl_testing.util.util import (
-    get_task_result_handler,
-    plot_board,
-)
+from rl_testing.util.chess import plot_board
 from rl_testing.util.experiment import store_experiment_params
+from rl_testing.util.util import get_task_result_handler
 
 RESULT_DIR = Path(__file__).parent / Path("results/differential_testing")
 
@@ -71,8 +69,7 @@ async def analyze_positions(
             await asyncio.sleep(delay=sleep_after_get)
 
             logging.info(
-                f"Analyzing board {board_index + 1}/{num_boards}: "
-                + board.fen(en_passant="fen")
+                f"Analyzing board {board_index + 1}/{num_boards}: " + board.fen(en_passant="fen")
             )
 
             # Needs to be in a try-except because the engine might crash unexpectedly
@@ -93,12 +90,14 @@ async def analyze_positions(
                     logging.error("Can't restart engine due to missing generator")
                     raise
 
+                # Try to kill the failed engine
+                logging.info(f"Trying to kill engine")
+                engine_generator.kill_engine(engine=engine)
+
                 # Try to restart the engine
                 logging.info("Trying to restart engine")
 
-                engine = await engine_generator.get_initialized_engine(
-                    initialize_network=False
-                )
+                engine = await engine_generator.get_initialized_engine(initialize_network=False)
             finally:
                 queue.task_done()
 
@@ -236,8 +235,7 @@ if __name__ == "__main__":
 
     engine_config = get_engine_config(
         config_name=args.engine_config_name,
-        config_folder_path=Path(__file__).parent.absolute()
-        / Path("configs/engine_configs/"),
+        config_folder_path=Path(__file__).parent.absolute() / Path("configs/engine_configs/"),
     )
     engine_generator = get_engine_generator(engine_config)
 

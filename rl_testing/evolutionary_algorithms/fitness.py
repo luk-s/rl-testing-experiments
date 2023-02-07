@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 import chess
 import chess.engine
 import numpy as np
+
 from rl_testing.engine_generators import EngineGenerator
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.cache import LRUCache
@@ -374,6 +375,10 @@ class DifferentialTestingFitness(Fitness):
             except chess.engine.EngineTerminatedError:
                 # Mark the current board as failed
                 await output_queue.put((fen, *invalid_placeholder))
+
+                # Try to kill the failed engine
+                logging.info(f"[{identifier_str}] Trying to kill engine")
+                engine_generator.kill_engine(engine=engine)
 
                 # Try to restart the engine
                 logging.info(f"[{identifier_str}] Trying to restart engine")

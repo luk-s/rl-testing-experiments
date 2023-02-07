@@ -1,15 +1,11 @@
 import asyncio
-import datetime
-import io
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import chess
 import chess.svg
-import imgkit
 import matplotlib
-import matplotlib.image as mimage
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -196,64 +192,7 @@ def fen_to_file_name(fen: str, suffix: str = ""):
     return fen + suffix
 
 
-def plot_board(
-    board: chess.Board,
-    title: str = "",
-    fen: str = "",
-    fontsize: int = 22,
-    save: bool = True,
-    show: bool = False,
-    save_path: Union[str, Path] = "",
-) -> None:
-    # Get the XML representation of an SVG image of the board
-    svg = chess.svg.board(board)
-
-    # Convert the XML representation into an SVG image
-    transformed = imgkit.from_string(svg, output_path=False, options={"format": "png"})
-
-    # Trick matplotlib into thinking that transformed is actually a file
-    with io.BytesIO(transformed) as image_bytes:
-
-        # Read the image as if it was a file
-        im = mimage.imread(image_bytes)
-
-    # Plot the image
-    plt.imshow(im)
-
-    # Change the font size
-    font = {"size": fontsize}
-    matplotlib.rc("font", **font)
-
-    # Make the axes invisible
-    ax = plt.gca()
-    ax.get_yaxis().set_visible(False)
-
-    if fen:
-        font["size"] = fontsize - 4
-        plt.xlabel(fen, fontdict=font)
-
-    # x_axis.set_visible(False)
-    plt.xticks([])
-
-    plt.title(title, pad=10)
-
-    if save:
-        if save_path == "":
-            time_now = str(datetime.datetime.now())
-            time_now = time_now.replace(" ", "_")
-            save_path = Path(f"board_{time_now}.png")
-
-        save_path = Path(save_path)
-        save_path.absolute().parent.mkdir(parents=True, exist_ok=True)
-        plt.savefig(save_path, dpi=200)
-
-    if show:
-        plt.show()
-
-
 if __name__ == "__main__":
     fen = "rnbqkbnr/pppp1ppp/8/3Pp3/5B2/6N1/PPP1PPPP/RNBQK2R w Kq e6 0 1"
     fen = "8/1p3r2/P1pK4/P3Pnp1/PpnR3N/Q4bqB/p2Bp3/Nk6 w - - 70 50"
     board = chess.Board(fen)
-
-    plot_board(board=board, title="value 1: 0.99, value2: -0.99", fen=fen, fontsize=14)

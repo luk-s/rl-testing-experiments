@@ -3,7 +3,10 @@ from typing import Iterable, Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
+from chess.engine import Cp, Mate, Score
 from deap import base, creator, tools
+
+from rl_testing.util.util import cp2q
 
 
 class Noise2DPiecewise:
@@ -223,6 +226,7 @@ def main():
 
 
 if __name__ == "__main__":
+    """
     ################
     # CONFIG START #
     ################
@@ -306,3 +310,19 @@ if __name__ == "__main__":
     plt.scatter(best_individuals[0], best_individuals[1], c="red", s=60, marker="x")
 
     plt.show()
+    """
+    import chess
+
+    # board = chess.Board("3B2b1/P7/r5Rr/1ppB2PP/r6b/2pP1ppP/p1qppP2/1QkNNB1K b - - 3 43")
+    # board = chess.Board("8/pKPPP1P1/Bb1pP2R/NpQ3bp/1pPr3p/1P1q3B/1n1N1pPp/2k5 w - - 20 187")
+    board = chess.Board("1r6/pN4K1/3R4/n1R2qp1/PpPp2qB/6p1/p1kPpp2/bB5r b - - 46 117")
+    board = chess.Board("1r6/3P2K1/1P1R2P1/1PR2qp1/N2P1NqB/2p1P3/p1k2ppn/bB6 b - - 45 117")
+    board = chess.Board("8/r2P2K1/1P1R2P1/1P3pp1/N2P1NqB/2p1P3/p1k2ppn/bB6 b - - 45 117")
+    board = chess.Board("4b3/1N3np1/1rNp4/pb1kp2P/2R3KB/Q1pp4/P2nP3/1q2r3 w - - 56 5")
+    print(board)
+    print(board.is_valid())
+    print("Computed difference: ", 1.9122740696762588)
+    print("Real difference: ", 0.75694 + 0.95296)
+
+    s = Mate(4)
+    print("finished")

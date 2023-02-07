@@ -1,9 +1,10 @@
 import argparse
 import asyncio
+import logging
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
-import logging
+
 import chess
 import chess.engine
 import numpy as np
@@ -12,11 +13,8 @@ from rl_testing.config_parsers import get_data_generator_config, get_engine_conf
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol
-from rl_testing.util.util import (
-    get_task_result_handler,
-    cp2q,
-)
 from rl_testing.util.experiment import store_experiment_params
+from rl_testing.util.util import cp2q, get_task_result_handler
 
 RESULT_DIR = Path(__file__).parent / Path("results/forced_moves")
 
@@ -112,13 +110,15 @@ async def analyze_positions(
             score = cp2q(info["score"].relative.score(mate_score=12800))
         except chess.engine.EngineTerminatedError:
             if engine_generator is None or network_name is None:
-                logging.info(
-                    f"[{identifier_str}] Can't restart engine due to missing generator"
-                )
+                logging.info(f"[{identifier_str}] Can't restart engine due to missing generator")
                 raise
 
             # Mark the current board as failed
             await output_queue.put((fen, "invalid", "invalid"))
+
+            # Try to kill the failed engine
+            logging.info(f"[{identifier_str}] Trying to kill engine")
+            engine_generator.kill_engine(engine=engine)
 
             # Try to restart the engine
             logging.info(f"[{identifier_str}] Trying to restart engine")
@@ -334,8 +334,7 @@ if __name__ == "__main__":
 
     engine_config = get_engine_config(
         config_name=args.engine_config_name,
-        config_folder_path=Path(__file__).parent.absolute()
-        / Path("configs/engine_configs/"),
+        config_folder_path=Path(__file__).parent.absolute() / Path("configs/engine_configs/"),
     )
     engine_generator = get_engine_generator(engine_config)
 

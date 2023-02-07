@@ -1,6 +1,14 @@
+import datetime
+import io
+from pathlib import Path
 from typing import Union
 
 import chess
+import chess.svg
+import imgkit
+import matplotlib
+import matplotlib.image as mimage
+import matplotlib.pyplot as plt
 
 
 def remove_pawns(board: chess.Board) -> Union[chess.Board, str]:
@@ -43,6 +51,63 @@ def is_really_valid(board: chess.Board) -> bool:
     ):
         return False
     return board.is_valid()
+
+
+def plot_board(
+    board: chess.Board,
+    title: str = "",
+    fen: str = "",
+    fontsize: int = 22,
+    save: bool = True,
+    show: bool = False,
+    save_path: Union[str, Path] = "",
+) -> None:
+    # Get the XML representation of an SVG image of the board
+    svg = chess.svg.board(board, size=800)
+
+    # Convert the XML representation into an SVG image
+    transformed = imgkit.from_string(svg, output_path=False, options={"format": "png"})
+
+    # Trick matplotlib into thinking that transformed is actually a file
+    with io.BytesIO(transformed) as image_bytes:
+
+        # Read the image as if it was a file
+        im = mimage.imread(image_bytes)
+
+    # Plot the image
+    plt.imshow(im)
+
+    # Change the font size
+    font = {"size": fontsize}
+    matplotlib.rc("font", **font)
+
+    # Make the axes invisible
+    ax = plt.gca()
+    ax.get_yaxis().set_visible(False)
+
+    if fen:
+        font["size"] = fontsize - 4
+        plt.xlabel(fen, fontdict=font)
+
+    # x_axis.set_visible(False)
+    plt.xticks([])
+
+    plt.title(title, pad=10)
+
+    if save:
+        if save_path == "":
+            time_now = str(datetime.datetime.now())
+            time_now = time_now.replace(" ", "_")
+            save_path = Path(f"board_{time_now}.png")
+
+        save_path = Path(save_path)
+        save_path.absolute().parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(save_path, dpi=400)
+
+    if show:
+        plt.show()
+
+    plt.close()
 
 
 if __name__ == "__main__":

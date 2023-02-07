@@ -12,8 +12,8 @@ import numpy as np
 from rl_testing.config_parsers import get_data_generator_config, get_engine_config
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
-from rl_testing.util.util import cp2q, get_task_result_handler
 from rl_testing.util.experiment import store_experiment_params
+from rl_testing.util.util import cp2q, get_task_result_handler
 
 RESULT_DIR = Path(__file__).parent / Path("results/parent_child_testing")
 
@@ -74,10 +74,7 @@ async def create_positions(
         legal_moves = list(board_candidate.legal_moves)
 
         # Check if the generated position should be further processed
-        if (
-            board_candidate.fen() not in fen_cache
-            and 0 < len(legal_moves) <= max_child_moves
-        ):
+        if board_candidate.fen() not in fen_cache and 0 < len(legal_moves) <= max_child_moves:
             fen_cache[board_candidate.fen()] = True
 
             # Get all child positions which are not terminal positions
@@ -96,9 +93,7 @@ async def create_positions(
 
             # Log the base position
             fen = board_candidate.fen(en_passant="fen")
-            logging.info(
-                f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}"
-            )
+            logging.info(f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}")
 
             # Log the child positions
             for board in board_list[1:]:
@@ -108,9 +103,7 @@ async def create_positions(
             # Send the base position to all queues
             for queue in queues:
                 for board, move in zip(board_list, move_list):
-                    await queue.put(
-                        (board_candidate.copy(), len(board_list), board.copy(), move)
-                    )
+                    await queue.put((board_candidate.copy(), len(board_list), board.copy(), move))
 
             await asyncio.sleep(delay=sleep_between_positions)
 
@@ -143,8 +136,7 @@ async def analyze_position(
         await asyncio.sleep(delay=sleep_after_get)
 
         logging.info(
-            f"[{identifier_str}] Analyzing board {board_counter}: "
-            + board.fen(en_passant="fen")
+            f"[{identifier_str}] Analyzing board {board_counter}: " + board.fen(en_passant="fen")
         )
         try:
             # Analyze the board
@@ -157,6 +149,10 @@ async def analyze_position(
                 logging.info("Can't restart engine due to missing generator")
                 raise
 
+            # Try to kill the failed engine
+            logging.info(f"[{identifier_str}] Trying to kill engine")
+            engine_generator.kill_engine(engine=engine)
+
             # Try to restart the engine
             logging.info("Trying to restart engine")
 
@@ -165,9 +161,7 @@ async def analyze_position(
             engine = await engine_generator.get_initialized_engine()
 
             # Add an error to the receiver queue
-            await producer_queue.put(
-                (base_board, num_child_nodes, board, move, "invalid")
-            )
+            await producer_queue.put((base_board, num_child_nodes, board, move, "invalid"))
         else:
             # Add the board to the receiver queue
             # The 12800 is used as maximum value because we use the q2cp function
@@ -378,9 +372,7 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
 
     # Create result directory
-    config_folder_path = Path(__file__).parent.absolute() / Path(
-        "configs/engine_configs/"
-    )
+    config_folder_path = Path(__file__).parent.absolute() / Path("configs/engine_configs/")
 
     # Build the engine generator
     engine_config = get_engine_config(

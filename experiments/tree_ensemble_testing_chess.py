@@ -17,8 +17,8 @@ from rl_testing.mcts.mcts_chess import (
     ChessMCTSBot,
     ChessSearchNode,
 )
-from rl_testing.util.util import cp2q, get_task_result_handler
 from rl_testing.util.experiment import store_experiment_params
+from rl_testing.util.util import cp2q, get_task_result_handler
 
 RESULT_DIR = Path(__file__).parent / Path("results/tree_ensemble_testing")
 
@@ -51,9 +51,7 @@ async def create_positions(
 
             # Log the base position
             fen = board_candidate.fen(en_passant="fen")
-            logging.info(
-                f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}"
-            )
+            logging.info(f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}")
 
             # Send the base position to all queues
             for queue in queues:
@@ -90,8 +88,7 @@ async def analyze_position(
         await asyncio.sleep(delay=sleep_after_get)
 
         logging.info(
-            f"[{identifier_str}] Analyzing board {board_counter}: "
-            + board.fen(en_passant="fen")
+            f"[{identifier_str}] Analyzing board {board_counter}: " + board.fen(en_passant="fen")
         )
         try:
             # Analyze the board
@@ -104,6 +101,10 @@ async def analyze_position(
             if engine_generator is None:
                 logging.info("Can't restart engine due to missing generator")
                 raise
+
+            # Try to kill the failed engine
+            logging.info(f"[{identifier_str}] Trying to kill engine")
+            engine_generator.kill_engine(engine=engine)
 
             # Try to restart the engine
             logging.info("Trying to restart engine")
@@ -157,9 +158,7 @@ async def evaluate_candidates(
                 move_reference,
             ) = await reference_queue.get()
             board_ensemble, score_ensemble, move_ensemble = await ensemble_queue.get()
-            assert board_reference.fen(en_passant="fen") == board_ensemble.fen(
-                en_passant="fen"
-            )
+            assert board_reference.fen(en_passant="fen") == board_ensemble.fen(en_passant="fen")
             fen = board_reference.fen(en_passant="fen")
 
             await asyncio.sleep(delay=sleep_after_get)
@@ -168,8 +167,7 @@ async def evaluate_candidates(
 
             # Write the found adversarial example into a file
             result_str = (
-                f"{fen},{score_reference},{move_reference},"
-                f"{score_ensemble},{move_ensemble}\n"
+                f"{fen},{score_reference},{move_reference}," f"{score_ensemble},{move_ensemble}\n"
             )
 
             # Write the result to the file
@@ -222,8 +220,7 @@ async def ensemble_analysis(
         await asyncio.sleep(delay=sleep_after_get)
 
         logging.info(
-            f"[{identifier_str}] Analyzing board {board_counter}: "
-            + board.fen(en_passant="fen")
+            f"[{identifier_str}] Analyzing board {board_counter}: " + board.fen(en_passant="fen")
         )
         root_node = await mcts_bot.mcts_search(board=board)
         if root_node == "invalid":
@@ -399,9 +396,7 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
 
     # Create result directory
-    config_folder_path = Path(__file__).parent.absolute() / Path(
-        "configs/engine_configs/"
-    )
+    config_folder_path = Path(__file__).parent.absolute() / Path("configs/engine_configs/")
 
     # Build the ensemble engine generator
     engine_config_ensemble = get_engine_config(

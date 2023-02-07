@@ -13,8 +13,8 @@ from rl_testing.config_parsers import get_data_generator_config, get_engine_conf
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.mcts.tree_parser import TreeInfo
-from rl_testing.util.util import cp2q, get_task_result_handler
 from rl_testing.util.experiment import store_experiment_params
+from rl_testing.util.util import cp2q, get_task_result_handler
 
 RESULT_DIR = Path(__file__).parent / Path("results/tree_stat_testing")
 
@@ -47,9 +47,7 @@ async def create_positions(
 
             # Log the base position
             fen = board_candidate.fen(en_passant="fen")
-            logging.info(
-                f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}"
-            )
+            logging.info(f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}")
 
             # Send the base position to all queues
             for queue in queues:
@@ -86,8 +84,7 @@ async def analyze_position(
         await asyncio.sleep(delay=sleep_after_get)
 
         logging.info(
-            f"[{identifier_str}] Analyzing board {board_counter}: "
-            + board.fen(en_passant="fen")
+            f"[{identifier_str}] Analyzing board {board_counter}: " + board.fen(en_passant="fen")
         )
         try:
             # Analyze the board
@@ -100,6 +97,10 @@ async def analyze_position(
             if engine_generator is None:
                 logging.info("Can't restart engine due to missing generator")
                 raise
+
+            # Try to kill the failed engine
+            logging.info(f"[{identifier_str}] Trying to kill engine")
+            engine_generator.kill_engine(engine=engine)
 
             # Try to restart the engine
             logging.info("Trying to restart engine")
@@ -324,9 +325,7 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
 
     # Create result directory
-    config_folder_path = Path(__file__).parent.absolute() / Path(
-        "configs/engine_configs/"
-    )
+    config_folder_path = Path(__file__).parent.absolute() / Path("configs/engine_configs/")
 
     # Build the engine generator
     engine_config = get_engine_config(
