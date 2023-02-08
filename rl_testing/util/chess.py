@@ -10,6 +10,8 @@ import matplotlib
 import matplotlib.image as mimage
 import matplotlib.pyplot as plt
 
+AGGRESSIVE_VALIDATION = True
+
 
 def remove_pawns(board: chess.Board) -> Union[chess.Board, str]:
     piece_map = board.piece_map()
@@ -44,12 +46,23 @@ def is_really_valid(board: chess.Board) -> bool:
     check_squares = list(board.checkers())
     if len(check_squares) > 2:
         return False
-    if (
-        len(check_squares) == 2
-        and board.piece_at(check_squares[0]).piece_type
-        == board.piece_at(check_squares[1]).piece_type
-    ):
+
+    if AGGRESSIVE_VALIDATION and len(check_squares) == 2:
         return False
+
+    elif len(check_squares) == 2:
+        if (
+            board.piece_at(check_squares[0]).piece_type
+            == board.piece_at(check_squares[1]).piece_type
+        ):
+            return False
+        symbol1 = board.piece_at(check_squares[0]).symbol().lower()
+        symbol2 = board.piece_at(check_squares[1]).symbol().lower()
+        symbols = "".join([symbol1, symbol2])
+
+        if "p" in symbols:
+            return False
+
     return board.is_valid()
 
 
