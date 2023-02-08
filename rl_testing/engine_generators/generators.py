@@ -86,6 +86,11 @@ class EngineGenerator:
 
         del self.transport_channel_map[engine]
 
+    def kill_all_engines(self):
+        engines = list(self.transport_channel_map.keys())
+        for engine in engines:
+            self.kill_engine(engine)
+
 
 class RemoteEngineGenerator(EngineGenerator):
     def __init__(self, config: RemoteEngineConfig) -> None:

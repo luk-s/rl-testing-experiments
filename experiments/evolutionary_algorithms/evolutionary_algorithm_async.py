@@ -5,14 +5,16 @@ import multiprocessing
 import time
 from itertools import chain
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import chess.engine
 import numpy as np
 import wandb
+import wandb.sdk
 import yaml
 
 from rl_testing.config_parsers import get_engine_config
+from rl_testing.config_parsers.engine_config_parser import EngineConfig
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.evolutionary_algorithms.crossovers import (
     Crossover,
@@ -59,11 +61,11 @@ WANDB_CONFIG_FILE = Path(__file__).parent.parent / Path(
 )
 DEBUG = False
 DEBUG_CONFIG = {
-    "num_runs_per_config": 1,
+    "num_runs_per_config": 2,
     "num_workers": 8,
     "probability_decay": True,
-    "num_generations": 50,
-    "population_size": 1000,
+    "num_generations": 10,
+    "population_size": 50,
     "mutation_prob": 0.6,
     "crossover_prob": 0.5,
     # "mutation_prob": 0.5153169719430473,
@@ -484,6 +486,9 @@ async def evolutionary_algorithm(
 
     logging.info(f"Number of evaluations: {fitness.num_evaluations}")
 
+    # Cancel all running subprocesses which the fitness evaluator spawned
+    fitness.cancel_tasks()
+
     return (
         best_individuals,
         best_fitness_values,
@@ -491,6 +496,92 @@ async def evolutionary_algorithm(
         worst_fitness_values,
         unique_individual_fractions,
     )
+
+
+async def run_evolutionary_algorithm_n_times(
+    number_of_runs: int,
+    wandb_config: Union[FakeConfig, wandb.sdk.wandb_config.Config],
+    engine_config1: EngineConfig,
+    engine_config2: EngineConfig,
+    command_line_args: argparse.Namespace,
+    logger: logging.Logger,
+) -> List[
+    Tuple[
+        List[BoardIndividual],
+        List[BestFitnessValue],
+        List[AverageFitnessValue],
+        List[WorstFitnessValue],
+        List[UniqueIndividualFraction],
+    ]
+]:
+    """A wrapper function which first initializes the engine generators and then runs the evolutionary algorithm
+    `number_of_runs` times. The results of each run are stored in a list and returned.
+
+    Args:
+        number_of_runs (int): The number of times the evolutionary algorithm should be run.
+        wandb_config (Union[FakeConfig, wandb.sdk.wandb_config.Config]): A wandb config object which contains the
+            configuration parameters for the evolutionary algorithm.
+        engine_config1 (EngineConfig): A configuration object for the first engine.
+        engine_config2 (EngineConfig): A configuration object for the second engine.
+        command_line_args (argparse.Namespace): The command line arguments containing further configuration parameters
+            for the engines.
+        logger (logging.Logger): A logger object.
+
+    Returns:
+        List[
+            Tuple[
+                List[BoardIndividual],
+                List[BestFitnessValue],
+                List[AverageFitnessValue],
+                List[WorstFitnessValue],
+                List[UniqueIndividualFraction],
+            ]
+        ]: A list of tuples containing one tuple for each run. Each tuple contains a list of the best individuals, the best
+            fitness values, the average fitness values, the worst fitness values and the unique individual fractions for each
+            generation.
+    """
+
+    # Create the engine generators. This must be done inside this function because the ssh connection is run using asyncio, and all
+    # asyncio objects need to be created inside the same event loop.
+    engine_generator1, engine_generator2 = [
+        get_engine_generator(engine_config) for engine_config in [engine_config1, engine_config2]
+    ]
+
+    # If the two engine configs are the same, we can use the same engine generator
+    if engine_config1 == engine_config2:
+        engine_generator2 = engine_generator1
+
+    # Run 'number_of_runs' many runs of the evolutionary algorithm
+    result_tuples = []
+    for seed_offset in range(number_of_runs):
+        logger.info(f"Starting run {seed_offset + 1}/{number_of_runs}")
+        result_tuples.append(
+            await evolutionary_algorithm(
+                population_size=wandb_config.population_size,
+                crossover_prob=wandb_config.crossover_prob,
+                mutation_prob=wandb_config.mutation_prob,
+                num_generations=wandb_config.num_generations,
+                tournament_fraction=wandb_config.tournament_fraction,
+                probability_decay=wandb_config.probability_decay,
+                engine_generator1=engine_generator1,
+                engine_generator2=engine_generator2,
+                search_limits1=engine_config1.search_limits,
+                search_limits2=engine_config2.search_limits,
+                network_name1=command_line_args.network_path1,
+                network_name2=command_line_args.network_path2,
+                num_engines1=command_line_args.num_engines1,
+                num_engines2=command_line_args.num_engines2,
+                logger=logger,
+                num_workers=wandb_config.num_workers,
+                seed=command_line_args.seed + seed_offset,
+            )
+        )
+
+    # Transpose the list of tuples so that the different result lists are in the same tuple
+    # This is the same as 2d matrix transposition
+    result_tuples = list(map(list, zip(*result_tuples)))
+
+    return result_tuples
 
 
 if __name__ == "__main__":
@@ -549,13 +640,6 @@ if __name__ == "__main__":
         )
         for name in [args.engine_config_name1, args.engine_config_name2]
     ]
-    engine_generator1, engine_generator2 = [
-        get_engine_generator(engine_config) for engine_config in [engine_config1, engine_config2]
-    ]
-
-    # If the two engine configs are the same, we can use the same engine generator
-    if engine_config1 == engine_config2:
-        engine_generator2 = engine_generator1
 
     # Create results-file-name
     engine_config_name1 = args.engine_config_name1[:-4]
@@ -599,52 +683,25 @@ if __name__ == "__main__":
     else:
         wandb_config = FakeConfig(DEBUG_CONFIG)
 
-    # Initialize the result lists
+    # Run the evolutionary algorithm 'num_runs_per_config' times
+    asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
+
     (
         populations,
         best_fitness_value_series,
         average_fitness_value_series,
         worst_fitness_value_series,
         unique_individual_fractions,
-    ) = ([], [], [], [], [])
-
-    # Run the evolutionary algorithm 'num_runs_per_config' times
-    asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
-    for seed_offset in range(wandb_config.num_runs_per_config):
-        print(f"Starting run {seed_offset + 1}/{wandb_config.num_runs_per_config}")
-
-        (
-            population,
-            best_fitness_values,
-            average_fitness_values,
-            worst_fitness_values,
-            unique_individual_fraction,
-        ) = asyncio.run(
-            evolutionary_algorithm(
-                population_size=wandb_config.population_size,
-                crossover_prob=wandb_config.crossover_prob,
-                mutation_prob=wandb_config.mutation_prob,
-                num_generations=wandb_config.num_generations,
-                tournament_fraction=wandb_config.tournament_fraction,
-                probability_decay=wandb_config.probability_decay,
-                engine_generator1=engine_generator1,
-                engine_generator2=engine_generator2,
-                search_limits1=engine_config1.search_limits,
-                search_limits2=engine_config2.search_limits,
-                network_name1=args.network_path1,
-                network_name2=args.network_path2,
-                num_engines1=args.num_engines1,
-                num_engines2=args.num_engines2,
-                logger=logger,
-                num_workers=wandb_config.num_workers,
-                seed=args.seed + seed_offset,
-            )
+    ) = asyncio.run(
+        run_evolutionary_algorithm_n_times(
+            number_of_runs=wandb_config.num_runs_per_config,
+            wandb_config=wandb_config,
+            engine_config1=engine_config1,
+            engine_config2=engine_config2,
+            command_line_args=args,
+            logger=logger,
         )
-        populations.append(population)
-        best_fitness_value_series.append(best_fitness_values)
-        average_fitness_value_series.append(average_fitness_values)
-        worst_fitness_value_series.append(worst_fitness_values)
-        unique_individual_fractions.append(unique_individual_fraction)
+    )
 
     # Average the fitness values and unique individual fractions over all runs
     # and compute the standard deviation
@@ -673,6 +730,3 @@ if __name__ == "__main__":
                 },
                 step=i,
             )
-
-    fitness_values = [individual.fitness for individual in population]
-    best_individual = population[np.argmin(fitness_values)]

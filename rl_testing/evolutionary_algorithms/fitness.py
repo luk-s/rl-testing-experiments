@@ -294,6 +294,11 @@ class DifferentialTestingFitness(Fitness):
 
     def cancel_tasks(self) -> None:
         """Cancels all the tasks."""
+        # First kill all running engine processes
+        self.engine_generator1.kill_all_engines()
+        self.engine_generator2.kill_all_engines()
+
+        # Then cancel all the tasks
         for task in self.engine_tasks:
             task.cancel()
 
