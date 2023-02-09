@@ -109,17 +109,7 @@ BestFitnessValue = float
 WorstFitnessValue = float
 AverageFitnessValue = float
 UniqueIndividualFraction = float
-
-
-class FakeConfig:
-    def __init__(self, config: Dict[str, Any]) -> None:
-        # Assert that all keys of the config dictionary are strings
-        assert all(
-            [isinstance(key, str) for key in config]
-        ), "All dictionary keys must be strings!"
-
-        for key in config:
-            setattr(self, key, config[key])
+Time = float
 
 
 class EvolutionaryAlgorithmConfig:
@@ -345,6 +335,7 @@ async def evolutionary_algorithm(
     logger: Optional[logging.Logger] = None,
     seed: Optional[int] = None,
 ) -> Tuple[
+    Time,
     List[BoardIndividual],
     List[BestFitnessValue],
     List[AverageFitnessValue],
@@ -372,14 +363,15 @@ async def evolutionary_algorithm(
 
     Returns:
         Tuple[
+            Time,
             List[BoardIndividual],
             List[BestFitnessValue],
             List[AverageFitnessValue],
             List[WorstFitnessValue],
             List[UniqueIndividualFraction],
-        ]: The best individual of each generation, the best fitness value of each generation, the average fitness value of
-            each generation, the worst fitness value of each generation and the fraction of unique individuals in each
-            generation.
+        ]: The runtime in seconds, the best individual of each generation, the best fitness value of each generation,
+            the average fitness value of each generation, the worst fitness value of each generation and the fraction
+            of unique individuals in each generation.
     """
     start_time = time.time()
     for parameter in [
@@ -594,12 +586,15 @@ async def evolutionary_algorithm(
                 logging.info("Early stopping!")
                 break
 
+    end_time = time.time()
     logging.info(f"Number of evaluations: {fitness.num_evaluations}")
+    logging.info(f"Total time: {end_time - start_time} seconds")
 
     # Cancel all running subprocesses which the fitness evaluator spawned
     fitness.cancel_tasks()
 
     return (
+        end_time - start_time,
         best_individuals,
         best_fitness_values,
         average_fitness_values,
@@ -615,14 +610,13 @@ async def run_evolutionary_algorithm_n_times(
     engine_config2: EngineConfig,
     command_line_args: argparse.Namespace,
     logger: logging.Logger,
-) -> List[
-    Tuple[
-        List[BoardIndividual],
-        List[BestFitnessValue],
-        List[AverageFitnessValue],
-        List[WorstFitnessValue],
-        List[UniqueIndividualFraction],
-    ]
+) -> Tuple[
+    List[Time],
+    List[List[BoardIndividual]],
+    List[List[BestFitnessValue]],
+    List[List[AverageFitnessValue]],
+    List[List[WorstFitnessValue]],
+    List[List[UniqueIndividualFraction]],
 ]:
     """A wrapper function which first initializes the engine generators and then runs the evolutionary algorithm
     `number_of_runs` times. The results of each run are stored in a list and returned.
@@ -637,17 +631,16 @@ async def run_evolutionary_algorithm_n_times(
         logger (logging.Logger): A logger object.
 
     Returns:
-        List[
-            Tuple[
-                List[BoardIndividual],
-                List[BestFitnessValue],
-                List[AverageFitnessValue],
-                List[WorstFitnessValue],
-                List[UniqueIndividualFraction],
-            ]
-        ]: A list of tuples containing one tuple for each run. Each tuple contains a list of the best individuals, the best
-            fitness values, the average fitness values, the worst fitness values and the unique individual fractions for each
-            generation.
+        Tuple[
+            List[Time],
+            List[List[BoardIndividual]],
+            List[List[BestFitnessValue]],
+            List[List[AverageFitnessValue]],
+            List[List[WorstFitnessValue]],
+            List[List[UniqueIndividualFraction]],
+        ]: A tuple containing a list of run-times of each iteration of the algorithm, a list of lists of
+            the best individuals, the best fitness values, the average fitness values, the worst fitness values and the
+            unique individual fractions for each generation.
     """
 
     # Create the engine generators. This must be done inside this function because the ssh connection is run using asyncio, and all
@@ -790,6 +783,7 @@ if __name__ == "__main__":
     asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
 
     (
+        run_times,
         populations,
         best_fitness_value_series,
         average_fitness_value_series,
@@ -808,6 +802,7 @@ if __name__ == "__main__":
 
     # Average the fitness values and unique individual fractions over all runs
     # and compute the standard deviation
+    average_runtime = np.mean(run_times)
     best_fitness_values = np.mean(best_fitness_value_series, axis=0)
     average_fitness_values = np.mean(average_fitness_value_series, axis=0)
     worst_fitness_values = np.mean(worst_fitness_value_series, axis=0)
@@ -833,3 +828,5 @@ if __name__ == "__main__":
                 },
                 step=i,
             )
+
+        wandb.log({"average_runtime": average_runtime})
