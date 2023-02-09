@@ -16,7 +16,7 @@ setuptools.setup(
         "pandas==1.5.1",
         "python-chess==1.999",
         "scipy==1.9.3",
-        "wandb==0.13.9",
+        "wandb==0.13.10",
     ],
     author="Lukas Fluri",
     author_email="lukas.fluri@protonmail.com",
