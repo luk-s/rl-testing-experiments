@@ -191,7 +191,7 @@ class EvolutionaryAlgorithmConfig:
             if getattr(config, crossover_function):
                 crossover_functions.append(CROSSOVER_FUNCTIONS_DICT[crossover_function])
         return cls(
-            num_runs_per_config=config.num_runs_per_conf,
+            num_runs_per_config=config.num_runs_per_config,
             num_workers=config.num_workers,
             probability_decay=config.probability_decay,
             early_stopping=config.early_stopping,
