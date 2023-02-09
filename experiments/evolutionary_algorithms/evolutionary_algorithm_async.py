@@ -57,7 +57,7 @@ from rl_testing.util.experiment import (
 
 RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm")
 WANDB_CONFIG_FILE = Path(__file__).parent.parent / Path(
-    "configs/hyperparameter_tuning_configs/config_ea_edit_distance.yaml"
+    "configs/hyperparameter_tuning_configs/config_ea_differential_testing.yaml"
 )
 DEBUG = False
 DEBUG_CONFIG = {
