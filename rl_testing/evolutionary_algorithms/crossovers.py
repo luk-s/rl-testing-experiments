@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import chess
 import numpy as np
 
+from rl_testing.evolutionary_algorithms import CrossoverName
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.chess import is_really_valid
 from rl_testing.util.util import get_random_state
@@ -304,6 +305,13 @@ def print_side_by_side(board1: chess.Board, board2: chess.Board) -> None:
     print("\n")
 
 
+CROSSOVER_NAME_MAP = {
+    crossover_half_board: CrossoverName.CROSSOVER_HALF_BOARD,
+    crossover_one_quarter_board: CrossoverName.CROSSOVER_ONE_QUARTER_BOARD,
+    crossover_one_eighth_board: CrossoverName.CROSSOVER_ONE_EIGHTH_BOARD,
+}
+
+
 class CrossoverFunction:
     def __init__(
         self,
@@ -373,9 +381,15 @@ class CrossoverFunction:
                     len(list(board_candidate1.legal_moves)) > 0
                     and len(list(board_candidate2.legal_moves)) > 0
                 ):
+                    # Clear the fitness values if requested
                     if self.clear_fitness_values:
                         del board_candidate1.fitness
                         del board_candidate2.fitness
+
+                    # Add the crossover function name to the board's history
+                    board_candidate1.history.append(CROSSOVER_NAME_MAP[self.function])
+                    board_candidate2.history.append(CROSSOVER_NAME_MAP[self.function])
+
                     return board_candidate1, board_candidate2
 
         logging.debug(

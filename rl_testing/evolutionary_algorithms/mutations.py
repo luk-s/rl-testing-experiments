@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import chess
 import numpy as np
 
+from rl_testing.evolutionary_algorithms import MutationName
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.chess import (
     is_really_valid,
@@ -12,14 +13,12 @@ from rl_testing.util.chess import (
     rotate_270_clockwise,
 )
 from rl_testing.util.evolutionary_algorithm import clear_fitness_values_wrapper
+from rl_testing.util.util import get_random_state
 
 PIECE_COUNT_DICT = {
     chess.WHITE: {"R": 2, "N": 2, "B": 2, "Q": 1, "K": 1, "P": 8},
     chess.BLACK: {"r": 2, "n": 2, "b": 2, "q": 1, "k": 1, "p": 8},
 }
-
-
-from rl_testing.util.util import get_random_state
 
 
 def mutate_player_to_move(
@@ -44,14 +43,14 @@ def mutate_player_to_move(
 
 def mutate_castling_rights(
     board: chess.Board,
-    probability_per_direction: float,
+    probability_per_direction: float = 0.5,
     _random_state: Optional[np.random.Generator] = None,
 ) -> chess.Board:
     """Mutate each castling right with probability `probability`.
 
     Args:
         board (chess.Board): The board to mutate.
-        probability (float): The probability of mutating the board.
+        probability (float): The probability of mutating the board. Defaults to 0.5.
         _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
 
     Returns:
@@ -546,6 +545,20 @@ def validity_wrapper(
     return inner_function
 
 
+MUTATION_NAME_MAP = {
+    mutate_add_one_piece: MutationName.MUTATE_ADD_ONE_PIECE,
+    mutate_castling_rights: MutationName.MUTATE_CASTLING_RIGHTS,
+    mutate_flip_board: MutationName.MUTATE_FLIP_BOARD,
+    mutate_move_one_piece: MutationName.MUTATE_MOVE_ONE_PIECE,
+    mutate_move_one_piece_adjacent: MutationName.MUTATE_MOVE_ONE_PIECE_ADJACENT,
+    mutate_move_one_piece_legal: MutationName.MUTATE_MOVE_ONE_PIECE_LEGAL,
+    mutate_player_to_move: MutationName.MUTATE_PLAYER_TO_MOVE,
+    mutate_remove_one_piece: MutationName.MUTATE_REMOVE_ONE_PIECE,
+    mutate_rotate_board: MutationName.MUTATE_ROTATE_BOARD,
+    mutate_substitute_piece: MutationName.MUTATE_SUBSTITUTE_PIECE,
+}
+
+
 class MutationFunction:
     def __init__(
         self,
@@ -610,8 +623,13 @@ class MutationFunction:
             if is_really_valid(board_candidate) and (
                 not self.check_game_not_over or len(list(board_candidate.legal_moves)) > 0
             ):
+                # Remove the fitness values if requested
                 if self.clear_fitness_values:
                     del board_candidate.fitness
+
+                # Add the applied mutation to the boards history
+                board_candidate.history.append(MUTATION_NAME_MAP[self.function])
+
                 return board_candidate
 
         logging.debug(

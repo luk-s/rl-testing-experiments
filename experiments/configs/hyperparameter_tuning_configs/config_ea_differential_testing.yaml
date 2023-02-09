@@ -6,16 +6,21 @@ parameters:
   num_workers:
     value: 8
   probability_decay:
-    values: [True, False]
+    value: True
+  early_stopping:
+    value: True
+  early_stopping_value:
+    value: 1.9
   num_generations:
     value: 50
     #distribution: int_uniform
     #min: 10
     #max: 100
   population_size:
-    distribution: int_uniform
-    min: 500
-    max: 2000
+    value: 1500
+    #distribution: int_uniform
+    #min: 500
+    #max: 2000
   mutation_prob:
     distribution: uniform
     min: 0
@@ -25,9 +30,36 @@ parameters:
     min: 0
     max: 1
   tournament_fraction:
-    distribution: uniform
-    min: 0
-    max: 1
+    value: 0.25
+    #distribution: uniform
+    #min: 0
+    #max: 1
+  mutate_add_one_piece:
+    values: [False, True]
+  mutate_castling_rights:
+    values: [False, True]
+  mutate_flip_board:
+    values: [False, True]
+  mutate_move_one_piece:
+    values: [False, True]
+  mutate_move_one_piece_adjacent:
+    values: [False, True]
+  mutate_move_one_piece_legal:
+    values: [False, True]
+  mutate_player_to_move:
+    values: [False, True]
+  mutate_remove_one_piece:
+    values: [False, True]
+  mutate_rotate_board:
+    values: [False, True]
+  mutate_substitute_piece:
+    values: [False, True]
+  crossover_half_board:
+    values: [False, True]
+  crossover_one_eighth_board:
+    values: [False, True]
+  crossover_one_quarter_board:
+    values: [False, True]
 name: differential_testing
 description: "Finding board positions where models maximally disagree"
 metric:

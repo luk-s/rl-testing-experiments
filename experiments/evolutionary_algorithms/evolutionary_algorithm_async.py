@@ -5,7 +5,7 @@ import multiprocessing
 import time
 from itertools import chain
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import chess.engine
 import numpy as np
@@ -59,19 +59,50 @@ RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm
 WANDB_CONFIG_FILE = Path(__file__).parent.parent / Path(
     "configs/hyperparameter_tuning_configs/config_ea_edit_distance.yaml"
 )
-DEBUG = False
+DEBUG = True
 DEBUG_CONFIG = {
     "num_runs_per_config": 2,
     "num_workers": 8,
     "probability_decay": True,
+    "early_stopping": True,
+    "early_stopping_value": 1.9,
     "num_generations": 10,
     "population_size": 50,
     "mutation_prob": 0.6,
     "crossover_prob": 0.5,
-    # "mutation_prob": 0.5153169719430473,
     "tournament_fraction": 0.2,
-    # "tournament_fraction": 0.18229452371470656,
-    # "tournament_fraction": 0.0035739063534925286,
+    "mutate_add_one_piece": True,
+    "mutate_castling_rights": True,
+    "mutate_flip_board": True,
+    "mutate_move_one_piece": True,
+    "mutate_move_one_piece_adjacent": True,
+    "mutate_move_one_piece_legal": True,
+    "mutate_player_to_move": True,
+    "mutate_remove_one_piece": True,
+    "mutate_rotate_board": True,
+    "mutate_substitute_piece": True,
+    "crossover_half_board": True,
+    "crossover_one_eighth_board": True,
+    "crossover_one_quarter_board": True,
+}
+
+MUTATION_FUNCTIONS_DICT = {
+    "mutate_add_one_piece": mutate_add_one_piece,
+    "mutate_castling_rights": mutate_castling_rights,
+    "mutate_flip_board": mutate_flip_board,
+    "mutate_move_one_piece": mutate_move_one_piece,
+    "mutate_move_one_piece_adjacent": mutate_move_one_piece_adjacent,
+    "mutate_move_one_piece_legal": mutate_move_one_piece_legal,
+    "mutate_player_to_move": mutate_player_to_move,
+    "mutate_remove_one_piece": mutate_remove_one_piece,
+    "mutate_rotate_board": mutate_rotate_board,
+    "mutate_substitute_piece": mutate_substitute_piece,
+}
+
+CROSSOVER_FUNCTIONS_DICT = {
+    "crossover_half_board": crossover_half_board,
+    "crossover_one_eighth_board": crossover_one_eighth_board,
+    "crossover_one_quarter_board": crossover_one_quarter_board,
 }
 
 BestFitnessValue = float
@@ -89,6 +120,90 @@ class FakeConfig:
 
         for key in config:
             setattr(self, key, config[key])
+
+
+class EvolutionaryAlgorithmConfig:
+    def __init__(
+        self,
+        num_runs_per_config: int,
+        num_workers: int,
+        probability_decay: bool,
+        early_stopping: bool,
+        early_stopping_value: float,
+        num_generations: int,
+        population_size: int,
+        mutation_prob: float,
+        crossover_prob: float,
+        tournament_fraction: float,
+        mutation_functions: List[Callable],
+        crossover_functions: List[Callable],
+    ) -> None:
+        self.num_runs_per_config = num_runs_per_config
+        self.num_workers = num_workers
+        self.probability_decay = probability_decay
+        self.early_stopping = early_stopping
+        self.early_stopping_value = early_stopping_value
+        self.num_generations = num_generations
+        self.population_size = population_size
+        self.mutation_prob = mutation_prob
+        self.crossover_prob = crossover_prob
+        self.tournament_fraction = tournament_fraction
+        self.mutation_functions = mutation_functions
+        self.crossover_functions = crossover_functions
+
+    @classmethod
+    def from_dict(cls, config: Dict[str, Any]) -> "EvolutionaryAlgorithmConfig":
+        mutation_functions: List[Callable] = []
+        for mutation_function in MUTATION_FUNCTIONS_DICT:
+            if config[mutation_function]:
+                mutation_functions.append(MUTATION_FUNCTIONS_DICT[mutation_function])
+
+        crossover_functions: List[Callable] = []
+        for crossover_function in CROSSOVER_FUNCTIONS_DICT:
+            if config[crossover_function]:
+                crossover_functions.append(CROSSOVER_FUNCTIONS_DICT[crossover_function])
+        return cls(
+            num_runs_per_config=config["num_runs_per_config"],
+            num_workers=config["num_workers"],
+            probability_decay=config["probability_decay"],
+            early_stopping=config["early_stopping"],
+            early_stopping_value=config["early_stopping_value"],
+            num_generations=config["num_generations"],
+            population_size=config["population_size"],
+            mutation_prob=config["mutation_prob"],
+            crossover_prob=config["crossover_prob"],
+            tournament_fraction=config["tournament_fraction"],
+            mutation_functions=mutation_functions,
+            crossover_functions=crossover_functions,
+        )
+
+    @classmethod
+    def from_wandb_config(
+        cls, config: wandb.sdk.wandb_config.Config
+    ) -> "EvolutionaryAlgorithmConfig":
+        mutation_functions: List[Callable] = []
+        for mutation_function in MUTATION_FUNCTIONS_DICT:
+            if getattr(config, mutation_function):
+                mutation_functions.append(MUTATION_FUNCTIONS_DICT[mutation_function])
+
+        crossover_functions: List[Callable] = []
+        for crossover_function in CROSSOVER_FUNCTIONS_DICT:
+            if getattr(config, crossover_function):
+                crossover_functions.append(CROSSOVER_FUNCTIONS_DICT[crossover_function])
+        return cls(
+            num_runs_per_config=config.num_runs_per_conf,
+            num_workers=config.num_workers,
+            probability_decay=config.probability_decay,
+            early_stopping=config.early_stopping,
+            early_stopping_value=config.early_stopping_value,
+            num_generations=config.num_generations,
+            population_size=config.population_size,
+            mutation_prob=config.mutation_prob,
+            crossover_prob=config.crossover_prob,
+            tournament_fraction=config.tournament_fraction,
+            mutation_functions=mutation_functions,
+            crossover_functions=crossover_functions,
+        )
 
 
 def get_random_state(random_state: Optional[np.random.Generator] = None) -> np.random.Generator:
@@ -149,44 +264,26 @@ def get_random_individuals(
 
 def setup_operators(
     random_state: np.random.Generator,
-    population_size: int,
-    tournament_fraction: float,
     is_bigger_fitness_better: bool,
+    evolutionary_algorithm_config: EvolutionaryAlgorithmConfig,
 ) -> Tuple[Mutator, Crossover, Selector]:
-    # Some constants
-    mutate_global_prob = 0.2
-    crossover_global_prob = 0.6
 
     # Initialize the mutation functions
     mutate = Mutator(
         mutation_strategy="all",
         _random_state=random_state,
     )
-    mutate.register_mutation_function(
-        [
-            mutate_player_to_move,
-            mutate_add_one_piece,
-            mutate_move_one_piece,
-            mutate_move_one_piece_adjacent,
-            mutate_move_one_piece_legal,
-            mutate_remove_one_piece,
-            mutate_flip_board,
-            mutate_rotate_board,
-            mutate_substitute_piece,
-        ],
-        retries=5,
-        check_game_not_over=True,
-        clear_fitness_values=True,
-    )
-    mutate.register_mutation_function(
-        [
-            mutate_castling_rights,
-        ],
-        probability_per_direction=0.5,
-        retries=5,
-        check_game_not_over=True,
-        clear_fitness_values=True,
-    )
+
+    mutate_global_prob = 1 / len(evolutionary_algorithm_config.mutation_functions) * 2
+
+    for mutation_function in evolutionary_algorithm_config.mutation_functions:
+        mutate.register_mutation_function(
+            [mutation_function],
+            retries=5,
+            check_game_not_over=True,
+            clear_fitness_values=True,
+        )
+
     mutate.set_global_probability(mutate_global_prob)
 
     # Initialize the crossover functions
@@ -194,16 +291,17 @@ def setup_operators(
         crossover_strategy="all",
         _random_state=random_state,
     )
-    crossover.register_crossover_function(
-        [
-            crossover_half_board,
-            crossover_one_quarter_board,
-            crossover_one_eighth_board,
-        ],
-        retries=5,
-        check_game_not_over=True,
-        clear_fitness_values=True,
-    )
+
+    crossover_global_prob = 1 / len(evolutionary_algorithm_config.crossover_functions) * 2
+
+    for crossover_function in evolutionary_algorithm_config.crossover_functions:
+        crossover.register_crossover_function(
+            [crossover_function],
+            retries=5,
+            check_game_not_over=True,
+            clear_fitness_values=True,
+        )
+
     crossover.set_global_probability(crossover_global_prob)
 
     # Initialize the selection functions
@@ -213,7 +311,10 @@ def setup_operators(
     )
     select.register_selection_function(
         select_tournament_fast,
-        tournament_size=int(population_size * tournament_fraction),
+        tournament_size=int(
+            evolutionary_algorithm_config.population_size
+            * evolutionary_algorithm_config.tournament_fraction
+        ),
         is_bigger_better=is_bigger_fitness_better,
     )
 
@@ -232,12 +333,7 @@ def log_time(start_time: float, message: str = ""):
 
 
 async def evolutionary_algorithm(
-    population_size: int,
-    crossover_prob: float,
-    mutation_prob: float,
-    num_generations: int,
-    tournament_fraction: float,
-    probability_decay: bool,
+    evolutionary_algorithm_config: EvolutionaryAlgorithmConfig,
     engine_generator1: EngineGenerator,
     engine_generator2: EngineGenerator,
     search_limits1: Dict[str, Any],
@@ -247,7 +343,6 @@ async def evolutionary_algorithm(
     num_engines1: int = 1,
     num_engines2: int = 1,
     logger: Optional[logging.Logger] = None,
-    num_workers: Optional[int] = None,
     seed: Optional[int] = None,
 ) -> Tuple[
     List[BoardIndividual],
@@ -262,14 +357,6 @@ async def evolutionary_algorithm(
     to speed up the mutation and crossover functions.
 
     Args:
-        population_size (int): How many individuals should be in the population.
-        crossover_prob (float): The probability that two individuals are mated.
-        mutation_prob (float): The probability that an individual is mutated.
-        num_generations (int): How many generations should be simulated.
-        tournament_fraction (float): The fraction of the population that should be used for the tournament selection.
-            Higher values lead to less diversity in the population.
-        probability_decay (bool): If True, the probability of a mutation or crossover is decreased if the fitness values
-            of the last 10 generations do not improve.
         engine_generator1 (EngineGenerator): A generator for the first chess engine.
         engine_generator2 (EngineGenerator): A generator for the second chess engine.
         search_limits1 (Dict[str, Any]): The search limits which the first engine uses for the analysis.
@@ -296,14 +383,14 @@ async def evolutionary_algorithm(
     """
     start_time = time.time()
     for parameter in [
-        crossover_prob,
-        mutation_prob,
-        tournament_fraction,
+        evolutionary_algorithm_config.crossover_prob,
+        evolutionary_algorithm_config.mutation_prob,
+        evolutionary_algorithm_config.tournament_fraction,
     ]:
         assert 0 <= parameter <= 1, f"Parameter {parameter = } must be between 0 and 1."
 
-    if num_workers is None:
-        num_workers = multiprocessing.cpu_count()
+    if evolutionary_algorithm_config.num_workers is None:
+        evolutionary_algorithm_config.num_workers = multiprocessing.cpu_count()
 
     random_state = np.random.default_rng(seed)
 
@@ -323,23 +410,28 @@ async def evolutionary_algorithm(
 
     mutate, crossover, select = setup_operators(
         random_state,
-        population_size,
-        tournament_fraction,
         is_bigger_fitness_better=fitness.is_bigger_better,
+        evolutionary_algorithm_config=evolutionary_algorithm_config,
     )
 
-    with multiprocessing.Pool(processes=num_workers) as pool:
+    with multiprocessing.Pool(processes=evolutionary_algorithm_config.num_workers) as pool:
         best_individuals = []
         best_fitness_values = []
         average_fitness_values = []
         worst_fitness_values = []
         unique_individual_fractions = []
-        chunk_size = population_size // num_workers // 5
+        chunk_size = (
+            evolutionary_algorithm_config.population_size
+            // evolutionary_algorithm_config.num_workers
+            // 5
+        )
 
         # Create the population
         log_time(start_time, "before creating population")
         population = get_random_individuals(
-            "data/random_positions.txt", population_size, random_state
+            "data/random_positions.txt",
+            evolutionary_algorithm_config.population_size,
+            random_state,
         )
         log_time(start_time, "after creating population")
 
@@ -347,14 +439,18 @@ async def evolutionary_algorithm(
         for individual, fitness_val in zip(population, await fitness.evaluate_async(population)):
             individual.fitness = fitness_val
 
-        for generation in range(num_generations):
+        for generation in range(evolutionary_algorithm_config.num_generations):
             logging.info(f"\n\nGeneration {generation}")
             # Select the next generation individuals
             log_time(start_time, "before selecting")
 
             # prepare the chunk sizes for the selection
-            chunk_sizes = [population_size // num_workers] * num_workers + [
-                population_size % num_workers
+            chunk_sizes = [
+                evolutionary_algorithm_config.population_size
+                // evolutionary_algorithm_config.num_workers
+            ] * evolutionary_algorithm_config.num_workers + [
+                evolutionary_algorithm_config.population_size
+                % evolutionary_algorithm_config.num_workers
             ]
             # Select the individuals in parallel
             offspring = []
@@ -383,12 +479,12 @@ async def evolutionary_algorithm(
             mating_candidates = [
                 couple_candidates[i]
                 for i, random_value in enumerate(random_values)
-                if random_value < crossover_prob
+                if random_value < evolutionary_algorithm_config.crossover_prob
             ]
             single_children = [
                 couple_candidates[i]
                 for i, random_value in enumerate(random_values)
-                if random_value >= crossover_prob
+                if random_value >= evolutionary_algorithm_config.crossover_prob
             ]
 
             # Apply crossover on the mating candidates
@@ -408,12 +504,12 @@ async def evolutionary_algorithm(
             mutation_candidates = [
                 mated_children[i]
                 for i, random_value in enumerate(random_values)
-                if random_value < mutation_prob
+                if random_value < evolutionary_algorithm_config.mutation_prob
             ]
             non_mutation_candidates = [
                 mated_children[i]
                 for i, random_value in enumerate(random_values)
-                if random_value >= mutation_prob
+                if random_value >= evolutionary_algorithm_config.mutation_prob
             ]
 
             # Apply mutation on the mutation candidates
@@ -456,7 +552,8 @@ async def evolutionary_algorithm(
             log_time(start_time, "before finding average fitness")
             # Print the average fitness
             average_fitness = (
-                sum(individual.fitness for individual in population) / population_size
+                sum(individual.fitness for individual in population)
+                / evolutionary_algorithm_config.population_size
             )
             average_fitness_values.append(average_fitness)
             logging.info(f"{average_fitness = }")
@@ -464,11 +561,13 @@ async def evolutionary_algorithm(
             log_time(start_time, "before finding unique individuals")
             # Print the number of unique individuals
             unique_individuals = set([p.fen() for p in population])
-            unique_individual_fractions.append(len(unique_individuals) / population_size)
+            unique_individual_fractions.append(
+                len(unique_individuals) / evolutionary_algorithm_config.population_size
+            )
             logging.info(f"Number of unique individuals = {len(unique_individuals)}")
 
             # Check if the probabilities of mutation and crossover are too high
-            if probability_decay and should_decrease_probability(
+            if evolutionary_algorithm_config.probability_decay and should_decrease_probability(
                 best_fitness, difference_threshold=0.5
             ):
                 assert (
@@ -483,6 +582,13 @@ async def evolutionary_algorithm(
                 if crossover.global_probability > 1 / len(crossover.crossover_functions):
                     crossover.set_global_probability(crossover.global_probability / 2)
                     logging.info(f"{crossover.global_probability = }")
+
+            # Check if the best fitness is above the early stopping threshold
+            if (
+                evolutionary_algorithm_config.early_stopping
+                and best_fitness >= evolutionary_algorithm_config.early_stopping_value
+            ):
+                break
 
     logging.info(f"Number of evaluations: {fitness.num_evaluations}")
 
@@ -500,7 +606,7 @@ async def evolutionary_algorithm(
 
 async def run_evolutionary_algorithm_n_times(
     number_of_runs: int,
-    wandb_config: Union[FakeConfig, wandb.sdk.wandb_config.Config],
+    evolutionary_algorithm_config: EvolutionaryAlgorithmConfig,
     engine_config1: EngineConfig,
     engine_config2: EngineConfig,
     command_line_args: argparse.Namespace,
@@ -519,8 +625,7 @@ async def run_evolutionary_algorithm_n_times(
 
     Args:
         number_of_runs (int): The number of times the evolutionary algorithm should be run.
-        wandb_config (Union[FakeConfig, wandb.sdk.wandb_config.Config]): A wandb config object which contains the
-            configuration parameters for the evolutionary algorithm.
+        evolutionary_algorithm_config (EvolutionaryAlgorithmConfig): A configuration object for the evolutionary algorithm.
         engine_config1 (EngineConfig): A configuration object for the first engine.
         engine_config2 (EngineConfig): A configuration object for the second engine.
         command_line_args (argparse.Namespace): The command line arguments containing further configuration parameters
@@ -557,12 +662,7 @@ async def run_evolutionary_algorithm_n_times(
         logger.info(f"Starting run {seed_offset + 1}/{number_of_runs}")
         result_tuples.append(
             await evolutionary_algorithm(
-                population_size=wandb_config.population_size,
-                crossover_prob=wandb_config.crossover_prob,
-                mutation_prob=wandb_config.mutation_prob,
-                num_generations=wandb_config.num_generations,
-                tournament_fraction=wandb_config.tournament_fraction,
-                probability_decay=wandb_config.probability_decay,
+                evolutionary_algorithm_config=evolutionary_algorithm_config,
                 engine_generator1=engine_generator1,
                 engine_generator2=engine_generator2,
                 search_limits1=engine_config1.search_limits,
@@ -572,7 +672,6 @@ async def run_evolutionary_algorithm_n_times(
                 num_engines1=command_line_args.num_engines1,
                 num_engines2=command_line_args.num_engines2,
                 logger=logger,
-                num_workers=wandb_config.num_workers,
                 seed=command_line_args.seed + seed_offset,
             )
         )
@@ -601,10 +700,10 @@ if __name__ == "__main__":
     # fmt: off
     # Engine parameters
     parser.add_argument("--seed",                type=int,  default=42)
-    parser.add_argument("--engine_config_name1", type=str,  default="local_400_nodes.ini")  # noqa: E501
-    parser.add_argument("--engine_config_name2", type=str,  default="local_400_nodes.ini")  # noqa: E501
-    # parser.add_argument("--engine_config_name1", type=str,  default="remote_400_nodes.ini")  # noqa: E501
-    # parser.add_argument("--engine_config_name2", type=str,  default="remote_400_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name1", type=str,  default="local_400_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name2", type=str,  default="local_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name1", type=str,  default="remote_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name2", type=str,  default="remote_400_nodes.ini")  # noqa: E501
     parser.add_argument("--network_path1",       type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
     parser.add_argument("--network_path2",       type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
     parser.add_argument("--num_engines1" ,       type=int,  default=2)
@@ -675,13 +774,13 @@ if __name__ == "__main__":
 
     # Read the weights and biases config file
     with open(WANDB_CONFIG_FILE, "r") as f:
-        wandb_config = yaml.safe_load(f)
+        config = yaml.safe_load(f)
 
     if not DEBUG:
-        run = wandb.init(config=wandb_config, project="rl-testing")
-        wandb_config = wandb.config
+        run = wandb.init(config=config, project="rl-testing")
+        evolutionary_algorithm_config = EvolutionaryAlgorithmConfig.from_wandb_config(wandb.config)
     else:
-        wandb_config = FakeConfig(DEBUG_CONFIG)
+        evolutionary_algorithm_config = EvolutionaryAlgorithmConfig.from_dict(DEBUG_CONFIG)
 
     # Run the evolutionary algorithm 'num_runs_per_config' times
     asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
@@ -694,8 +793,8 @@ if __name__ == "__main__":
         unique_individual_fractions,
     ) = asyncio.run(
         run_evolutionary_algorithm_n_times(
-            number_of_runs=wandb_config.num_runs_per_config,
-            wandb_config=wandb_config,
+            number_of_runs=evolutionary_algorithm_config.num_runs_per_config,
+            evolutionary_algorithm_config=evolutionary_algorithm_config,
             engine_config1=engine_config1,
             engine_config2=engine_config2,
             command_line_args=args,
