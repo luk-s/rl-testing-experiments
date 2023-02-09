@@ -59,7 +59,7 @@ RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm
 WANDB_CONFIG_FILE = Path(__file__).parent.parent / Path(
     "configs/hyperparameter_tuning_configs/config_ea_edit_distance.yaml"
 )
-DEBUG = True
+DEBUG = False
 DEBUG_CONFIG = {
     "num_runs_per_config": 2,
     "num_workers": 8,
@@ -566,6 +566,9 @@ async def evolutionary_algorithm(
             )
             logging.info(f"Number of unique individuals = {len(unique_individuals)}")
 
+            # Print the adaption history of the best individual
+            logging.info(f"{best_individual.history = }")
+
             # Check if the probabilities of mutation and crossover are too high
             if evolutionary_algorithm_config.probability_decay and should_decrease_probability(
                 best_fitness, difference_threshold=0.5
@@ -588,6 +591,7 @@ async def evolutionary_algorithm(
                 evolutionary_algorithm_config.early_stopping
                 and best_fitness >= evolutionary_algorithm_config.early_stopping_value
             ):
+                logging.info("Early stopping!")
                 break
 
     logging.info(f"Number of evaluations: {fitness.num_evaluations}")
@@ -659,7 +663,7 @@ async def run_evolutionary_algorithm_n_times(
     # Run 'number_of_runs' many runs of the evolutionary algorithm
     result_tuples = []
     for seed_offset in range(number_of_runs):
-        logger.info(f"Starting run {seed_offset + 1}/{number_of_runs}")
+        logger.info(f"\n\nStarting run {seed_offset + 1}/{number_of_runs}")
         result_tuples.append(
             await evolutionary_algorithm(
                 evolutionary_algorithm_config=evolutionary_algorithm_config,
@@ -700,10 +704,10 @@ if __name__ == "__main__":
     # fmt: off
     # Engine parameters
     parser.add_argument("--seed",                type=int,  default=42)
-    # parser.add_argument("--engine_config_name1", type=str,  default="local_400_nodes.ini")  # noqa: E501
-    # parser.add_argument("--engine_config_name2", type=str,  default="local_400_nodes.ini")  # noqa: E501
-    parser.add_argument("--engine_config_name1", type=str,  default="remote_400_nodes.ini")  # noqa: E501
-    parser.add_argument("--engine_config_name2", type=str,  default="remote_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name1", type=str,  default="local_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name2", type=str,  default="local_400_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name1", type=str,  default="remote_400_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name2", type=str,  default="remote_400_nodes.ini")  # noqa: E501
     parser.add_argument("--network_path1",       type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
     parser.add_argument("--network_path2",       type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
     parser.add_argument("--num_engines1" ,       type=int,  default=2)

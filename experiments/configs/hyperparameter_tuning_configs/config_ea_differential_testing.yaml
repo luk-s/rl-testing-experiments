@@ -65,7 +65,7 @@ description: "Finding board positions where models maximally disagree"
 metric:
   name: best_fitness_value_avg
   goal: maximize
-  target: 2.0
+  target: 1.9
 command:
   - ${env}
   - ${interpreter}
