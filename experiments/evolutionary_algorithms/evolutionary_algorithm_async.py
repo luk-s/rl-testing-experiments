@@ -322,6 +322,102 @@ def log_time(start_time: float, message: str = ""):
     logging.info(f"Time {message}: {time_elapsed:.2f} seconds.")
 
 
+def select_individuals(
+    evolutionary_algorithm_config: EvolutionaryAlgorithmConfig,
+    population: List[BoardIndividual],
+    select: Selector,
+    pool: multiprocessing.Pool,
+) -> List[BoardIndividual]:
+    population_size = evolutionary_algorithm_config.population_size
+    num_workers = evolutionary_algorithm_config.num_workers
+
+    # prepare the chunk sizes for the selection
+    chunk_sizes = [population_size // num_workers] * num_workers + [population_size % num_workers]
+
+    # Select the individuals in parallel
+    offspring = []
+    results_async = [
+        pool.apply_async(
+            select,
+            # args=(population, chunk_size_i),
+            kwds={"individuals": population, "rounds": chunk_size_i},
+        )
+        for chunk_size_i in chunk_sizes
+    ]
+    for result_async in results_async:
+        offspring += result_async.get()
+
+    return offspring
+
+
+def recombine_individuals(
+    population: List[BoardIndividual],
+    crossover: Crossover,
+    pool: multiprocessing.Pool,
+    chunk_size: int,
+    evolutionary_algorithm_config: EvolutionaryAlgorithmConfig,
+    random_state: np.random.Generator,
+) -> List[BoardIndividual]:
+    mated_children: List[BoardIndividual] = []
+    couple_candidates = list(zip(population[::2], population[1::2]))
+    random_values = random_state.random(size=len(population) // 2)
+
+    # Filter out the individuals that will mate
+    mating_candidates = [
+        couple_candidates[i]
+        for i, random_value in enumerate(random_values)
+        if random_value < evolutionary_algorithm_config.crossover_prob
+    ]
+    single_children = [
+        couple_candidates[i]
+        for i, random_value in enumerate(random_values)
+        if random_value >= evolutionary_algorithm_config.crossover_prob
+    ]
+
+    # Apply crossover on the mating candidates
+    for individual1, individual2 in chain(
+        single_children, pool.imap(crossover, mating_candidates, chunksize=chunk_size)
+    ):
+        mated_children.append(individual1)
+        mated_children.append(individual2)
+
+    return mated_children
+
+
+def mutate_individuals(
+    population: List[BoardIndividual],
+    mutate: Mutator,
+    pool: multiprocessing.Pool,
+    chunk_size: int,
+    evolutionary_algorithm_config: EvolutionaryAlgorithmConfig,
+    random_state: np.random.Generator,
+) -> List[BoardIndividual]:
+    mutated_children: List[BoardIndividual] = []
+    random_values = random_state.random(size=len(population))
+
+    # Filter out the individuals that will mutate
+    mutation_candidates = [
+        population[i]
+        for i, random_value in enumerate(random_values)
+        if random_value < evolutionary_algorithm_config.mutation_prob
+    ]
+    non_mutation_candidates = [
+        population[i]
+        for i, random_value in enumerate(random_values)
+        if random_value >= evolutionary_algorithm_config.mutation_prob
+    ]
+
+    # Apply mutation on the mutation candidates
+    mutated_children: List[BoardIndividual] = []
+    for individual in chain(
+        pool.imap(mutate, mutation_candidates, chunksize=chunk_size),
+        non_mutation_candidates,
+    ):
+        mutated_children.append(individual)
+
+    return mutated_children
+
+
 async def evolutionary_algorithm(
     evolutionary_algorithm_config: EvolutionaryAlgorithmConfig,
     engine_generator1: EngineGenerator,
@@ -433,29 +529,15 @@ async def evolutionary_algorithm(
 
         for generation in range(evolutionary_algorithm_config.num_generations):
             logging.info(f"\n\nGeneration {generation}")
+
             # Select the next generation individuals
             log_time(start_time, "before selecting")
-
-            # prepare the chunk sizes for the selection
-            chunk_sizes = [
-                evolutionary_algorithm_config.population_size
-                // evolutionary_algorithm_config.num_workers
-            ] * evolutionary_algorithm_config.num_workers + [
-                evolutionary_algorithm_config.population_size
-                % evolutionary_algorithm_config.num_workers
-            ]
-            # Select the individuals in parallel
-            offspring = []
-            results_async = [
-                pool.apply_async(
-                    select,
-                    # args=(population, chunk_size_i),
-                    kwds={"individuals": population, "rounds": chunk_size_i},
-                )
-                for chunk_size_i in chunk_sizes
-            ]
-            for result_async in results_async:
-                offspring += result_async.get()
+            offspring = select_individuals(
+                evolutionary_algorithm_config=evolutionary_algorithm_config,
+                population=population,
+                select=select,
+                pool=pool,
+            )
 
             # Clone the selected individuals
             log_time(start_time, "before cloning")
@@ -463,62 +545,36 @@ async def evolutionary_algorithm(
             log_time(start_time, "after cloning")
 
             # Apply crossover on the offspring
-            mated_children: List[BoardIndividual] = []
-            couple_candidates = list(zip(offspring[::2], offspring[1::2]))
-            random_values = random_state.random(size=len(offspring) // 2)
-
-            # Filter out the individuals that will mate
-            mating_candidates = [
-                couple_candidates[i]
-                for i, random_value in enumerate(random_values)
-                if random_value < evolutionary_algorithm_config.crossover_prob
-            ]
-            single_children = [
-                couple_candidates[i]
-                for i, random_value in enumerate(random_values)
-                if random_value >= evolutionary_algorithm_config.crossover_prob
-            ]
-
-            # Apply crossover on the mating candidates
             log_time(start_time, "before mating")
-            for individual1, individual2 in chain(
-                single_children, pool.imap(crossover, mating_candidates, chunksize=chunk_size)
-            ):
-                mated_children.append(individual1)
-                mated_children.append(individual2)
+            mated_children = recombine_individuals(
+                population=offspring,
+                crossover=crossover,
+                pool=pool,
+                chunk_size=chunk_size,
+                evolutionary_algorithm_config=evolutionary_algorithm_config,
+                random_state=random_state,
+            )
             log_time(start_time, "after mating")
 
             # Apply mutation on the offspring
-            mutated_children: List[BoardIndividual] = []
-            random_values = random_state.random(size=len(mated_children))
-
-            # Filter out the individuals that will mutate
-            mutation_candidates = [
-                mated_children[i]
-                for i, random_value in enumerate(random_values)
-                if random_value < evolutionary_algorithm_config.mutation_prob
-            ]
-            non_mutation_candidates = [
-                mated_children[i]
-                for i, random_value in enumerate(random_values)
-                if random_value >= evolutionary_algorithm_config.mutation_prob
-            ]
-
-            # Apply mutation on the mutation candidates
             log_time(start_time, "before mutating")
-            unevaluated_individuals: List[BoardIndividual] = []
-            mutated_children: List[BoardIndividual] = []
-            for individual in chain(
-                pool.imap(mutate, mutation_candidates, chunksize=chunk_size),
-                non_mutation_candidates,
-            ):
-                if individual.fitness is None:
-                    unevaluated_individuals.append(individual)
-                mutated_children.append(individual)
+            mutated_children = mutate_individuals(
+                population=mated_children,
+                mutate=mutate,
+                pool=pool,
+                chunk_size=chunk_size,
+                evolutionary_algorithm_config=evolutionary_algorithm_config,
+                random_state=random_state,
+            )
             log_time(start_time, "after mutating")
 
             # Evaluate the individuals with an invalid fitness
             log_time(start_time, "before evaluating")
+            unevaluated_individuals: List[BoardIndividual] = []
+            for individual in mutated_children:
+                if individual.fitness is None:
+                    unevaluated_individuals.append(individual)
+
             for individual, fitness_val in zip(
                 unevaluated_individuals, await fitness.evaluate_async(unevaluated_individuals)
             ):
@@ -553,13 +609,35 @@ async def evolutionary_algorithm(
             log_time(start_time, "before finding unique individuals")
             # Print the number of unique individuals
             unique_individuals = set([p.fen() for p in population])
-            unique_individual_fractions.append(
+            unique_individual_fraction = (
                 len(unique_individuals) / evolutionary_algorithm_config.population_size
             )
+            unique_individual_fractions.append(unique_individual_fraction)
             logging.info(f"Number of unique individuals = {len(unique_individuals)}")
 
             # Print the adaption history of the best individual
             logging.info(f"{best_individual.history = }")
+
+            # Check if the best fitness is above the early stopping threshold
+            if (
+                evolutionary_algorithm_config.early_stopping
+                and best_fitness >= evolutionary_algorithm_config.early_stopping_value
+            ):
+                num_generations_remaining = (
+                    evolutionary_algorithm_config.num_generations - generation - 1
+                )
+
+                # Fill up the lists with the last value
+                best_individuals.extend([best_individual.copy()] * (num_generations_remaining))
+                best_fitness_values.extend([best_fitness] * (num_generations_remaining))
+                average_fitness_values.extend([average_fitness] * (num_generations_remaining))
+                worst_fitness_values.extend([worst_fitness] * (num_generations_remaining))
+                unique_individual_fractions.extend(
+                    [unique_individual_fraction] * (num_generations_remaining)
+                )
+
+                logging.info("Early stopping!")
+                break
 
             # Check if the probabilities of mutation and crossover are too high
             if evolutionary_algorithm_config.probability_decay and should_decrease_probability(
@@ -577,14 +655,6 @@ async def evolutionary_algorithm(
                 if crossover.global_probability > 1 / len(crossover.crossover_functions):
                     crossover.set_global_probability(crossover.global_probability / 2)
                     logging.info(f"{crossover.global_probability = }")
-
-            # Check if the best fitness is above the early stopping threshold
-            if (
-                evolutionary_algorithm_config.early_stopping
-                and best_fitness >= evolutionary_algorithm_config.early_stopping_value
-            ):
-                logging.info("Early stopping!")
-                break
 
     end_time = time.time()
     logging.info(f"Number of evaluations: {fitness.num_evaluations}")

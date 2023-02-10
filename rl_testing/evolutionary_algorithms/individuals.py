@@ -76,7 +76,7 @@ class BoardIndividual(chess.Board, Individual):
     def copy(self, *args, **kwargs) -> "BoardIndividual":
         board = super().copy(*args, **kwargs)
         board._fitness = self._fitness
-        board._history = self._history
+        board._history = list(self._history)
         return board
 
     def __eq__(self, other: object) -> bool:
