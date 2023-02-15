@@ -51,7 +51,7 @@ OPERATOR_PROBABILITIES_FILE = Path(__file__).parent.parent / Path(
 )
 DEBUG = True
 DEBUG_CONFIG = {
-    "num_runs_per_config": 2,
+    "num_runs_per_config": 6,
     "num_workers": 8,
     "probability_decay": False,
     "early_stopping": True,
