@@ -9,19 +9,18 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import chess.engine
 import numpy as np
-import wandb
 import wandb.sdk
 import yaml
 
+import wandb
 from rl_testing.config_parsers import get_engine_config
 from rl_testing.config_parsers.engine_config_parser import EngineConfig
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
-from rl_testing.evolutionary_algorithms.crossovers import (
-    Crossover,
-    crossover_half_board,
-    crossover_one_eighth_board,
-    crossover_one_quarter_board,
+from rl_testing.evolutionary_algorithms import (
+    CROSSOVER_FUNCTIONS_DICT,
+    MUTATION_FUNCTIONS_DICT,
 )
+from rl_testing.evolutionary_algorithms.crossovers import Crossover
 from rl_testing.evolutionary_algorithms.fitness import (
     BoardSimilarityFitness,
     DifferentialTestingFitness,
@@ -31,19 +30,7 @@ from rl_testing.evolutionary_algorithms.fitness import (
     PieceNumberFitness,
 )
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual
-from rl_testing.evolutionary_algorithms.mutations import (
-    Mutator,
-    mutate_add_one_piece,
-    mutate_castling_rights,
-    mutate_flip_board,
-    mutate_move_one_piece,
-    mutate_move_one_piece_adjacent,
-    mutate_move_one_piece_legal,
-    mutate_player_to_move,
-    mutate_remove_one_piece,
-    mutate_rotate_board,
-    mutate_substitute_piece,
-)
+from rl_testing.evolutionary_algorithms.mutations import Mutator
 from rl_testing.evolutionary_algorithms.selections import (
     Selector,
     select_tournament_fast,
@@ -57,20 +44,25 @@ from rl_testing.util.experiment import (
 
 RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm")
 WANDB_CONFIG_FILE = Path(__file__).parent.parent / Path(
-    "configs/hyperparameter_tuning_configs/config_ea_differential_testing.yaml"
+    "configs/evolutionary_algorithm_configs/config_ea_differential_testing.yaml"
 )
-DEBUG = False
+OPERATOR_PROBABILITIES_FILE = Path(__file__).parent.parent / Path(
+    "configs/evolutionary_algorithm_configs/operator_weight_configs/importance_weights.yaml"
+)
+DEBUG = True
 DEBUG_CONFIG = {
     "num_runs_per_config": 2,
     "num_workers": 8,
-    "probability_decay": True,
+    "probability_decay": False,
     "early_stopping": True,
     "early_stopping_value": 1.9,
-    "num_generations": 10,
-    "population_size": 50,
-    "mutation_prob": 0.6,
-    "crossover_prob": 0.5,
-    "tournament_fraction": 0.2,
+    "num_generations": 50,
+    "population_size": 1500,
+    "mutation_prob": 1,
+    "mutation_strategy": "all",
+    "crossover_prob": 1,
+    "crossover_strategy": "all",
+    "tournament_fraction": 0.25,
     "mutate_add_one_piece": True,
     "mutate_castling_rights": True,
     "mutate_flip_board": True,
@@ -84,25 +76,8 @@ DEBUG_CONFIG = {
     "crossover_half_board": True,
     "crossover_one_eighth_board": True,
     "crossover_one_quarter_board": True,
-}
-
-MUTATION_FUNCTIONS_DICT = {
-    "mutate_add_one_piece": mutate_add_one_piece,
-    "mutate_castling_rights": mutate_castling_rights,
-    "mutate_flip_board": mutate_flip_board,
-    "mutate_move_one_piece": mutate_move_one_piece,
-    "mutate_move_one_piece_adjacent": mutate_move_one_piece_adjacent,
-    "mutate_move_one_piece_legal": mutate_move_one_piece_legal,
-    "mutate_player_to_move": mutate_player_to_move,
-    "mutate_remove_one_piece": mutate_remove_one_piece,
-    "mutate_rotate_board": mutate_rotate_board,
-    "mutate_substitute_piece": mutate_substitute_piece,
-}
-
-CROSSOVER_FUNCTIONS_DICT = {
-    "crossover_half_board": crossover_half_board,
-    "crossover_one_eighth_board": crossover_one_eighth_board,
-    "crossover_one_quarter_board": crossover_one_quarter_board,
+    "mutation_probabilities_path": OPERATOR_PROBABILITIES_FILE,
+    "crossover_probabilities_path": OPERATOR_PROBABILITIES_FILE,
 }
 
 BestFitnessValue = float
@@ -122,11 +97,15 @@ class EvolutionaryAlgorithmConfig:
         early_stopping_value: float,
         num_generations: int,
         population_size: int,
-        mutation_prob: float,
-        crossover_prob: float,
+        mutation_probability: float,
+        mutation_strategy: str,
+        crossover_probability: float,
+        crossover_strategy: str,
         tournament_fraction: float,
         mutation_functions: List[Callable],
         crossover_functions: List[Callable],
+        mutation_probabilities: Optional[List[float]] = None,
+        crossover_probabilities: Optional[List[float]] = None,
     ) -> None:
         self.num_runs_per_config = num_runs_per_config
         self.num_workers = num_workers
@@ -135,23 +114,86 @@ class EvolutionaryAlgorithmConfig:
         self.early_stopping_value = early_stopping_value
         self.num_generations = num_generations
         self.population_size = population_size
-        self.mutation_prob = mutation_prob
-        self.crossover_prob = crossover_prob
+        self.mutation_prob = mutation_probability
+        self.mutation_strategy = mutation_strategy
+        self.crossover_prob = crossover_probability
+        self.crossover_strategy = crossover_strategy
         self.tournament_fraction = tournament_fraction
         self.mutation_functions = mutation_functions
+        self.mutation_probabilities = mutation_probabilities
         self.crossover_functions = crossover_functions
+        self.crossover_probabilities = crossover_probabilities
+
+        # Check that probability decay is only enabled if mutation_strategy is "all" and if
+        # crossover_strategy is "all"
+        if self.probability_decay:
+            if self.mutation_strategy != "all":
+                raise ValueError(
+                    "Probability decay can only be enabled if mutation_strategy is 'all'"
+                )
+            if self.crossover_strategy != "all":
+                raise ValueError(
+                    "Probability decay can only be enabled if crossover_strategy is 'all'"
+                )
 
     @classmethod
     def from_dict(cls, config: Dict[str, Any]) -> "EvolutionaryAlgorithmConfig":
+        # Given a list of mutation functions, check if they are enabled in the config
+        # and if so, add them to the list of mutation functions
         mutation_functions: List[Callable] = []
         for mutation_function in MUTATION_FUNCTIONS_DICT:
-            if config[mutation_function]:
+            if config.get(mutation_function, False):
                 mutation_functions.append(MUTATION_FUNCTIONS_DICT[mutation_function])
 
+        # Check if a path to a file with mutation probabilities is given and if so,
+        # load the mutation probabilities from the file
+        if config.get("mutation_probabilities_path", None):
+            mutation_probabilities = []
+            with open(config["mutation_probabilities_path"], "r") as f:
+                mutation_probability_dict = yaml.safe_load(f)
+
+            for mutation_function in MUTATION_FUNCTIONS_DICT:
+                if (
+                    mutation_function in mutation_probability_dict
+                    and MUTATION_FUNCTIONS_DICT[mutation_function] in mutation_functions
+                ):
+                    mutation_probabilities.append(mutation_probability_dict[mutation_function])
+
+            assert len(mutation_probabilities) == len(mutation_functions), (
+                "The number of mutation probabilities must be equal to the number of mutation functions."
+                f"Got {len(mutation_probabilities)} mutation probabilities and {len(mutation_functions)} mutation functions."
+            )
+        else:
+            mutation_probabilities = None
+
+        # Given a list of crossover functions, check if they are enabled in the config
+        # and if so, add them to the list of crossover functions
         crossover_functions: List[Callable] = []
         for crossover_function in CROSSOVER_FUNCTIONS_DICT:
-            if config[crossover_function]:
+            if config.get(crossover_function, False):
                 crossover_functions.append(CROSSOVER_FUNCTIONS_DICT[crossover_function])
+
+        # Check if a path to a file with crossover probabilities is given and if so,
+        # load the crossover probabilities from the file
+        if config.get("crossover_probabilities_path", None):
+            crossover_probabilities = []
+            with open(config["crossover_probabilities_path"], "r") as f:
+                crossover_probability_dict = yaml.safe_load(f)
+
+            for crossover_function in CROSSOVER_FUNCTIONS_DICT:
+                if (
+                    crossover_function in crossover_probability_dict
+                    and CROSSOVER_FUNCTIONS_DICT[crossover_function] in crossover_functions
+                ):
+                    crossover_probabilities.append(crossover_probability_dict[crossover_function])
+
+            assert len(crossover_probabilities) == len(crossover_functions), (
+                "The number of crossover probabilities must be equal to the number of crossover functions."
+                f"Got {len(crossover_probabilities)} crossover probabilities and {len(crossover_functions)} crossover functions."
+            )
+        else:
+            crossover_probabilities = None
+
         return cls(
             num_runs_per_config=config["num_runs_per_config"],
             num_workers=config["num_workers"],
@@ -160,39 +202,15 @@ class EvolutionaryAlgorithmConfig:
             early_stopping_value=config["early_stopping_value"],
             num_generations=config["num_generations"],
             population_size=config["population_size"],
-            mutation_prob=config["mutation_prob"],
-            crossover_prob=config["crossover_prob"],
+            mutation_probability=config["mutation_prob"],
+            mutation_strategy=config["mutation_strategy"],
+            crossover_probability=config["crossover_prob"],
+            crossover_strategy=config["crossover_strategy"],
             tournament_fraction=config["tournament_fraction"],
             mutation_functions=mutation_functions,
             crossover_functions=crossover_functions,
-        )
-
-    @classmethod
-    def from_wandb_config(
-        cls, config: wandb.sdk.wandb_config.Config
-    ) -> "EvolutionaryAlgorithmConfig":
-        mutation_functions: List[Callable] = []
-        for mutation_function in MUTATION_FUNCTIONS_DICT:
-            if getattr(config, mutation_function):
-                mutation_functions.append(MUTATION_FUNCTIONS_DICT[mutation_function])
-
-        crossover_functions: List[Callable] = []
-        for crossover_function in CROSSOVER_FUNCTIONS_DICT:
-            if getattr(config, crossover_function):
-                crossover_functions.append(CROSSOVER_FUNCTIONS_DICT[crossover_function])
-        return cls(
-            num_runs_per_config=config.num_runs_per_config,
-            num_workers=config.num_workers,
-            probability_decay=config.probability_decay,
-            early_stopping=config.early_stopping,
-            early_stopping_value=config.early_stopping_value,
-            num_generations=config.num_generations,
-            population_size=config.population_size,
-            mutation_prob=config.mutation_prob,
-            crossover_prob=config.crossover_prob,
-            tournament_fraction=config.tournament_fraction,
-            mutation_functions=mutation_functions,
-            crossover_functions=crossover_functions,
+            mutation_probabilities=mutation_probabilities,
+            crossover_probabilities=crossover_probabilities,
         )
 
 
@@ -258,14 +276,13 @@ def setup_operators(
     evolutionary_algorithm_config: EvolutionaryAlgorithmConfig,
 ) -> Tuple[Mutator, Crossover, Selector]:
 
-    # Initialize the mutation functions
+    # Initialize the mutation operator
     mutate = Mutator(
-        mutation_strategy="all",
+        mutation_strategy=evolutionary_algorithm_config.mutation_strategy,
         _random_state=random_state,
     )
 
-    mutate_global_prob = 1 / len(evolutionary_algorithm_config.mutation_functions) * 2
-
+    # Register the mutation functions
     for mutation_function in evolutionary_algorithm_config.mutation_functions:
         mutate.register_mutation_function(
             [mutation_function],
@@ -274,16 +291,24 @@ def setup_operators(
             clear_fitness_values=True,
         )
 
-    mutate.set_global_probability(mutate_global_prob)
+    # Set the mutation probabilities
+    if evolutionary_algorithm_config.mutation_probabilities is None:
+        mutate_global_prob = 1 / len(evolutionary_algorithm_config.mutation_functions) * 2
+        mutate.set_global_probability(mutate_global_prob)
+    else:
+        for mutation_function, mutation_probability in zip(
+            mutate.mutation_functions,
+            evolutionary_algorithm_config.mutation_probabilities,
+        ):
+            mutation_function.probability = mutation_probability
 
-    # Initialize the crossover functions
+    # Initialize the crossover operator
     crossover = Crossover(
-        crossover_strategy="all",
+        crossover_strategy=evolutionary_algorithm_config.crossover_strategy,
         _random_state=random_state,
     )
 
-    crossover_global_prob = 1 / len(evolutionary_algorithm_config.crossover_functions) * 2
-
+    # Register the crossover functions
     for crossover_function in evolutionary_algorithm_config.crossover_functions:
         crossover.register_crossover_function(
             [crossover_function],
@@ -292,13 +317,24 @@ def setup_operators(
             clear_fitness_values=True,
         )
 
-    crossover.set_global_probability(crossover_global_prob)
+    # Set the crossover probabilities
+    if evolutionary_algorithm_config.crossover_probabilities is None:
+        crossover_global_prob = 1 / len(evolutionary_algorithm_config.crossover_functions) * 2
+        crossover.set_global_probability(crossover_global_prob)
+    else:
+        for crossover_function, crossover_probability in zip(
+            crossover.crossover_functions,
+            evolutionary_algorithm_config.crossover_probabilities,
+        ):
+            crossover_function.probability = crossover_probability
 
-    # Initialize the selection functions
+    # Initialize the selection operator
     select = Selector(
         selection_strategy="all",
         _random_state=random_state,
     )
+
+    # Register the selection functions
     select.register_selection_function(
         select_tournament_fast,
         tournament_size=int(
@@ -845,7 +881,7 @@ if __name__ == "__main__":
 
     if not DEBUG:
         run = wandb.init(config=config, project="rl-testing")
-        evolutionary_algorithm_config = EvolutionaryAlgorithmConfig.from_wandb_config(wandb.config)
+        evolutionary_algorithm_config = EvolutionaryAlgorithmConfig.from_dict(wandb.config)
     else:
         evolutionary_algorithm_config = EvolutionaryAlgorithmConfig.from_dict(DEBUG_CONFIG)
 

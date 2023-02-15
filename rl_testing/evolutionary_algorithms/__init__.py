@@ -1,25 +1,40 @@
 from enum import Enum
 
+from rl_testing.evolutionary_algorithms.crossovers import (
+    CrossoverName,
+    crossover_half_board,
+    crossover_one_eighth_board,
+    crossover_one_quarter_board,
+)
+from rl_testing.evolutionary_algorithms.mutations import (
+    MutationName,
+    mutate_add_one_piece,
+    mutate_castling_rights,
+    mutate_flip_board,
+    mutate_move_one_piece,
+    mutate_move_one_piece_adjacent,
+    mutate_move_one_piece_legal,
+    mutate_player_to_move,
+    mutate_remove_one_piece,
+    mutate_rotate_board,
+    mutate_substitute_piece,
+)
 
-class MutationName(Enum):
-    MUTATE_ADD_ONE_PIECE = 0
-    MUTATE_CASTLING_RIGHTS = 1
-    MUTATE_FLIP_BOARD = 2
-    MUTATE_MOVE_ONE_PIECE = 3
-    MUTATE_MOVE_ONE_PIECE_ADJACENT = 4
-    MUTATE_MOVE_ONE_PIECE_LEGAL = 5
-    MUTATE_PLAYER_TO_MOVE = 6
-    MUTATE_REMOVE_ONE_PIECE = 7
-    MUTATE_ROTATE_BOARD = 8
-    MUTATE_SUBSTITUTE_PIECE = 9
+MUTATION_FUNCTIONS_DICT = {
+    "mutate_add_one_piece": mutate_add_one_piece,
+    "mutate_castling_rights": mutate_castling_rights,
+    "mutate_flip_board": mutate_flip_board,
+    "mutate_move_one_piece": mutate_move_one_piece,
+    "mutate_move_one_piece_adjacent": mutate_move_one_piece_adjacent,
+    "mutate_move_one_piece_legal": mutate_move_one_piece_legal,
+    "mutate_player_to_move": mutate_player_to_move,
+    "mutate_remove_one_piece": mutate_remove_one_piece,
+    "mutate_rotate_board": mutate_rotate_board,
+    "mutate_substitute_piece": mutate_substitute_piece,
+}
 
-
-class CrossoverName(Enum):
-    CROSSOVER_HALF_BOARD = 0
-    CROSSOVER_ONE_QUARTER_BOARD = 1
-    CROSSOVER_ONE_EIGHTH_BOARD = 2
-
-
-class SelectionName(Enum):
-    SELECT_TOURNAMENT = 0
-    SELECT_TOURNAMENT_FAST = 1
+CROSSOVER_FUNCTIONS_DICT = {
+    "crossover_half_board": crossover_half_board,
+    "crossover_one_eighth_board": crossover_one_eighth_board,
+    "crossover_one_quarter_board": crossover_one_quarter_board,
+}

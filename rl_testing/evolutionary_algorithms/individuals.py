@@ -1,15 +1,14 @@
 import abc
-from typing import List, Literal, Optional, Union
+from typing import TYPE_CHECKING, List, Literal, Optional, Union
 
 import chess
 
-from rl_testing.evolutionary_algorithms import (
-    CrossoverName,
-    MutationName,
-    SelectionName,
-)
+if TYPE_CHECKING:
+    from rl_testing.evolutionary_algorithms.crossovers import CrossoverName
+    from rl_testing.evolutionary_algorithms.mutations import MutationName
+    from rl_testing.evolutionary_algorithms.selections import SelectionName
 
-AdaptionType = Union[MutationName, CrossoverName]
+    AdaptionType = Union[MutationName, CrossoverName]
 
 
 class Individual(metaclass=abc.ABCMeta):
@@ -27,7 +26,7 @@ class Individual(metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def history(self) -> List[AdaptionType]:
+    def history(self) -> List["AdaptionType"]:
         raise NotImplementedError
 
     @fitness.setter
@@ -43,7 +42,7 @@ class Individual(metaclass=abc.ABCMeta):
 class BoardIndividual(chess.Board, Individual):
     def __init__(self, *args, **kwargs) -> None:
         self._fitness: Optional[float] = None
-        self._history: List[AdaptionType] = []
+        self._history: List["AdaptionType"] = []
         super().__init__(*args, **kwargs)
 
     def get_fitness(self) -> bool:
@@ -57,10 +56,10 @@ class BoardIndividual(chess.Board, Individual):
 
     fitness = property(get_fitness, set_fitness, del_fitness, "Fitness of the individual.")
 
-    def get_history(self) -> List[AdaptionType]:
+    def get_history(self) -> List["AdaptionType"]:
         return self._history
 
-    def set_history(self, value: List[AdaptionType]) -> None:
+    def set_history(self, value: List["AdaptionType"]) -> None:
         self._history = value
 
     def del_history(self) -> None:
@@ -92,5 +91,3 @@ class BoardIndividual(chess.Board, Individual):
 if __name__ == "__main__":
     board1 = BoardIndividual("8/1p6/1p6/pPp1p1n1/P1P1P1k1/1K1P4/8/2B5 w - - 110 118")
     board2 = BoardIndividual("r3qb1r/pppbk1p1/2np2np/4p2Q/2BPP3/2P5/PP3PPP/RNB2RK1 w - - 4 11")
-
-    board1.test()

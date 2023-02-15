@@ -1,5 +1,6 @@
 import logging
 import time
+from enum import Enum
 from operator import attrgetter
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -7,6 +8,11 @@ import numpy as np
 
 from rl_testing.evolutionary_algorithms.individuals import Individual
 from rl_testing.util.util import get_random_state
+
+
+class SelectionName(Enum):
+    SELECT_TOURNAMENT = 0
+    SELECT_TOURNAMENT_FAST = 1
 
 
 def select_tournament_fast(

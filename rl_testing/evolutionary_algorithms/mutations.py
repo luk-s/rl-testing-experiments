@@ -1,10 +1,10 @@
+import abc
 import logging
+from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import chess
 import numpy as np
-
-from rl_testing.evolutionary_algorithms import MutationName
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.chess import (
     is_really_valid,
@@ -19,6 +19,19 @@ PIECE_COUNT_DICT = {
     chess.WHITE: {"R": 2, "N": 2, "B": 2, "Q": 1, "K": 1, "P": 8},
     chess.BLACK: {"r": 2, "n": 2, "b": 2, "q": 1, "k": 1, "p": 8},
 }
+
+
+class MutationName(Enum):
+    MUTATE_ADD_ONE_PIECE = 0
+    MUTATE_CASTLING_RIGHTS = 1
+    MUTATE_FLIP_BOARD = 2
+    MUTATE_MOVE_ONE_PIECE = 3
+    MUTATE_MOVE_ONE_PIECE_ADJACENT = 4
+    MUTATE_MOVE_ONE_PIECE_LEGAL = 5
+    MUTATE_PLAYER_TO_MOVE = 6
+    MUTATE_REMOVE_ONE_PIECE = 7
+    MUTATE_ROTATE_BOARD = 8
+    MUTATE_SUBSTITUTE_PIECE = 9
 
 
 def mutate_player_to_move(
@@ -638,6 +651,140 @@ class MutationFunction:
         return board
 
 
+class MutationStrategy(metaclass=abc.ABCMeta):
+    def __subclasshook__(cls, subclass):
+        return (hasattr(subclass, "__call__")) or NotImplemented
+
+    def __init__(
+        self,
+        mutation_functions: List[MutationFunction],
+        _random_state: Optional[np.random.Generator] = None,
+    ):
+        """A base class for mutation strategies.
+
+        Args:
+            mutation_functions (List[MutationFunction]): A **pointer** to the list of mutation functions.
+            This means that the list of mutation functions can be modified externally and the changes
+            will be reflected here.
+        """
+        self.random_state: np.random.Generator = get_random_state(_random_state)
+        self.mutation_functions: List[MutationFunction] = mutation_functions
+
+    @abc.abstractmethod
+    def __call__(self, individual: BoardIndividual, *args: Any, **kwargs: Any) -> BoardIndividual:
+        raise NotImplementedError
+
+
+class AllMutationFunctionsStrategy(MutationStrategy):
+    def __call__(self, individual: BoardIndividual, *args: Any, **kwargs: Any) -> BoardIndividual:
+        """Apply all mutation functions to the individual.
+
+        Args:
+            individual (BoardIndividual): The individual to mutate.
+
+        Returns:
+            BoardIndividual: The mutated individual.
+        """
+        for mutation_function in self.mutation_functions:
+            if self.random_state.random() < mutation_function.probability:
+                individual = mutation_function(individual, *args, **kwargs)
+
+        return individual
+
+
+class OneRandomMutationFunctionStrategy(MutationStrategy):
+    def __call__(self, individual: BoardIndividual, *args: Any, **kwargs: Any) -> BoardIndividual:
+        """Apply one random mutation function to the individual. The probability of each mutation function
+        is determined by the "probability" attribute of the mutation function.
+
+        Args:
+            individual (BoardIndividual): The individual to mutate.
+
+        Returns:
+            BoardIndividual: The mutated individual.
+        """
+        probabilities = [
+            mutation_function.probability for mutation_function in self.mutation_functions
+        ]
+        mutation_function: MutationFunction = self.random_state.choice(
+            self.mutation_functions, p=probabilities
+        )
+        individual = mutation_function(individual, *args, **kwargs)
+
+        return individual
+
+
+class NRandomMutationFunctionsStrategy(MutationStrategy):
+    def __init__(
+        self,
+        mutation_functions: List[MutationFunction],
+        num_mutation_functions: int,
+        _random_state: Optional[np.random.Generator] = None,
+    ):
+        """A mutation strategy that applies "num_mutation_functions" random mutation functions to the individual.
+
+        Args:
+            mutation_functions (List[MutationFunction]): A **pointer** to the list of mutation functions.
+                This means that the list of mutation functions can be modified externally and the changes
+                will be reflected here.
+            num_mutation_functions (int): The number of mutation functions to apply.
+        """
+        super().__init__(mutation_functions, _random_state)
+        self.num_mutation_functions = num_mutation_functions
+
+    def __call__(self, individual: BoardIndividual, *args: Any, **kwargs: Any) -> BoardIndividual:
+        """Apply "num_mutation_functions" random mutation functions to the individual.
+
+        Args:
+            individual (BoardIndividual): The individual to mutate.
+
+        Returns:
+            BoardIndividual: The mutated individual.
+        """
+        probabilities = [
+            mutation_function.probability for mutation_function in self.mutation_functions
+        ]
+        mutation_functions: List[MutationFunction] = self.random_state.choice(
+            self.mutation_functions,
+            size=self.num_mutation_functions,
+            replace=False,
+            p=probabilities,
+        )
+        for mutation_function in mutation_functions:
+            individual = mutation_function(individual, *args, **kwargs)
+
+        return individual
+
+
+def get_mutation_strategy(
+    mutation_strategy: str,
+    mutation_functions: List[MutationFunction],
+    *args: Any,
+    **kwargs: Any,
+) -> MutationStrategy:
+    """Get the mutation strategy.
+
+    Args:
+        mutation_strategy (str): The strategy to use.
+        mutation_functions (List[MutationFunction]): A **pointer** to the list of mutation functions.
+            This means that the list of mutation functions can be modified externally and the changes
+            will be reflected here.
+
+    Returns:
+        MutationStrategy: The mutation strategy.
+    """
+    if mutation_strategy == "all":
+        return AllMutationFunctionsStrategy(mutation_functions)
+    elif mutation_strategy == "one_random":
+        return OneRandomMutationFunctionStrategy(mutation_functions)
+    elif mutation_strategy == "n_random":
+        return NRandomMutationFunctionsStrategy(mutation_functions, *args, **kwargs)
+    else:
+        raise ValueError(
+            f"Invalid mutation strategy '{mutation_strategy}', must be one of ['all', 'one_random', 'n_random']"
+        )
+
+
 class Mutator:
     def __init__(
         self,
@@ -656,23 +803,18 @@ class Mutator:
                 mutation strategy is "n_random". Defaults to None.
             _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
         """
-        self.random_state = get_random_state(_random_state)
-        self.mutation_functions: List[MutationFunction] = []
-        self.mutation_functions_dict: Dict[str, MutationFunction] = {}
         self.num_mutation_functions = num_mutation_functions
-        self.mutation_strategy = mutation_strategy
-        self.global_probability: Optional[float] = None
-
-        assert self.mutation_strategy in [
-            "all",
-            "one_random",
-            "n_random",
-        ], f"Invalid mutation strategy '{self.mutation_strategy}'. Must be one of ['all', 'one_random', 'n_random']"
-
-        if self.mutation_strategy == "n_random":
+        if mutation_strategy == "n_random":
             assert (
                 self.num_mutation_functions is not None
             ), "Must specify the number of mutation functions to apply if the mutation strategy is 'n_random'"
+
+        self.random_state = get_random_state(_random_state)
+        self.mutation_functions: List[MutationFunction] = []
+        self.mutation_strategy = get_mutation_strategy(
+            mutation_strategy, self.mutation_functions, num_mutation_functions
+        )
+        self.global_probability: Optional[float] = None
 
     def register_mutation_function(
         self,
@@ -714,44 +856,6 @@ class Mutator:
                 )
             )
 
-            self.mutation_functions_dict[function.__name__] = self.mutation_functions[-1]
-
-    def change_mutation_function_parameters(
-        self,
-        function_names: Union[str, List[str]],
-        **kwargs: Any,
-    ) -> None:
-        """Changes the parameters of one or multiple mutation functions
-
-        Args:
-            function_names (str): The name of the mutation functions to change the parameters of.
-            **kwargs: The new parameters to set.
-        """
-        if not isinstance(function_names, list):
-            function_names = [function_names]
-
-        # Separate the named arguments from the keyword arguments
-        named_arg_tuples = []
-        if "probability" in kwargs:
-            named_arg_tuples.append(("probability", kwargs["probability"]))
-            del kwargs["probability"]
-        if "retries" in kwargs:
-            named_arg_tuples.append(("retries", kwargs["retries"]))
-            del kwargs["retries"]
-        if "clear_fitness_values" in kwargs:
-            named_arg_tuples.append(("clear_fitness_values", kwargs["clear_fitness_values"]))
-            del kwargs["clear_fitness_values"]
-
-        for function_name in function_names:
-            function = self.mutation_functions_dict[function_name]
-
-            # Set the named arguments
-            for named_arg_tuple in named_arg_tuples:
-                setattr(function, named_arg_tuple[0], named_arg_tuple[1])
-
-            # Set the keyword arguments
-            function.kwargs = {**function.kwargs, **kwargs}
-
     def set_global_probability(self, probability: float) -> None:
         """Sets the probability of all mutation functions.
 
@@ -773,25 +877,7 @@ class Mutator:
         Returns:
             Individual: The mutated individual.
         """
-        mutation_functions_to_apply: List[MutationFunction]
-        if self.mutation_strategy == "all":
-            mutation_functions_to_apply = self.mutation_functions
-        elif self.mutation_strategy == "one_random":
-            mutation_functions_to_apply = list(self.random_state.choice(self.mutation_functions))
-        elif self.mutation_strategy == "n_random":
-            mutation_functions_to_apply = list(
-                self.random_state.choice(
-                    self.mutation_functions, self.num_mutation_functions, replace=False
-                )
-            )
-        else:
-            raise ValueError(f"Invalid mutation strategy '{self.mutation_strategy}'")
-
-        for mutation_function in mutation_functions_to_apply:
-            if self.random_state.random() < mutation_function.probability:
-                individual = mutation_function(individual, *args, **kwargs)
-
-        return individual
+        return self.mutation_strategy(individual, *args, **kwargs)
 
 
 if __name__ == "__main__":

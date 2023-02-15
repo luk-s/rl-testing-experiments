@@ -1,13 +1,19 @@
+import abc
 import logging
+from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import chess
 import numpy as np
-
-from rl_testing.evolutionary_algorithms import CrossoverName
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.chess import is_really_valid
 from rl_testing.util.util import get_random_state
+
+
+class CrossoverName(Enum):
+    CROSSOVER_HALF_BOARD = 0
+    CROSSOVER_ONE_QUARTER_BOARD = 1
+    CROSSOVER_ONE_EIGHTH_BOARD = 2
 
 
 def _ensure_single_kings(
@@ -399,6 +405,169 @@ class CrossoverFunction:
         return board1, board2
 
 
+class CrossoverStrategy(metaclass=abc.ABCMeta):
+    def __subclasshook__(cls, subclass):
+        return (hasattr(subclass, "__call__")) or NotImplemented
+
+    def __init__(
+        self,
+        crossover_functions: List[CrossoverFunction],
+        _random_state: Optional[np.random.Generator] = None,
+    ):
+        """A base class for crossover strategies.
+
+        Args:
+            crossover_functions (List[CrossoverFunction]): A **pointer** to the list of crossover functions.
+                This means that the list of crossover functions can be modified externally and the changes
+                will be reflected here.
+        """
+        self.random_state: np.random.Generator = get_random_state(_random_state)
+        self.mutation_functions: List[CrossoverFunction] = crossover_functions
+
+    @abc.abstractmethod
+    def __call__(
+        self, individual1: BoardIndividual, individual2: BoardIndividual, *args: Any, **kwargs: Any
+    ) -> Tuple[BoardIndividual, BoardIndividual]:
+        raise NotImplementedError
+
+
+class AllCrossoverFunctionsStrategy(CrossoverStrategy):
+    def __call__(
+        self, individual1: BoardIndividual, individual2: BoardIndividual, *args: Any, **kwargs: Any
+    ) -> Tuple[BoardIndividual, BoardIndividual]:
+        """Apply all crossover functions to the two individuals.
+
+        Args:
+            individual1 (BoardIndividual): The first individual.
+            individual2 (BoardIndividual): The second individual.
+            *args: Additional arguments to pass to the crossover functions.
+            **kwargs: Additional keyword arguments to pass to the crossover functions.
+
+        Returns:
+            Tuple[BoardIndividual, BoardIndividual]: The mated individuals.
+        """
+        for crossover_function in self.mutation_functions:
+            if self.random_state.uniform() < crossover_function.probability:
+                individual1, individual2 = crossover_function(
+                    individual1, individual2, *args, **kwargs
+                )
+
+        return individual1, individual2
+
+
+class OneRandomCrossoverFunctionStrategy(CrossoverStrategy):
+    def __call__(
+        self, individual1: BoardIndividual, individual2: BoardIndividual, *args: Any, **kwargs: Any
+    ) -> Tuple[BoardIndividual, BoardIndividual]:
+        """Apply one random crossover function to the two individuals. The probability of each crossover function
+        is proportional to its probability attribute.
+
+        Args:
+            individual1 (BoardIndividual): The first individual.
+            individual2 (BoardIndividual): The second individual.
+            *args: Additional arguments to pass to the crossover functions.
+            **kwargs: Additional keyword arguments to pass to the crossover functions.
+
+        Returns:
+            Tuple[BoardIndividual, BoardIndividual]: The mated individuals.
+        """
+        probabilities = [
+            crossover_function.probability for crossover_function in self.mutation_functions
+        ]
+        crossover_function = self.random_state.choice(self.mutation_functions, p=probabilities)
+
+        return crossover_function(individual1, individual2, *args, **kwargs)
+
+
+class NRandomCrossoverFunctionsStrategy(CrossoverStrategy):
+    def __init__(
+        self,
+        crossover_functions: List[CrossoverFunction],
+        num_crossover_functions: int,
+        _random_state: Optional[np.random.Generator] = None,
+    ):
+        """Apply "num_crossover_functions" random crossover functions to the two individuals. The probability of each
+        crossover function is proportional to its probability attribute.
+
+        Args:
+            crossover_functions (List[CrossoverFunction]): A **pointer** to the list of crossover functions.
+                This means that the list of crossover functions can be modified externally and the changes
+                will be reflected here.
+            num_crossover_functions (int): The number of crossover functions to apply.
+            _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+        """
+        super().__init__(crossover_functions, _random_state)
+        self.num_crossover_functions = num_crossover_functions
+
+    def __call__(
+        self, individual1: BoardIndividual, individual2: BoardIndividual, *args: Any, **kwargs: Any
+    ) -> Tuple[BoardIndividual, BoardIndividual]:
+        """Apply "num_crossover_functions" random crossover functions to the two individuals. The probability of each
+        crossover function is proportional to its probability attribute.
+
+        Args:
+            individual1 (BoardIndividual): The first individual.
+            individual2 (BoardIndividual): The second individual.
+            *args: Additional arguments to pass to the crossover functions.
+            **kwargs: Additional keyword arguments to pass to the crossover functions.
+
+        Returns:
+            Tuple[BoardIndividual, BoardIndividual]: The mated individuals.
+        """
+        probabilities = [
+            crossover_function.probability for crossover_function in self.mutation_functions
+        ]
+        crossover_functions = self.random_state.choice(
+            self.mutation_functions,
+            size=self.num_crossover_functions,
+            p=probabilities,
+            replace=False,
+        )
+
+        for crossover_function in crossover_functions:
+            individual1, individual2 = crossover_function(
+                individual1, individual2, *args, **kwargs
+            )
+
+        return individual1, individual2
+
+
+def get_crossover_strategy(
+    crossover_strategy: str,
+    crossover_functions: List[CrossoverFunction],
+    *args: Any,
+    **kwargs: Any,
+) -> CrossoverStrategy:
+    """Get a crossover strategy.
+
+    Args:
+        crossover_strategy (str): The name of the crossover strategy to use. Must be one of
+            ["all", "one_random", "n_random"] where "all" applies all crossover functions, "one_random" applies one
+            random crossover function, and "n_random" applies "num_crossover_functions" random selection functions.
+        crossover_functions (List[CrossoverFunction]): A **pointer** to the list of crossover functions.
+            This means that the list of crossover functions can be modified externally and the changes
+            will be reflected here.
+        **kwargs: Additional keyword arguments to pass to the crossover strategy.
+
+    Returns:
+        CrossoverStrategy: The crossover strategy.
+
+    Raises:
+        ValueError: If "crossover_strategy" is not one of ["all", "one_random", "n_random"].
+    """
+    if crossover_strategy == "all":
+        return AllCrossoverFunctionsStrategy(crossover_functions)
+    elif crossover_strategy == "one_random":
+        return OneRandomCrossoverFunctionStrategy(crossover_functions)
+    elif crossover_strategy == "n_random":
+        return NRandomCrossoverFunctionsStrategy(crossover_functions, *args, **kwargs)
+    else:
+        raise ValueError(
+            f"Invalid crossover strategy '{crossover_strategy}'. Must be one of "
+            f"['all', 'one_random', 'n_random']"
+        )
+
+
 class Crossover:
     def __init__(
         self,
@@ -417,23 +586,20 @@ class Crossover:
                 "crossover_strategy" is "n_random". Defaults to None.
             _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
         """
-        self.crossover_strategy = crossover_strategy
         self.num_crossover_functions = num_crossover_functions
-        self.random_state = get_random_state(_random_state)
-        self.global_probability: Optional[float] = None
-
-        self.crossover_functions: List[CrossoverFunction] = []
-        self.crossover_functions_dict: Dict[str, CrossoverFunction] = {}
-
-        assert self.crossover_strategy in [
-            "all",
-            "one_random",
-            "n_random",
-        ], f"Invalid crossover strategy. Must be one of ['all', 'one_random', 'n_random'] but got {self.crossover_strategy}."
-        if self.crossover_strategy == "n_random":
+        if crossover_strategy == "n_random":
             assert (
                 self.num_crossover_functions is not None
             ), "Must specify the number of crossover functions to use if crossover strategy is 'n_random'."
+
+        self.crossover_functions: List[CrossoverFunction] = []
+        self.crossover_strategy = get_crossover_strategy(
+            crossover_strategy,
+            self.crossover_functions,
+            num_crossover_functions=num_crossover_functions,
+        )
+        self.random_state = get_random_state(_random_state)
+        self.global_probability: Optional[float] = None
 
     def register_crossover_function(
         self,
@@ -475,43 +641,6 @@ class Crossover:
                     **kwargs,
                 )
             )
-            self.crossover_functions_dict[function.__name__] = self.crossover_functions[-1]
-
-    def change_mutation_function_parameters(
-        self,
-        function_names: Union[str, List[str]],
-        **kwargs: Any,
-    ) -> None:
-        """Changes the parameters of one or multiple mutation functions
-
-        Args:
-            function_names (str): The name of the mutation functions to change the parameters of.
-            **kwargs: The new parameters to set.
-        """
-        if not isinstance(function_names, list):
-            function_names = [function_names]
-
-        # Separate the named arguments from the keyword arguments
-        named_arg_tuples = []
-        if "probability" in kwargs:
-            named_arg_tuples.append(("probability", kwargs["probability"]))
-            del kwargs["probability"]
-        if "retries" in kwargs:
-            named_arg_tuples.append(("retries", kwargs["retries"]))
-            del kwargs["retries"]
-        if "clear_fitness_values" in kwargs:
-            named_arg_tuples.append(("clear_fitness_values", kwargs["clear_fitness_values"]))
-            del kwargs["clear_fitness_values"]
-
-        for function_name in function_names:
-            function = self.crossover_functions_dict[function_name]
-
-            # Set the named arguments
-            for named_arg_tuple in named_arg_tuples:
-                setattr(function, named_arg_tuple[0], named_arg_tuple[1])
-
-            # Set the keyword arguments
-            function.kwargs = {**function.kwargs, **kwargs}
 
     def set_global_probability(self, probability: float) -> None:
         """Sets the probability of all crossover functions.
@@ -524,7 +653,7 @@ class Crossover:
             crossover_function.probability = probability
 
     def __call__(
-        self, individual_tuple: Tuple[Individual, Individual], *new_args: Any, **new_kwargs: Any
+        self, individual_tuple: Tuple[Individual, Individual], *args: Any, **kwargs: Any
     ) -> Tuple[Individual, Individual]:
         """Calls the crossover function on the two individuals according to the crossover strategy.
 
@@ -535,31 +664,7 @@ class Crossover:
             Tuple[Individual, Individual]: The two individuals after the crossover.
         """
         individual1, individual2 = individual_tuple
-        crossover_functions_to_apply = []
-
-        if self.crossover_strategy == "all":
-            crossover_functions_to_apply = self.crossover_functions
-        elif self.crossover_strategy == "one_random":
-            crossover_functions_to_apply = [self.random_state.choice(self.crossover_functions)]
-        elif self.crossover_strategy == "n_random":
-            crossover_functions_to_apply = self.random_state.choice(
-                self.crossover_functions, self.num_crossover_functions, replace=False
-            )
-        else:
-            raise ValueError(
-                f"Crossover strategy must be one of ['all', 'one_random', 'n_random'] but got {self.crossover_strategy}."
-            )
-
-        for crossover_function in crossover_functions_to_apply:
-            if self.random_state.random() < crossover_function.probability:
-                individual1, individual2 = crossover_function(
-                    individual1,
-                    individual2,
-                    *new_args,
-                    **new_kwargs,
-                )
-
-        return individual1, individual2
+        return self.crossover_strategy(individual1, individual2, *args, **kwargs)
 
 
 if __name__ == "__main__":
