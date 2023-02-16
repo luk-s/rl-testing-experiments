@@ -250,22 +250,22 @@ def get_random_individuals(
         lines = f.readlines()
 
     individuals = []
-
+    chosen_fens = []
     while len(individuals) < amount:
-        # Randomly choose fen strings from the file
+        # Randomly choose 'amount' fen strings from the file
         fens = random_state.choice(lines, size=amount - len(individuals), replace=False)
 
         # Convert the fen strings to boards
         candidates = [BoardIndividual(fen) for fen in fens]
 
-        # Add the valid boards to the list of individuals
-        individuals.extend(
-            [
-                candidate
-                for candidate in candidates
-                if is_really_valid(candidate) and candidate not in individuals
-            ]
-        )
+        # Filter out invalid boards
+        candidates = [
+            candidate
+            for candidate in candidates
+            if is_really_valid(candidate) and candidate.fen() not in chosen_fens
+        ]
+        individuals.extend(candidates)
+        chosen_fens.extend([candidate.fen() for candidate in candidates])
 
     return individuals
 
@@ -578,6 +578,7 @@ async def evolutionary_algorithm(
             # Clone the selected individuals
             log_time(start_time, "before cloning")
             offspring: List[BoardIndividual] = list(map(BoardIndividual.copy, offspring))
+            random_state.shuffle(offspring)
             log_time(start_time, "after cloning")
 
             # Apply crossover on the offspring
@@ -812,10 +813,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_engines1" ,       type=int,  default=2)
     parser.add_argument("--num_engines2" ,       type=int,  default=2)
     parser.add_argument("--result_subdir",       type=str,  default="main_results")
-
-    # Evolutionary algorithm parameters
-
     # fmt: on
+
     ##################################
     #           CONFIG END           #
     ##################################

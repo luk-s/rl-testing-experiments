@@ -346,7 +346,9 @@ class CrossoverFunction:
 
         self.clear_fitness_values = clear_fitness_values
         self.check_game_not_over = check_game_not_over
-        self.function = function
+        self.function: Callable[
+            [chess.Board, chess.Board, Any], Tuple[chess.Board, chess.Board]
+        ] = function
 
         self.args = args
         self.kwargs = kwargs
@@ -371,6 +373,8 @@ class CrossoverFunction:
             board_candidate2 = board2.copy()
 
             # Retry the crossover if the board is invalid
+            board_candidate1: BoardIndividual
+            board_candidate2: BoardIndividual
             board_candidate1, board_candidate2 = self.function(
                 board_candidate1,
                 board_candidate2,
