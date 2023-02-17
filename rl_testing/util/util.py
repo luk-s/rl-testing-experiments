@@ -36,17 +36,21 @@ def get_task_result_handler(
     )
 
 
-def get_random_state(random_state: Optional[np.random.Generator] = None) -> np.random.Generator:
+def get_random_state(
+    random_state: Optional[Union[int, np.random.Generator]] = None
+) -> np.random.Generator:
     """Get a random state. Use the provided random state if it is not None, otherwise use the default random state.
 
     Args:
-        random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+        random_state (Optional[Union[int, np.random.Generator]], optional): An optional random state or a seed. Defaults to None.
 
     Returns:
         np.random.Generator: The random state.
     """
     if random_state is None:
         return np.random.default_rng()
+    if isinstance(random_state, int):
+        return np.random.default_rng(random_state)
     return random_state
 
 

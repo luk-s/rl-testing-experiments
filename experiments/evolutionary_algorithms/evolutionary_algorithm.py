@@ -43,6 +43,7 @@ from rl_testing.evolutionary_algorithms.selections import (
     Selector,
     select_tournament_fast,
 )
+from rl_testing.util.chess import is_really_valid
 from rl_testing.util.experiment import store_experiment_params
 
 RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm")
@@ -55,11 +56,11 @@ DEBUG_CONFIG = {
     "num_workers": 8,
     "probability_decay": False,
     "num_generations": 50,
-    "population_size": 5990,
-    "mutation_prob": 0.8359542054011151,
-    "crossover_prob": 0.6,
+    "population_size": 1500,
+    "mutation_prob": 1,  # 0.8359542054011151,
+    "crossover_prob": 1,  # 0.6,
     # "mutation_prob": 0.5153169719430473,
-    "tournament_fraction": 1 / 5990 * 3,
+    "tournament_fraction": 0.25,  # 1 / 5990 * 3,
     # "tournament_fraction": 0.18229452371470656,
     # "tournament_fraction": 0.0035739063534925286,
 }
@@ -116,11 +117,23 @@ def get_random_individuals(
     with open(file_path, "r") as f:
         lines = f.readlines()
 
-    # Randomly choose 'amount' fen strings from the file
-    fens = random_state.choice(lines, size=amount, replace=False)
+    individuals = []
+    chosen_fens = []
+    while len(individuals) < amount:
+        # Randomly choose 'amount' fen strings from the file
+        fens = random_state.choice(lines, size=amount - len(individuals), replace=False)
 
-    # Convert the fen strings to boards
-    individuals = [BoardIndividual(fen) for fen in fens]
+        # Convert the fen strings to boards
+        candidates = [BoardIndividual(fen) for fen in fens]
+
+        # Filter out invalid boards
+        candidates = [
+            candidate
+            for candidate in candidates
+            if is_really_valid(candidate) and candidate.fen() not in chosen_fens
+        ]
+        individuals.extend(candidates)
+        chosen_fens.extend([candidate.fen() for candidate in candidates])
 
     return individuals
 
@@ -136,8 +149,8 @@ def setup_operators(
 
     # Initialize the fitness function
     # fitness = EditDistanceFitness("3r3k/7p/2p1np2/4p1p1/1Pq1P3/2Q2P2/P4RNP/2R4K b - - 0 42")
-    # fitness = BoardSimilarityFitness("3r3k/7p/2p1np2/4p1p1/1Pq1P3/2Q2P2/P4RNP/2R4K b - - 0 42")
-    fitness = HashFitness()
+    fitness = BoardSimilarityFitness("3r3k/7p/2p1np2/4p1p1/1Pq1P3/2Q2P2/P4RNP/2R4K b - - 0 42")
+    # fitness = HashFitness()
 
     # Initialize the mutation functions
     mutate = Mutator(
@@ -320,6 +333,8 @@ def evolutionary_algorithm(
         )
         log_time(start_time, "after creating population")
 
+        fens = [individual.fen() for individual in population]
+
         # Evaluate the entire population
         for individual, fitness_val in zip(
             population, pool.imap(fitness.evaluate, population, chunksize=chunk_size)
@@ -351,6 +366,7 @@ def evolutionary_algorithm(
             # Clone the selected individuals
             log_time(start_time, "before cloning")
             offspring: List[BoardIndividual] = list(map(BoardIndividual.copy, offspring))
+            random_state.shuffle(offspring)
             log_time(start_time, "after cloning")
 
             # Apply crossover on the offspring

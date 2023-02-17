@@ -1,5 +1,5 @@
 import abc
-from typing import TYPE_CHECKING, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import chess
 
@@ -26,6 +26,11 @@ class Individual(metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
+    def custom_data(self) -> Dict[str, Any]:
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
     def history(self) -> List["AdaptionType"]:
         raise NotImplementedError
 
@@ -43,6 +48,7 @@ class BoardIndividual(chess.Board, Individual):
     def __init__(self, *args, **kwargs) -> None:
         self._fitness: Optional[float] = None
         self._history: List["AdaptionType"] = []
+        self._custom_data: Dict[str, Any] = {}
         super().__init__(*args, **kwargs)
 
     def get_fitness(self) -> bool:
@@ -70,6 +76,22 @@ class BoardIndividual(chess.Board, Individual):
         set_history,
         del_history,
         "History of adaptions that have been made to the individual.",
+    )
+
+    def get_custom_data(self) -> Dict[str, Any]:
+        return self._custom_data
+
+    def set_custom_data(self, value: Dict[str, Any]) -> None:
+        self._custom_data = value
+
+    def del_custom_data(self) -> None:
+        self._custom_data = {}
+
+    custom_data = property(
+        get_custom_data,
+        set_custom_data,
+        del_custom_data,
+        "Custom data that can be used for the individual.",
     )
 
     def copy(self, *args, **kwargs) -> "BoardIndividual":

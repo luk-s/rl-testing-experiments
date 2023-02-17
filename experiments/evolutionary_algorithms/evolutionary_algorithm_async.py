@@ -57,12 +57,14 @@ DEBUG_CONFIG = {
     "early_stopping": True,
     "early_stopping_value": 1.9,
     "num_generations": 50,
-    "population_size": 1500,
+    "population_size": 1000,
     "mutation_prob": 1,
-    "mutation_strategy": "all",
+    "mutation_strategy": "dynamic",
+    "minimum_mutation_probability": 0.01,
     "crossover_prob": 1,
-    "crossover_strategy": "all",
-    "tournament_fraction": 0.25,
+    "crossover_strategy": "dynamic",
+    "minimum_crossover_probability": 0.01,
+    "tournament_fraction": 0.1,
     "mutate_add_one_piece": True,
     "mutate_castling_rights": True,
     "mutate_flip_board": True,
@@ -104,6 +106,8 @@ class EvolutionaryAlgorithmConfig:
         tournament_fraction: float,
         mutation_functions: List[Callable],
         crossover_functions: List[Callable],
+        minimum_mutation_probability: Optional[float] = None,
+        minimum_crossover_probability: Optional[float] = None,
         mutation_probabilities: Optional[List[float]] = None,
         crossover_probabilities: Optional[List[float]] = None,
     ) -> None:
@@ -123,6 +127,8 @@ class EvolutionaryAlgorithmConfig:
         self.mutation_probabilities = mutation_probabilities
         self.crossover_functions = crossover_functions
         self.crossover_probabilities = crossover_probabilities
+        self.minimum_mutation_probability = minimum_mutation_probability
+        self.minimum_crossover_probability = minimum_crossover_probability
 
         # Check that probability decay is only enabled if mutation_strategy is "all" and if
         # crossover_strategy is "all"
@@ -209,6 +215,8 @@ class EvolutionaryAlgorithmConfig:
             tournament_fraction=config["tournament_fraction"],
             mutation_functions=mutation_functions,
             crossover_functions=crossover_functions,
+            minimum_mutation_probability=config.get("minimum_mutation_probability", None),
+            minimum_crossover_probability=config.get("minimum_crossover_probability", None),
             mutation_probabilities=mutation_probabilities,
             crossover_probabilities=crossover_probabilities,
         )
@@ -279,6 +287,7 @@ def setup_operators(
     # Initialize the mutation operator
     mutate = Mutator(
         mutation_strategy=evolutionary_algorithm_config.mutation_strategy,
+        minimum_probability=evolutionary_algorithm_config.minimum_mutation_probability,
         _random_state=random_state,
     )
 
@@ -305,6 +314,7 @@ def setup_operators(
     # Initialize the crossover operator
     crossover = Crossover(
         crossover_strategy=evolutionary_algorithm_config.crossover_strategy,
+        minimum_probability=evolutionary_algorithm_config.minimum_crossover_probability,
         _random_state=random_state,
     )
 
@@ -411,8 +421,9 @@ def recombine_individuals(
     ]
 
     # Apply crossover on the mating candidates
+    random_seeds = random_state.integers(0, 2**63, len(mating_candidates))
     for individual1, individual2 in chain(
-        single_children, pool.imap(crossover, mating_candidates, chunksize=chunk_size)
+        single_children, pool.starmap(crossover, zip(mating_candidates, random_seeds))
     ):
         mated_children.append(individual1)
         mated_children.append(individual2)
@@ -444,9 +455,10 @@ def mutate_individuals(
     ]
 
     # Apply mutation on the mutation candidates
+    random_seeds = random_state.integers(0, 2**63, len(mutation_candidates))
     mutated_children: List[BoardIndividual] = []
     for individual in chain(
-        pool.imap(mutate, mutation_candidates, chunksize=chunk_size),
+        pool.starmap(mutate, zip(mutation_candidates, random_seeds)),
         non_mutation_candidates,
     ):
         mutated_children.append(individual)
@@ -595,8 +607,11 @@ async def evolutionary_algorithm(
 
             # Apply mutation on the offspring
             log_time(start_time, "before mutating")
+            population_to_mutate = (
+                offspring if mutate.should_mutate_original_population() else mated_children
+            )
             mutated_children = mutate_individuals(
-                population=mated_children,
+                population=population_to_mutate,
                 mutate=mutate,
                 pool=pool,
                 chunk_size=chunk_size,
@@ -608,7 +623,12 @@ async def evolutionary_algorithm(
             # Evaluate the individuals with an invalid fitness
             log_time(start_time, "before evaluating")
             unevaluated_individuals: List[BoardIndividual] = []
-            for individual in mutated_children:
+            adapted_population = (
+                mated_children + mutated_children
+                if mutate.should_mutate_original_population()
+                else mutated_children
+            )
+            for individual in adapted_population:
                 if individual.fitness is None:
                     unevaluated_individuals.append(individual)
 
@@ -619,7 +639,12 @@ async def evolutionary_algorithm(
             log_time(start_time, "after evaluating")
 
             # The population is entirely replaced by the offspring
-            population = mutated_children
+            population = adapted_population
+
+            # Optionally update the crossover and mutation probabilities
+            # using data from the previous generation
+            mutate.analyze_mutation_effects(population, print_update=True)
+            crossover.analyze_crossover_effects(population, print_update=True)
 
             log_time(start_time, "before finding best individual")
             # Print the best individual and its fitness
@@ -699,6 +724,16 @@ async def evolutionary_algorithm(
 
     # Cancel all running subprocesses which the fitness evaluator spawned
     fitness.cancel_tasks()
+
+    # Log the best individual and its fitness
+    best_individual, best_fitness = fitness.best_individual(best_individuals)
+    logging.info(
+        f"FINAL best individual: {best_individual.fen()}, FINAL best fitness: {best_fitness}"
+    )
+
+    # Log the histories of the mutation- and crossover probability distributions
+    mutate.print_mutation_probability_history()
+    crossover.print_crossover_probability_history()
 
     return (
         end_time - start_time,

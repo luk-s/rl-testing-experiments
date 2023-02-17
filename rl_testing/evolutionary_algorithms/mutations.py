@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import chess
 import numpy as np
+
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.chess import (
     is_really_valid,
@@ -598,12 +599,21 @@ class MutationFunction:
         self.retries = retries
         self.random_state = get_random_state(_random_state)
 
-        self.function = function
+        self.function: Callable[[chess.Board, Any], chess.Board] = function
         self.clear_fitness_values = clear_fitness_values
         self.check_game_not_over = check_game_not_over
 
         self.args = args
         self.kwargs = kwargs
+
+    def __id__(self) -> int:
+        return f"MutationFunction({self.function.__name__})"
+
+    def __hash__(self) -> int:
+        return hash(self.__id__())
+
+    def __eq__(self, other: Any) -> bool:
+        return self.__id__() == other.__id__()
 
     def __call__(
         self, board: BoardIndividual, *new_args: Any, **new_kwargs: Any
@@ -623,7 +633,7 @@ class MutationFunction:
             board_candidate = board.copy()
 
             # Retry the mutation if the board is invalid
-            board_candidate = self.function(
+            board_candidate: BoardIndividual = self.function(
                 board_candidate,
                 _random_state=self.random_state,
                 *self.args,
@@ -642,18 +652,23 @@ class MutationFunction:
 
                 # Add the applied mutation to the boards history
                 board_candidate.history.append(MUTATION_NAME_MAP[self.function])
-
+                logging.info(f"Applied mutation '{self.function.__name__}'")
                 return board_candidate
 
-        logging.debug(
-            f"Board {board_candidate.fen()} is invalid after mutation '{self.function.__name__}', returning original board"
+        logging.info(
+            f"Board {board.fen()} is invalid after mutation '{self.function.__name__}', returning original board"
         )
         return board
 
 
 class MutationStrategy(metaclass=abc.ABCMeta):
     def __subclasshook__(cls, subclass):
-        return (hasattr(subclass, "__call__")) or NotImplemented
+        return (
+            hasattr(subclass, "__call__")
+            and hasattr(subclass, "should_mutate_original_population")
+            and hasattr(subclass, "analyze_mutation_effects")
+            and hasattr(subclass, "print_mutation_probability_history")
+        ) or NotImplemented
 
     def __init__(
         self,
@@ -671,12 +686,46 @@ class MutationStrategy(metaclass=abc.ABCMeta):
         self.mutation_functions: List[MutationFunction] = mutation_functions
 
     @abc.abstractmethod
-    def __call__(self, individual: BoardIndividual, *args: Any, **kwargs: Any) -> BoardIndividual:
+    def should_mutate_original_population(self) -> bool:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def __call__(
+        self,
+        individual: BoardIndividual,
+        random_seed: Optional[int] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> BoardIndividual:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def analyze_mutation_effects(
+        self, population: List[BoardIndividual], print_update: bool = False
+    ) -> None:
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def print_mutation_probability_history(self) -> None:
         raise NotImplementedError
 
 
 class AllMutationFunctionsStrategy(MutationStrategy):
-    def __call__(self, individual: BoardIndividual, *args: Any, **kwargs: Any) -> BoardIndividual:
+    def should_mutate_original_population(self) -> bool:
+        """Whether the original population should be mutated or the population after crossover.
+
+        Returns:
+            bool: Whether the original population should be mutated or the population after crossover.
+        """
+        return False
+
+    def __call__(
+        self,
+        individual: BoardIndividual,
+        random_seed: Optional[int] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> BoardIndividual:
         """Apply all mutation functions to the individual.
 
         Args:
@@ -685,15 +734,40 @@ class AllMutationFunctionsStrategy(MutationStrategy):
         Returns:
             BoardIndividual: The mutated individual.
         """
+        if random_seed:
+            self.random_state = np.random.default_rng(random_seed)
         for mutation_function in self.mutation_functions:
             if self.random_state.random() < mutation_function.probability:
                 individual = mutation_function(individual, *args, **kwargs)
 
         return individual
 
+    def analyze_mutation_effects(
+        self, population: List[BoardIndividual], print_update: bool = False
+    ) -> None:
+        return
+
+    def print_mutation_probability_history(self) -> None:
+        for mutation_function in self.mutation_functions:
+            print(f"{mutation_function.function.__name__}: {mutation_function.probability}")
+
 
 class OneRandomMutationFunctionStrategy(MutationStrategy):
-    def __call__(self, individual: BoardIndividual, *args: Any, **kwargs: Any) -> BoardIndividual:
+    def should_mutate_original_population(self) -> bool:
+        """Whether the original population should be mutated or the population after crossover.
+
+        Returns:
+            bool: Whether the original population should be mutated or the population after crossover.
+        """
+        return False
+
+    def __call__(
+        self,
+        individual: BoardIndividual,
+        random_seed: Optional[int] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> BoardIndividual:
         """Apply one random mutation function to the individual. The probability of each mutation function
         is determined by the "probability" attribute of the mutation function.
 
@@ -703,6 +777,8 @@ class OneRandomMutationFunctionStrategy(MutationStrategy):
         Returns:
             BoardIndividual: The mutated individual.
         """
+        if random_seed:
+            self.random_state = np.random.default_rng(random_seed)
         probabilities = [
             mutation_function.probability for mutation_function in self.mutation_functions
         ]
@@ -712,6 +788,15 @@ class OneRandomMutationFunctionStrategy(MutationStrategy):
         individual = mutation_function(individual, *args, **kwargs)
 
         return individual
+
+    def analyze_mutation_effects(
+        self, population: List[BoardIndividual], print_update: bool = False
+    ) -> None:
+        return
+
+    def print_mutation_probability_history(self) -> None:
+        for mutation_function in self.mutation_functions:
+            print(f"{mutation_function.function.__name__}: {mutation_function.probability}")
 
 
 class NRandomMutationFunctionsStrategy(MutationStrategy):
@@ -732,7 +817,21 @@ class NRandomMutationFunctionsStrategy(MutationStrategy):
         super().__init__(mutation_functions, _random_state)
         self.num_mutation_functions = num_mutation_functions
 
-    def __call__(self, individual: BoardIndividual, *args: Any, **kwargs: Any) -> BoardIndividual:
+    def should_mutate_original_population(self) -> bool:
+        """Whether the original population should be mutated or the population after crossover.
+
+        Returns:
+            bool: Whether the original population should be mutated or the population after crossover.
+        """
+        return False
+
+    def __call__(
+        self,
+        individual: BoardIndividual,
+        random_seed: Optional[int] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> BoardIndividual:
         """Apply "num_mutation_functions" random mutation functions to the individual.
 
         Args:
@@ -741,6 +840,8 @@ class NRandomMutationFunctionsStrategy(MutationStrategy):
         Returns:
             BoardIndividual: The mutated individual.
         """
+        if random_seed:
+            self.random_state = np.random.default_rng(random_seed)
         probabilities = [
             mutation_function.probability for mutation_function in self.mutation_functions
         ]
@@ -754,6 +855,177 @@ class NRandomMutationFunctionsStrategy(MutationStrategy):
             individual = mutation_function(individual, *args, **kwargs)
 
         return individual
+
+    def analyze_mutation_effects(
+        self, population: List[BoardIndividual], print_update: bool = False
+    ) -> None:
+        return
+
+    def print_mutation_probability_history(self) -> None:
+        for mutation_function in self.mutation_functions:
+            print(f"{mutation_function.function.__name__}: {mutation_function.probability}")
+
+
+class DynamicMutationFunctionStrategy(MutationStrategy):
+    def __init__(
+        self,
+        mutation_functions: List[MutationFunction],
+        minimum_probability: float,
+        _random_state: Optional[np.random.Generator] = None,
+    ):
+        """Dynamically adjusts the probability of each mutation function based on the effect which
+        the mutation function has on the population.
+
+        Args:
+            mutation_functions (List[MutationFunction]): A **pointer** to the list of mutation functions.
+                This means that the list of mutation functions can be modified externally and the changes
+                will be reflected here.
+            minimum_probability (float): The minimum probability of each mutation function.
+            _random_state (Optional[np.random.Generator], optional): The random state. Defaults to None.
+        """
+        super().__init__(mutation_functions, _random_state)
+        self.minimum_probability = minimum_probability
+        self._history: Dict[MutationFunction, List[float]] = {}
+
+    def should_mutate_original_population(self) -> bool:
+        """Whether the original population should be mutated or the population after crossover.
+
+        Returns:
+            bool: Whether the original population should be mutated or the population after crossover.
+        """
+        return True
+
+    def __call__(
+        self,
+        individual: BoardIndividual,
+        random_seed: Optional[int] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> BoardIndividual:
+        """Apply one random mutation function to the individual. The probability of each mutation function
+        is determined by the "probability" attribute of the mutation function.
+
+        Args:
+            individual (BoardIndividual): The individual to mutate.
+
+        Returns:
+            BoardIndividual: The mutated individual.
+        """
+        if random_seed:
+            self.random_state = np.random.default_rng(random_seed)
+        # Make sure that the parent still has a fitness value
+        if individual.fitness is None:
+            raise ValueError("Individual must have a fitness value")
+
+        parent_fitness = individual.fitness
+
+        probabilities = [
+            mutation_function.probability for mutation_function in self.mutation_functions
+        ]
+        mutation_function: MutationFunction = self.random_state.choice(
+            self.mutation_functions, p=probabilities
+        )
+        individual = mutation_function(individual, *args, **kwargs)
+
+        # Store the parent's fitness and the mutation function that was applied
+        individual.custom_data["mutation_function"] = mutation_function
+        individual.custom_data["mutation_parent_fitness"] = parent_fitness
+
+        return individual
+
+    def _compute_mutation_weights(
+        self,
+        progress_values: Dict[MutationFunction, float],
+        set_values: bool = False,
+    ):
+        mutation_weights: Dict[MutationFunction, float] = {}
+
+        # Update the mutation weights. This formula ensures that the sum of all weights is 1 and that
+        # all weights are at least "minimum_probability" large
+        progress_value_sum = sum(progress_values.values())
+        if progress_value_sum == 0:
+            # If all progress values are 0, then set all mutation proabilities to 1 / num_mutation_functions
+            for mutation_function in self.mutation_functions:
+                mutation_weights[mutation_function] = 1 / len(self.mutation_functions)
+                if set_values:
+                    mutation_function.probability = mutation_weights[mutation_function]
+        else:
+            for mutation_function in self.mutation_functions:
+                mutation_weights[mutation_function] = (
+                    progress_values[mutation_function] / progress_value_sum
+                ) * (
+                    1 - len(self.mutation_functions) * self.minimum_probability
+                ) + self.minimum_probability
+
+                # Set the mutation weights
+                if set_values:
+                    mutation_function.probability = mutation_weights[mutation_function]
+
+                if mutation_weights[mutation_function] < self.minimum_probability:
+                    raise ValueError(
+                        f"Mutation weight is too small!: {mutation_weights[mutation_function]}. Progress value: {progress_values[mutation_function]} "
+                        f"Progress value sum: {progress_value_sum}. Mutation weights: {mutation_weights}. Progress values: {progress_values}"
+                    )
+
+        weight_sum = sum(mutation_weights.values())
+        if abs(weight_sum - 1) > 1e-3:
+            raise ValueError(
+                f"Mutation weights do not sum to 1: {weight_sum}. Mutation weights: {mutation_weights}"
+            )
+
+        return mutation_weights
+
+    def analyze_mutation_effects(
+        self, population: List[BoardIndividual], print_update: bool = False
+    ) -> None:
+        """Gather data from the population and update the mutation weights
+
+        Args:
+            population (List[BoardIndividual]): The population.
+        """
+        # Initialize the mutation stats
+        mutation_stats: Dict[MutationFunction, List[float]] = {
+            mutation_function: [] for mutation_function in self.mutation_functions
+        }
+
+        # Gather the mutation stats
+        for individual in population:
+            if "mutation_function" not in individual.custom_data:
+                continue
+
+            mutation_function = individual.custom_data["mutation_function"]
+            parent_fitness = individual.custom_data["mutation_parent_fitness"]
+            mutation_stats[mutation_function].append(max(individual.fitness - parent_fitness, 0))
+
+            # Clear the custom data again
+            del individual.custom_data["mutation_function"]
+            del individual.custom_data["mutation_parent_fitness"]
+
+        # Compute the progress values
+        progress_values: Dict[MutationFunction, float] = {}
+        for mutation_function, fitnesses in mutation_stats.items():
+            # Some mutation functions might not have been applied to any individual, so we need to
+            # handle that case
+            progress_values[mutation_function] = np.mean(fitnesses) if len(fitnesses) > 0 else 0
+
+        probabilities = self._compute_mutation_weights(progress_values, set_values=True)
+
+        # Update the history
+        for mutation_function, probability in probabilities.items():
+            if mutation_function not in self._history:
+                self._history[mutation_function] = []
+            self._history[mutation_function].append(probability)
+
+        if print_update:
+            for mutation_function, progress_value in progress_values.items():
+                logging.info(
+                    f"{mutation_function.function.__name__}: Progress value: {progress_value:.4f}, Probability: {mutation_function.probability:.4f}"
+                )
+
+    def print_mutation_probability_history(self) -> None:
+        # For each mutation function, print its probability history
+        for mutation_function, probabilities in self._history.items():
+            print(f"{mutation_function.function.__name__}: {probabilities}")
 
 
 def get_mutation_strategy(
@@ -778,10 +1050,16 @@ def get_mutation_strategy(
     elif mutation_strategy == "one_random":
         return OneRandomMutationFunctionStrategy(mutation_functions)
     elif mutation_strategy == "n_random":
-        return NRandomMutationFunctionsStrategy(mutation_functions, *args, **kwargs)
+        return NRandomMutationFunctionsStrategy(
+            mutation_functions, kwargs.get("num_mutation_functions", 1)
+        )
+    elif mutation_strategy == "dynamic":
+        return DynamicMutationFunctionStrategy(
+            mutation_functions, kwargs.get("minimum_probability", 0.01)
+        )
     else:
         raise ValueError(
-            f"Invalid mutation strategy '{mutation_strategy}', must be one of ['all', 'one_random', 'n_random']"
+            f"Invalid mutation strategy '{mutation_strategy}', must be one of ['all', 'one_random', 'n_random', 'dynamic']"
         )
 
 
@@ -790,6 +1068,7 @@ class Mutator:
         self,
         mutation_strategy: str = "all",
         num_mutation_functions: Optional[int] = None,
+        minimum_probability: Optional[float] = None,
         _random_state: Optional[np.random.Generator] = None,
     ):
         """A class for applying mutation functions to individuals.
@@ -801,6 +1080,8 @@ class Mutator:
                 Defaults to "all".
             num_mutation_functions (Optional[int], optional): The number of mutation functions to apply if the
                 mutation strategy is "n_random". Defaults to None.
+            minimum_probability (Optional[float], optional): The minimum probability of a mutation function if the
+                mutation strategy is "dynamic". Defaults to None.
             _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
         """
         self.num_mutation_functions = num_mutation_functions
@@ -809,10 +1090,18 @@ class Mutator:
                 self.num_mutation_functions is not None
             ), "Must specify the number of mutation functions to apply if the mutation strategy is 'n_random'"
 
+        elif mutation_strategy == "dynamic":
+            assert (
+                minimum_probability is not None
+            ), "Must specify the minimum probability if the mutation strategy is 'dynamic'"
+
         self.random_state = get_random_state(_random_state)
         self.mutation_functions: List[MutationFunction] = []
         self.mutation_strategy = get_mutation_strategy(
-            mutation_strategy, self.mutation_functions, num_mutation_functions
+            mutation_strategy,
+            self.mutation_functions,
+            num_mutation_functions=num_mutation_functions,
+            minimum_probability=minimum_probability,
         )
         self.global_probability: Optional[float] = None
 
@@ -856,6 +1145,28 @@ class Mutator:
                 )
             )
 
+    def should_mutate_original_population(self) -> bool:
+        """Whether the original population should be mutated or the population after crossover.
+
+        Returns:
+            bool: Whether the original population should be mutated or the population after crossover.
+        """
+        return self.mutation_strategy.should_mutate_original_population()
+
+    def analyze_mutation_effects(
+        self, population: List[Individual], print_update: bool = False
+    ) -> None:
+        """Analyzes the effects which the mutation functions had on the population.
+
+        Args:
+            population (List[Individual]): The population to analyze.
+        """
+        self.mutation_strategy.analyze_mutation_effects(population, print_update=print_update)
+
+    def print_mutation_probability_history(self) -> None:
+        """Prints the history of the mutation probabilities."""
+        self.mutation_strategy.print_mutation_probability_history()
+
     def set_global_probability(self, probability: float) -> None:
         """Sets the probability of all mutation functions.
 
@@ -866,18 +1177,21 @@ class Mutator:
         for mutation_function in self.mutation_functions:
             mutation_function.probability = probability
 
-    def __call__(self, individual: Individual, *args: Any, **kwargs: Any) -> Individual:
+    def __call__(
+        self, individual: Individual, random_seed: Optional[int] = None, *args: Any, **kwargs: Any
+    ) -> Individual:
         """Mutates an individual.
 
         Args:
             individual (Individual): The individual to mutate.
+            random_seed (Optional[int], optional): The random seed to use. Defaults to None.
             *args: Arguments to pass to the mutation functions.
             **kwargs: Keyword arguments to pass to the mutation functions.
 
         Returns:
             Individual: The mutated individual.
         """
-        return self.mutation_strategy(individual, *args, **kwargs)
+        return self.mutation_strategy(individual, random_seed=random_seed, *args, **kwargs)
 
 
 if __name__ == "__main__":
