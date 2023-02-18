@@ -10,7 +10,7 @@ from load_results import compute_differences, flip_q_values, load_data
 
 from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import get_engine_generator
-from rl_testing.util.util import cp2q, q2cp
+from rl_testing.util.chess import cp2q, q2cp
 
 STOCKFISH_PATH = "/home/lukas/Software/stockfish/stockfish_15_linux_x64_avx2/stockfish_15_x64_avx2"
 

@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from rl_testing.util.chess import fen_to_file_name
 from rl_testing.util.engine import MoveStat, NodeStat
-from rl_testing.util.util import fen_to_file_name
 
 IMAGE_DIRECTORY = Path(__file__).parent / Path("images")
 RESULT_DIRECTORY = Path(__file__).parent.parent / Path("results")

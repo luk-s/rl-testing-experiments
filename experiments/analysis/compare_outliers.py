@@ -4,8 +4,7 @@ import numpy as np
 from chess import Board
 from load_results import compute_differences, load_data
 
-from rl_testing.util.chess import plot_board
-from rl_testing.util.util import fen_to_file_name
+from rl_testing.util.chess import fen_to_file_name, plot_board
 
 if __name__ == "__main__":
     result_folder = Path(__file__).parent.parent / Path(

@@ -17,8 +17,9 @@ from rl_testing.mcts.mcts_chess import (
     ChessMCTSBot,
     ChessSearchNode,
 )
+from rl_testing.util.chess import cp2q
 from rl_testing.util.experiment import store_experiment_params
-from rl_testing.util.util import cp2q, get_task_result_handler
+from rl_testing.util.util import get_task_result_handler
 
 RESULT_DIR = Path(__file__).parent / Path("results/tree_ensemble_testing")
 

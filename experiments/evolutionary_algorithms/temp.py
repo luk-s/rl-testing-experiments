@@ -6,7 +6,7 @@ import numpy as np
 from chess.engine import Cp, Mate, Score
 from deap import base, creator, tools
 
-from rl_testing.util.util import cp2q
+from rl_testing.util.chess import cp2q
 
 
 class Noise2DPiecewise:

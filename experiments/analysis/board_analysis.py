@@ -9,7 +9,7 @@ from chess.engine import Score
 from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.mcts.tree_parser import TreeInfo, convert_tree_to_networkx
-from rl_testing.util.util import cp2q
+from rl_testing.util.chess import cp2q
 
 
 async def analyze_with_engine(

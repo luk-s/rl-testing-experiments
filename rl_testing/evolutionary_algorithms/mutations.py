@@ -652,10 +652,12 @@ class MutationFunction:
 
                 # Add the applied mutation to the boards history
                 board_candidate.history.append(MUTATION_NAME_MAP[self.function])
-                logging.info(f"Applied mutation '{self.function.__name__}'")
+
+                logging.debug(f"Applied mutation '{self.function.__name__}'")
+
                 return board_candidate
 
-        logging.info(
+        logging.debug(
             f"Board {board.fen()} is invalid after mutation '{self.function.__name__}', returning original board"
         )
         return board

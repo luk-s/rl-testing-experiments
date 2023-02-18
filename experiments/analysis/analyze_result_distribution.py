@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from load_results import load_data
 
-from rl_testing.util.util import cp2q
+from rl_testing.util.chess import cp2q
 
 RESULT_DIRECTORY = Path(__file__).parent.parent / Path("results")
 IMAGE_DIRECTORY = Path(__file__).parent / Path("images")

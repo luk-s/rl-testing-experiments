@@ -11,8 +11,9 @@ import numpy as np
 from rl_testing.engine_generators import EngineGenerator
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.cache import LRUCache
+from rl_testing.util.chess import cp2q
 from rl_testing.util.engine import RelaxedUciProtocol, engine_analyse
-from rl_testing.util.util import cp2q, get_task_result_handler
+from rl_testing.util.util import get_task_result_handler
 
 FEN = str
 

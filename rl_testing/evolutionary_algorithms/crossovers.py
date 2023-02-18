@@ -409,6 +409,8 @@ class CrossoverFunction:
                     board_candidate1.history.append(CROSSOVER_NAME_MAP[self.function])
                     board_candidate2.history.append(CROSSOVER_NAME_MAP[self.function])
 
+                    logging.debug(f"Applied crossover '{self.function.__name__}'")
+
                     return board_candidate1, board_candidate2
 
         logging.debug(

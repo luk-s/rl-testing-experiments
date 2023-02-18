@@ -13,9 +13,10 @@ from rl_testing.config_parsers import get_data_generator_config, get_engine_conf
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol
+from rl_testing.util.chess import cp2q
 from rl_testing.util.engine import MoveStat, NodeStat, engine_analyse
 from rl_testing.util.experiment import store_experiment_params
-from rl_testing.util.util import cp2q, get_task_result_handler
+from rl_testing.util.util import get_task_result_handler
 
 RESULT_DIR = Path(__file__).parent / Path("results/differential_testing")
 

@@ -4,13 +4,29 @@ from pathlib import Path
 from typing import Union
 
 import chess
+import chess.engine
 import chess.svg
 import imgkit
 import matplotlib
 import matplotlib.image as mimage
 import matplotlib.pyplot as plt
+import numpy as np
 
 AGGRESSIVE_VALIDATION = True
+
+
+def q2cp(q_value: float) -> float:
+    return chess.engine.Cp(round(111.714640912 * np.tan(1.5620688421 * q_value)))
+
+
+def cp2q(cp_value: float) -> float:
+    return np.arctan(cp_value / 111.714640912) / 1.5620688421
+
+
+def fen_to_file_name(fen: str, suffix: str = ""):
+    fen = fen.replace("/", "|")
+    fen = fen.replace(" ", "_")
+    return fen + suffix
 
 
 def remove_pawns(board: chess.Board) -> Union[chess.Board, str]:
