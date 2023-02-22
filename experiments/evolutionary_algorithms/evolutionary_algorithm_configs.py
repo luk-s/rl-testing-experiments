@@ -3,6 +3,7 @@ import configparser
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import yaml
+
 from rl_testing.config_parsers.evolutionary_algorithm_config_parser import (
     EvolutionaryAlgorithmConfig,
 )

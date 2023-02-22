@@ -11,11 +11,11 @@ General:
   crossover_probability : 1
 
 Mutator:
-  mutation_strategy : all
+  mutation_strategy : dynamic
   minimum_probability : 0.01
 
 Crossover:
-  crossover_strategy : all
+  crossover_strategy : dynamic
   minimum_probability : 0.01
 
 Selector:

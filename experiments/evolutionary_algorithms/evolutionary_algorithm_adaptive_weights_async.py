@@ -1,58 +1,26 @@
 import argparse
 import asyncio
 import logging
-import multiprocessing
 import time
-from itertools import chain
-from multiprocessing.pool import Pool
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List
 
-import chess.engine
+import chess
 import numpy as np
-import wandb.sdk
-import yaml
 
-import wandb
 from experiments.evolutionary_algorithms.evolutionary_algorithm_configs import (
     SimpleEvolutionaryAlgorithmConfig,
 )
+from experiments.evolutionary_algorithms.evolutionary_algorithm_simple_async import (
+    SimpleEvolutionaryAlgorithm,
+)
 from rl_testing.config_parsers import get_engine_config
-from rl_testing.config_parsers.engine_config_parser import EngineConfig
-from rl_testing.engine_generators import EngineGenerator, get_engine_generator
-from rl_testing.evolutionary_algorithms import (
-    get_initialized_crossover,
-    get_initialized_mutator,
-    get_initialized_selector,
-)
-from rl_testing.evolutionary_algorithms.algorithms import AsyncEvolutionaryAlgorithm
-from rl_testing.evolutionary_algorithms.crossovers import Crossover
-from rl_testing.evolutionary_algorithms.fitnesses import (
-    BoardSimilarityFitness,
-    DifferentialTestingFitness,
-    EditDistanceFitness,
-    Fitness,
-    HashFitness,
-    PieceNumberFitness,
-)
-from rl_testing.evolutionary_algorithms.individuals import BoardIndividual
-from rl_testing.evolutionary_algorithms.mutations import Mutator
-from rl_testing.evolutionary_algorithms.populations import Population, SimplePopulation
-from rl_testing.evolutionary_algorithms.selections import (
-    Selector,
-    select_tournament_fast,
-)
+from rl_testing.engine_generators import get_engine_generator
+from rl_testing.evolutionary_algorithms.populations import AdaptiveWeightPopulation
 from rl_testing.evolutionary_algorithms.statistics import SimpleStatistics
-from rl_testing.util.chess import is_really_valid
-from rl_testing.util.evolutionary_algorithm import (
-    get_random_individuals,
-    should_decrease_probability,
-)
-from rl_testing.util.experiment import (
-    get_experiment_params_dict,
-    store_experiment_params,
-)
-from rl_testing.util.util import get_random_state, log_time
+from rl_testing.util.evolutionary_algorithm import should_decrease_probability
+from rl_testing.util.experiment import get_experiment_params_dict
+from rl_testing.util.util import log_time
 
 RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm")
 CONFIG_FOLDER = Path(__file__).parent.parent
@@ -64,54 +32,15 @@ EVOLUTIONARY_ALGORITHM_CONFIG_FOLDER = CONFIG_FOLDER / Path(
     "configs/evolutionary_algorithm_configs"
 )
 DEBUG = True
-Time = float
 
 
-class SimpleEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
-    def __init__(
-        self,
-        evolutionary_algorithm_config: SimpleEvolutionaryAlgorithmConfig,
-        experiment_config: Dict[str, Any],
-        logger: logging.Logger,
-    ):
-        # Experiment configs
-        self.experiment_config = experiment_config
-        self.evolutionary_algorithm_config = evolutionary_algorithm_config
-        self.logger = logger
-
-        # Evolutionary algorithm configs
-        self.num_generations = evolutionary_algorithm_config.num_generations
-        self.crossover_probability = evolutionary_algorithm_config.crossover_probability
-        self.mutation_probability = evolutionary_algorithm_config.mutation_probability
-        self.early_stopping = evolutionary_algorithm_config.early_stopping
-        self.early_stopping_value = evolutionary_algorithm_config.early_stopping_value
-        self.probability_decay = evolutionary_algorithm_config.probability_decay
-
+class AdaptiveWeightsEvolutionaryAlgorithm(SimpleEvolutionaryAlgorithm):
     async def initialize(self, seed: int) -> None:
-        # Create the random state
-        self.random_state = get_random_state(seed)
+        await super().initialize(seed)
 
-        # Create a multiprocessing pool
-        self.pool = multiprocessing.Pool(processes=self.evolutionary_algorithm_config.num_workers)
-
-        # Create the fitness function
-        self.fitness = DifferentialTestingFitness(
-            **self.experiment_config["fitness_config"],
-            logger=self.logger,
-        )
-
-        # Create the evolutionary operators
-        self.mutate: Mutator = get_initialized_mutator(self.evolutionary_algorithm_config)
-        self.crossover: Crossover = get_initialized_crossover(self.evolutionary_algorithm_config)
-        self.select: Selector = get_initialized_selector(self.evolutionary_algorithm_config)
-
-        # Create the population
-        individuals = get_random_individuals(
-            "data/random_positions.txt",
-            self.evolutionary_algorithm_config.population_size,
-            self.random_state,
-        )
-        self.population = SimplePopulation(
+        # Overwrite the population with an adaptive weight population
+        individuals = self.population.individuals
+        self.population = AdaptiveWeightPopulation(
             individuals=individuals,
             fitness=self.fitness,
             mutator=self.mutate,
@@ -120,8 +49,6 @@ class SimpleEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
             pool=self.pool,
             _random_state=self.random_state,
         )
-
-        await self.fitness.create_tasks()
 
     async def run(self) -> SimpleStatistics:
         start_time = time.time()
@@ -142,17 +69,23 @@ class SimpleEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
             # Apply crossover on the offspring
             log_time(start_time, "before mating")
             self.population.crossover_individuals(self.crossover_probability)
-            log_time(start_time, "after mating")
 
             # Apply mutation on the offspring
             log_time(start_time, "before mutating")
             self.population.mutate_individuals(self.mutation_probability)
-            log_time(start_time, "after mutating")
 
             # Evaluate the individuals with an invalid fitness
             log_time(start_time, "before evaluating")
             await self.population.evaluate_individuals_async()
-            log_time(start_time, "after evaluating")
+
+            # Update the mutation- and crossover probability distributions
+            log_time(start_time, "before updating the operator probability distributions")
+            self.mutate.analyze_mutation_effects(
+                self.population.flat_population, print_update=True
+            )
+            self.crossover.analyze_crossover_effects(
+                self.population.flat_population, print_update=True
+            )
 
             log_time(start_time, "before updating the statistics")
             statistics.update_time_series(self.population, log_statistics=True)
@@ -165,14 +98,6 @@ class SimpleEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
                 statistics.fill_time_series(generation, self.num_generations, self.population)
                 logging.info("Early stopping!")
                 break
-
-            # Check if the probabilities of mutation and crossover are too high
-            if self.probability_decay and should_decrease_probability(
-                statistics.best_fitness_values[-1], difference_threshold=0.5
-            ):
-                logging.info("Decreasing mutation and crossover probabilities")
-                self.mutate.multiply_probabilities(factor=0.5, log=True)
-                self.crossover.multiply_probabilities(factor=0.5, log=True)
 
         end_time = time.time()
         logging.info(f"Number of evaluations: {self.fitness.num_evaluations}")
@@ -194,18 +119,6 @@ class SimpleEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
 
         return statistics
 
-    async def cleanup(self) -> None:
-        # Cancel all running subprocesses which the fitness evaluator spawned
-        self.fitness.cancel_tasks()
-
-        self.pool.close()
-
-        del self.fitness
-        del self.mutate
-        del self.crossover
-        del self.select
-        del self.population
-
 
 async def main(experiment_config_dict: Dict[str, Any], logger: logging.Logger) -> None:
     """Run the experiment."""
@@ -221,7 +134,7 @@ async def main(experiment_config_dict: Dict[str, Any], logger: logging.Logger) -
     )
 
     # Create the evolutionary algorithm
-    evolutionary_algorithm = SimpleEvolutionaryAlgorithm(
+    evolutionary_algorithm = AdaptiveWeightsEvolutionaryAlgorithm(
         evolutionary_algorithm_config=evolutionary_algorithm_config,
         experiment_config=experiment_config_dict,
         logger=logger,
