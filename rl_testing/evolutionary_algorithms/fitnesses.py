@@ -1,29 +1,35 @@
 import abc
+import argparse
 import asyncio
 import logging
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import chess
 import chess.engine
 import numpy as np
 
-from rl_testing.engine_generators import EngineGenerator
+from rl_testing.config_parsers import get_engine_config
+from rl_testing.engine_generators import EngineGenerator, get_engine_generator
+from rl_testing.engine_generators.generators import EngineGenerator
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.cache import LRUCache
 from rl_testing.util.chess import cp2q
 from rl_testing.util.engine import RelaxedUciProtocol, engine_analyse
+from rl_testing.util.experiment import get_experiment_params_dict
 from rl_testing.util.util import get_task_result_handler
 
 FEN = str
 
 
 class Fitness(metaclass=abc.ABCMeta):
+    @classmethod
     def __subclasshook__(cls, subclass):
         return (
             (hasattr(subclass, "use_async") and callable(subclass.use_async))
             and (hasattr(subclass, "best_individual") and callable(subclass.best_individual))
-            and (hasattr(subclass, "worst_individual") and callable(subclass.best_individual))
+            and (hasattr(subclass, "worst_individual") and callable(subclass.worst_individual))
             and (hasattr(subclass, "is_bigger_better"))
             and (
                 (hasattr(subclass, "evaluate") and callable(subclass.evaluate))
@@ -43,11 +49,11 @@ class Fitness(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def best_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+    def best_individual(self, individuals: List[Individual]) -> Individual:
         raise NotImplementedError
 
     @abc.abstractmethod
-    def worst_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+    def worst_individual(self, individuals: List[Individual]) -> Individual:
         raise NotImplementedError
 
     def evaluate(self, individual: Individual) -> float:
@@ -56,9 +62,7 @@ class Fitness(metaclass=abc.ABCMeta):
     async def evaluate_async(self, individuals: List[Individual]) -> List[float]:
         raise NotImplementedError
 
-    def _find_individual(
-        self, individuals: List[Individual], direction: Callable
-    ) -> Tuple[Individual, float]:
+    def _find_individual(self, individuals: List[Individual], direction: Callable) -> Individual:
         # Make sure that all individuals have a fitness value and compute it if not.
         for individual in individuals:
             if individual.fitness is None:
@@ -68,7 +72,7 @@ class Fitness(metaclass=abc.ABCMeta):
                 # individual.fitness = self.evaluate(individual)
 
         fitness_vals = np.array([individual.fitness for individual in individuals])
-        return individuals[direction(fitness_vals)], individuals[direction(fitness_vals)].fitness
+        return individuals[direction(fitness_vals)]
 
 
 class PieceNumberFitness(Fitness):
@@ -88,12 +92,10 @@ class PieceNumberFitness(Fitness):
         num_pieces = float(len(board.piece_map()))
         return num_pieces if self._more_pieces_better else -num_pieces
 
-    def best_individual(self, individuals: List[BoardIndividual]) -> Tuple[BoardIndividual, float]:
+    def best_individual(self, individuals: List[BoardIndividual]) -> BoardIndividual:
         return self._find_individual(individuals, np.argmax)
 
-    def worst_individual(
-        self, individuals: List[BoardIndividual]
-    ) -> Tuple[BoardIndividual, float]:
+    def worst_individual(self, individuals: List[BoardIndividual]) -> BoardIndividual:
         return self._find_individual(individuals, np.argmin)
 
 
@@ -120,12 +122,10 @@ class EditDistanceFitness(Fitness):
             self.distance_cache: dict[Tuple[str, str], int] = {}
         return self.levenshtein_distance(self._target, self.prepare_fen(individual.fen()))
 
-    def best_individual(self, individuals: List[BoardIndividual]) -> Tuple[BoardIndividual, float]:
+    def best_individual(self, individuals: List[BoardIndividual]) -> BoardIndividual:
         return self._find_individual(individuals, np.argmin)
 
-    def worst_individual(
-        self, individuals: List[BoardIndividual]
-    ) -> Tuple[BoardIndividual, float]:
+    def worst_individual(self, individuals: List[BoardIndividual]) -> BoardIndividual:
         return self._find_individual(individuals, np.argmax)
 
     def levenshtein_distance(self, string1: str, string2):
@@ -161,10 +161,10 @@ class BoardSimilarityFitness(Fitness):
     def is_bigger_better(self) -> bool:
         return False
 
-    def best_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+    def best_individual(self, individuals: List[Individual]) -> Individual:
         return self._find_individual(individuals, np.argmin)
 
-    def worst_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+    def worst_individual(self, individuals: List[Individual]) -> Individual:
         return self._find_individual(individuals, np.argmax)
 
     @lru_cache(maxsize=200_000)
@@ -195,10 +195,10 @@ class HashFitness(Fitness):
     def is_bigger_better(self) -> bool:
         return True
 
-    def best_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+    def best_individual(self, individuals: List[Individual]) -> Individual:
         return self._find_individual(individuals, np.argmax)
 
-    def worst_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+    def worst_individual(self, individuals: List[Individual]) -> Individual:
         return self._find_individual(individuals, np.argmin)
 
     @lru_cache(maxsize=200_000)
@@ -208,6 +208,99 @@ class HashFitness(Fitness):
 
 
 class DifferentialTestingFitness(Fitness):
+    @staticmethod
+    async def setup_engine(
+        engine_generator: EngineGenerator, network_name: Optional[str]
+    ) -> RelaxedUciProtocol:
+
+        if network_name is not None:
+            engine_generator.set_network(network_name)
+
+        return await engine_generator.get_initialized_engine()
+
+    @staticmethod
+    async def analyze_positions(
+        input_queue: asyncio.Queue,
+        output_queue: asyncio.Queue,
+        engine_generator: EngineGenerator,
+        search_limits: Dict[str, Any],
+        sleep_after_get: float = 0.0,
+        network_name: Optional[str] = None,
+        identifier_str: str = "",
+    ) -> None:
+        """Runs an infinite loop that fetches boards from the input queue, analyzes them using an engine running either locally
+        or remotely, and puts the results in the output queue.
+
+        Args:
+            input_queue (asyncio.Queue[chess.Board]): The queue from which to fetch boards.
+            output_queue (asyncio.Queue[Union[Tuple[FEN, chess.Move, float], Tuple[FEN, str, str]]]): The queue to which to put the results.
+            engine_generator (EngineGenerator): The generator to create the engines.
+            search_limits (Dict[str, Any]): The search limits which the engine uses for the analysis.
+            sleep_after_get (float, optional): How long to sleep after fetching a board from the input queue. Defaults to 0.0.
+            network_name (Optional[str], optional): The name of the network to use. Defaults to None.
+            identifier_str (str, optional): A string to identify this particular engine. Defaults to "".
+        """
+        invalid_placeholder = ["invalid", "invalid"]
+        nan_placeholder = ["nan", "nan"]
+
+        # Setup the engine
+        engine = await DifferentialTestingFitness.setup_engine(engine_generator, network_name)
+
+        # Required to ensure that the engine doesn't use cached results from
+        # previous analyses
+        analysis_counter = 0
+
+        while True:
+            # Fetch the next board from the queue
+            board_index, board = await input_queue.get()
+            fen = board.fen()
+            await asyncio.sleep(delay=sleep_after_get)
+
+            if (board_index + 1) % 10 == 0:
+                logging.info(f"[{identifier_str}] Analyzing board {board_index + 1}: {fen}")
+
+            # Needs to be in a try-except because the engine might crash unexpectedly
+            try:
+                analysis_counter += 1
+                info = await engine_analyse(
+                    engine,
+                    chess.Board(fen),
+                    chess.engine.Limit(**search_limits),
+                    game=analysis_counter,
+                    intermediate_info=False,
+                )
+
+            except chess.engine.EngineTerminatedError:
+                # Mark the current board as failed
+                await output_queue.put((fen, *invalid_placeholder))
+
+                # Try to kill the failed engine
+                logging.info(f"[{identifier_str}] Trying to kill engine")
+                engine_generator.kill_engine(engine=engine)
+
+                # Try to restart the engine
+                logging.info(f"[{identifier_str}] Trying to restart engine")
+
+                engine = await DifferentialTestingFitness.setup_engine(
+                    engine_generator, network_name
+                )
+
+            else:
+                score_cp = info["score"].relative.score(mate_score=12800)
+
+                # Check if the computed score is valid
+                if engine_generator is not None and not engine_generator.cp_score_valid(score_cp):
+                    await output_queue.put((fen, *nan_placeholder))
+
+                # Check if the proposed best move is valid
+                elif engine.invalid_best_move:
+                    await output_queue.put((fen, *invalid_placeholder))
+                else:
+                    best_move = info["pv"][0]
+                    await output_queue.put((fen, best_move, cp2q(score_cp)))
+            finally:
+                input_queue.task_done()
+
     def __init__(
         self,
         engine_generator1: EngineGenerator,
@@ -311,104 +404,11 @@ class DifferentialTestingFitness(Fitness):
     def is_bigger_better(self) -> bool:
         return True
 
-    def best_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+    def best_individual(self, individuals: List[Individual]) -> Individual:
         return self._find_individual(individuals, np.argmax)
 
-    def worst_individual(self, individuals: List[Individual]) -> Tuple[Individual, float]:
+    def worst_individual(self, individuals: List[Individual]) -> Individual:
         return self._find_individual(individuals, np.argmin)
-
-    @staticmethod
-    async def setup_engine(
-        engine_generator: EngineGenerator, network_name: Optional[str]
-    ) -> RelaxedUciProtocol:
-
-        if network_name is not None:
-            engine_generator.set_network(network_name)
-
-        return await engine_generator.get_initialized_engine()
-
-    @staticmethod
-    async def analyze_positions(
-        input_queue: asyncio.Queue,
-        output_queue: asyncio.Queue,
-        engine_generator: EngineGenerator,
-        search_limits: Dict[str, Any],
-        sleep_after_get: float = 0.0,
-        network_name: Optional[str] = None,
-        identifier_str: str = "",
-    ) -> None:
-        """Runs an infinite loop that fetches boards from the input queue, analyzes them using an engine running either locally
-        or remotely, and puts the results in the output queue.
-
-        Args:
-            input_queue (asyncio.Queue[chess.Board]): The queue from which to fetch boards.
-            output_queue (asyncio.Queue[Union[Tuple[FEN, chess.Move, float], Tuple[FEN, str, str]]]): The queue to which to put the results.
-            engine_generator (EngineGenerator): The generator to create the engines.
-            search_limits (Dict[str, Any]): The search limits which the engine uses for the analysis.
-            sleep_after_get (float, optional): How long to sleep after fetching a board from the input queue. Defaults to 0.0.
-            network_name (Optional[str], optional): The name of the network to use. Defaults to None.
-            identifier_str (str, optional): A string to identify this particular engine. Defaults to "".
-        """
-        invalid_placeholder = ["invalid", "invalid"]
-        nan_placeholder = ["nan", "nan"]
-
-        # Setup the engine
-        engine = await DifferentialTestingFitness.setup_engine(engine_generator, network_name)
-
-        # Required to ensure that the engine doesn't use cached results from
-        # previous analyses
-        analysis_counter = 0
-
-        while True:
-            # Fetch the next board from the queue
-            board_index, board = await input_queue.get()
-            fen = board.fen()
-            await asyncio.sleep(delay=sleep_after_get)
-
-            if (board_index + 1) % 10 == 0:
-                logging.info(f"[{identifier_str}] Analyzing board {board_index + 1}: {fen}")
-
-            # Needs to be in a try-except because the engine might crash unexpectedly
-            try:
-                analysis_counter += 1
-                info = await engine_analyse(
-                    engine,
-                    chess.Board(fen),
-                    chess.engine.Limit(**search_limits),
-                    game=analysis_counter,
-                    intermediate_info=False,
-                )
-
-            except chess.engine.EngineTerminatedError:
-                # Mark the current board as failed
-                await output_queue.put((fen, *invalid_placeholder))
-
-                # Try to kill the failed engine
-                logging.info(f"[{identifier_str}] Trying to kill engine")
-                engine_generator.kill_engine(engine=engine)
-
-                # Try to restart the engine
-                logging.info(f"[{identifier_str}] Trying to restart engine")
-
-                engine = await DifferentialTestingFitness.setup_engine(
-                    engine_generator, network_name
-                )
-
-            else:
-                score_cp = info["score"].relative.score(mate_score=12800)
-
-                # Check if the computed score is valid
-                if engine_generator is not None and not engine_generator.cp_score_valid(score_cp):
-                    await output_queue.put((fen, *nan_placeholder))
-
-                # Check if the proposed best move is valid
-                elif engine.invalid_best_move:
-                    await output_queue.put((fen, *invalid_placeholder))
-                else:
-                    best_move = info["pv"][0]
-                    await output_queue.put((fen, best_move, cp2q(score_cp)))
-            finally:
-                input_queue.task_done()
 
     async def evaluate_async(self, individuals: List[BoardIndividual]) -> List[float]:
         """Evaluates the given individuals asynchronously.

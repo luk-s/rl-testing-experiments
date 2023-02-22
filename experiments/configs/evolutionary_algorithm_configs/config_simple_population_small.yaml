@@ -1,0 +1,24 @@
+General:
+  config_type: 
+  num_runs_per_config: 2
+  num_workers: 8
+  num_generations: 6
+  population_size: 50
+  probability_decay: False
+  early_stopping: True
+  early_stopping_value: 1.9
+  mutation_probability : 1
+  crossover_probability : 1
+
+Mutator:
+  mutation_strategy : all
+  minimum_probability : 0.01
+
+Crossover:
+  crossover_strategy : all
+  minimum_probability : 0.01
+
+Selector:
+  selection_strategy: all
+
+Operators: !include operator_configs/importance_weights.yaml

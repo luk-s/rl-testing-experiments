@@ -93,19 +93,21 @@ class EngineGenerator:
 
 
 class RemoteEngineGenerator(EngineGenerator):
+    GLOBAL_CONNECTION = None
+    GLOBAL_SSH_LOCK = None
+
     def __init__(self, config: RemoteEngineConfig) -> None:
         super().__init__(config)
         self.remote_host = config.remote_host
         self.remote_user = config.remote_user
         self.password_required = config.password_required
-        self.connection = None
-        self.ssh_lock = None
 
     async def _create_engine(self) -> Tuple[asyncio.SubprocessTransport, RelaxedUciProtocol]:
-        if self.ssh_lock is None:
-            self.ssh_lock = asyncio.Lock()
-        async with self.ssh_lock:
-            if self.connection is None:
+        if RemoteEngineGenerator.GLOBAL_SSH_LOCK is None:
+            RemoteEngineGenerator.GLOBAL_SSH_LOCK = asyncio.Lock()
+
+        async with RemoteEngineGenerator.GLOBAL_SSH_LOCK:
+            if RemoteEngineGenerator.GLOBAL_CONNECTION is None:
                 # Read in the password from the user
                 if self.password_required:
                     remote_password = getpass(
@@ -113,19 +115,19 @@ class RemoteEngineGenerator(EngineGenerator):
                         f"the user {self.remote_user}:\n"
                     )
                 # Start connection
-                self.connection = await asyncssh.connect(
+                RemoteEngineGenerator.GLOBAL_CONNECTION = await asyncssh.connect(
                     self.remote_host, username=self.remote_user, password=remote_password
                 )
 
                 # Delete the password as quickly as possible
-                remote_password = None
+                del remote_password
 
-            return await self.connection.create_subprocess(
+            return await RemoteEngineGenerator.GLOBAL_CONNECTION.create_subprocess(
                 RelaxedUciProtocol,
                 self.engine_path,
             )
 
     async def close(self):
-        await self.connection.close()
-        self.connection = None
+        await RemoteEngineGenerator.GLOBAL_CONNECTION.close()
+        RemoteEngineGenerator.GLOBAL_CONNECTION = None
         self.remote_password = None

@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 class Individual(metaclass=abc.ABCMeta):
+    @classmethod
     def __subclasshook__(cls, subclass):
         return (
             hasattr(subclass, "fitness")
@@ -21,7 +22,7 @@ class Individual(metaclass=abc.ABCMeta):
 
     @property
     @abc.abstractmethod
-    def fitness(self) -> bool:
+    def fitness(self) -> Optional[float]:
         raise NotImplementedError
 
     @property
@@ -51,7 +52,7 @@ class BoardIndividual(chess.Board, Individual):
         self._custom_data: Dict[str, Any] = {}
         super().__init__(*args, **kwargs)
 
-    def get_fitness(self) -> bool:
+    def get_fitness(self) -> Optional[float]:
         return self._fitness
 
     def set_fitness(self, value: float) -> None:

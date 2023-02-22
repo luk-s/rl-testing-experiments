@@ -1,6 +1,12 @@
+from types import ModuleType
 from typing import Any, Callable, List, Optional, Tuple
 
-from rl_testing.evolutionary_algorithms.individuals import Individual
+import numpy as np
+import yaml
+
+from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
+from rl_testing.util.chess import is_really_valid
+from rl_testing.util.util import get_random_state
 
 
 def clear_fitness_values_wrapper(
@@ -82,3 +88,45 @@ def should_decrease_probability(best_fitness: float, difference_threshold: float
         bool: True if the probability should be decreased, False otherwise.
     """
     return __should_decrease_probability(best_fitness, difference_threshold)
+
+
+def get_random_individuals(
+    file_path: str, amount: int, _random_state: Optional[np.random.Generator]
+) -> List[BoardIndividual]:
+    """Get a number of random individuals.
+
+    Args:
+        file_path (str): The path to a file containing fen-strings.
+        amount (int): The number of boards to get. It must hold that 0 < amount <= 100_000.
+        _random_state (Optional[np.random.Generator]): The random state to use. Defaults to None.
+
+    Returns:
+        List[BoardIndividual]: The random boards.
+    """
+    assert 0 < amount <= 100_000, f"Amount must be between 0 and 100_000, got {amount}."
+
+    random_state = get_random_state(_random_state)
+
+    # Read the fen-strings from the provided file.
+    with open(file_path, "r") as f:
+        lines = f.readlines()
+
+    individuals = []
+    chosen_fens = []
+    while len(individuals) < amount:
+        # Randomly choose 'amount' fen strings from the file
+        fens = random_state.choice(lines, size=amount - len(individuals), replace=False)
+
+        # Convert the fen strings to boards
+        candidates = [BoardIndividual(fen) for fen in fens]
+
+        # Filter out invalid boards
+        candidates = [
+            candidate
+            for candidate in candidates
+            if is_really_valid(candidate) and candidate.fen() not in chosen_fens
+        ]
+        individuals.extend(candidates)
+        chosen_fens.extend([candidate.fen() for candidate in candidates])
+
+    return individuals

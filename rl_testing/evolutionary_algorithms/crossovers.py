@@ -5,6 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import chess
 import numpy as np
+
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.chess import is_really_valid
 from rl_testing.util.util import get_random_state
@@ -421,6 +422,7 @@ class CrossoverFunction:
 
 
 class CrossoverStrategy(metaclass=abc.ABCMeta):
+    @classmethod
     def __subclasshook__(cls, subclass):
         return (
             hasattr(subclass, "__call__")
@@ -467,7 +469,12 @@ class CrossoverStrategy(metaclass=abc.ABCMeta):
 
 class AllCrossoverFunctionsStrategy(CrossoverStrategy):
     def __call__(
-        self, individual1: BoardIndividual, individual2: BoardIndividual, *args: Any, **kwargs: Any
+        self,
+        individual1: BoardIndividual,
+        individual2: BoardIndividual,
+        random_seed: Optional[int] = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> Tuple[BoardIndividual, BoardIndividual]:
         """Apply all crossover functions to the two individuals.
 
@@ -480,6 +487,8 @@ class AllCrossoverFunctionsStrategy(CrossoverStrategy):
         Returns:
             Tuple[BoardIndividual, BoardIndividual]: The mated individuals.
         """
+        if random_seed:
+            self.random_state = np.random.default_rng(random_seed)
         for crossover_function in self.crossover_functions:
             if self.random_state.uniform() < crossover_function.probability:
                 individual1, individual2 = crossover_function(
@@ -815,19 +824,25 @@ class Crossover:
             _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
         """
         self.num_crossover_functions = num_crossover_functions
+        self.minimum_probability = minimum_probability
         if crossover_strategy == "n_random":
             assert (
                 self.num_crossover_functions is not None
             ), "Must specify the number of crossover functions to use if crossover strategy is 'n_random'."
+
+        elif crossover_strategy in ["all", "dynamic"]:
+            assert (
+                minimum_probability is not None
+            ), "Must specify the minimum probability if the crossover strategy is 'dynamic'"
 
         self.crossover_functions: List[CrossoverFunction] = []
         self.crossover_strategy = get_crossover_strategy(
             crossover_strategy,
             self.crossover_functions,
             num_crossover_functions=num_crossover_functions,
+            minimum_probability=minimum_probability,
         )
         self.random_state = get_random_state(_random_state)
-        self.global_probability: Optional[float] = None
 
     def register_crossover_function(
         self,
@@ -870,15 +885,15 @@ class Crossover:
                 )
             )
 
-    def set_global_probability(self, probability: float) -> None:
+    def multiply_probabilities(self, factor: float) -> None:
         """Sets the probability of all crossover functions.
 
         Args:
             probability (float): The probability to set.
         """
-        self.global_probability = probability
         for crossover_function in self.crossover_functions:
-            crossover_function.probability = probability
+            if crossover_function.probability * factor >= self.minimum_probability:
+                crossover_function.probability *= factor
 
     def __call__(
         self,

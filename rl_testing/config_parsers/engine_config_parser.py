@@ -91,5 +91,5 @@ class RemoteEngineConfig(EngineConfig):
 
 if __name__ == "__main__":
     r = RemoteEngineConfig.default_config()
-    s = RemoteEngineConfig.from_config_file("remote_400_nodes.ini")
+    s = RemoteEngineConfig.from_ini_file("remote_400_nodes.ini")
     print("finished")

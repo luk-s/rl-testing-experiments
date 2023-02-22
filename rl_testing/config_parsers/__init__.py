@@ -30,7 +30,7 @@ def get_engine_config(config_name: str, config_folder_path: str) -> EngineConfig
         raise ValueError(f"Engine type {engine_type} not supported!")
 
     engine_config_class.set_config_folder_path(config_folder_path)
-    return engine_config_class.from_config_file(config_name)
+    return engine_config_class.from_ini_file(config_name)
 
 
 def get_data_generator_config(config_name: str, config_folder_path: str) -> BoardGeneratorConfig:
@@ -59,4 +59,4 @@ def get_data_generator_config(config_name: str, config_folder_path: str) -> Boar
         raise ValueError(f"Engine type {data_generator_type} not supported!")
 
     data_generator_config_class.set_config_folder_path(config_folder_path)
-    return data_generator_config_class.from_config_file(config_name)
+    return data_generator_config_class.from_ini_file(config_name)

@@ -2,8 +2,9 @@ import logging
 import time
 from enum import Enum
 from operator import attrgetter
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import chess
 import numpy as np
 
 from rl_testing.evolutionary_algorithms.individuals import Individual
@@ -18,7 +19,7 @@ class SelectionName(Enum):
 def select_tournament_fast(
     individuals: List[Individual],
     rounds: int,
-    tournament_size: int,
+    tournament_fraction: float,
     is_bigger_better: bool = True,
     batch_size: int = 1000,
     _random_state: Optional[np.random.Generator] = None,
@@ -34,7 +35,7 @@ def select_tournament_fast(
     Args:
         individuals (List[Individual]): A list of individuals to select from.
         rounds (int): The number of times to select an individual.
-        tournament_size (int): The number of individuals to choose from.
+        tournament_fraction (float): The fraction of individuals to select from.
         is_bigger_better (bool, optional): Whether a higher fitness value is better. Defaults to True.
         batch_size (int, optional): The number of individuals to select at a time. Defaults to 1000.
         _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
@@ -43,6 +44,9 @@ def select_tournament_fast(
         List[Individual]: The selected individuals.
     """
     random_state = get_random_state(_random_state)
+
+    assert 0 < tournament_fraction <= 1, "The tournament fraction must be between 0 and 1."
+    tournament_size = np.round(tournament_fraction * len(individuals)).astype(int)
 
     # If the batch size is larger than 1000, warn the user
     if batch_size > 1000:
@@ -110,6 +114,53 @@ def select_tournament(
     return chosen
 
 
+class SelectionFunction:
+    def __init__(
+        self,
+        function: Callable[[chess.Board, Any], chess.Board],
+        probability: float = 1.0,
+        _random_state: Optional[np.random.Generator] = None,
+        *args,
+        **kwargs,
+    ):
+        """A class that contains a selection function and its arguments.
+
+        Args:
+            function (Callable[[chess.Board, Any], chess.Board]): The selection function.
+            probability (float, optional): The probability of applying the selection function. Defaults to 1.0.
+            _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+            *args: The arguments to pass to the selection function.
+            **kwargs: The keyword arguments to pass to the selection function.
+        """
+        self.function = function
+        self.probability = probability
+        self.args = args
+        self.kwargs = kwargs
+        self.random_state = get_random_state(_random_state)
+
+    def __id__(self) -> int:
+        return f"SelectionFunction({self.function.__name__})"
+
+    def __hash__(self) -> int:
+        return hash(self.__id__())
+
+    def __eq__(self, other: Any) -> bool:
+        return self.__id__() == other.__id__()
+
+    def __call__(
+        self, population: List[Individual], *args: Any, **kwargs: Any
+    ) -> List[Individual]:
+        """Call the selection function and return the selected individuals.
+
+        Args:
+            population (List[Individual]): The population to select from.
+
+        Returns:
+            List[Individual]: The selected individuals.
+        """
+        return self.function(population, *self.args, *args, **self.kwargs, **kwargs)
+
+
 class Selector:
     def __init__(
         self,
@@ -128,9 +179,7 @@ class Selector:
                 strategy is "n_random". Defaults to None.
             _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
         """
-        self.selection_function_tuples: List[
-            Tuple[Callable[[Individual, Any], List[Individual]], List[Any], Dict[str, Any]]
-        ] = []
+        self.selection_functions: List[SelectionFunction] = []
         self.selection_strategy = selection_strategy
         self.num_selection_functions = num_selection_functions
         self.random_state = get_random_state(_random_state)
@@ -148,7 +197,11 @@ class Selector:
 
     def register_selection_function(
         self,
-        selection_function: Callable[[Individual, Any], List[Individual]],
+        functions: Union[
+            Callable[[List[Individual], Any], List[Individual]],
+            List[Callable[[List[Individual], Any], List[Individual]]],
+        ],
+        probability: float = 1.0,
         *args: Any,
         **kwargs: Any,
     ) -> None:
@@ -157,7 +210,13 @@ class Selector:
         Args:
             selection_function (function): The selection function to register.
         """
-        self.selection_function_tuples.append((selection_function, args, kwargs))
+        if not isinstance(functions, list):
+            functions = [functions]
+
+        for function in functions:
+            self.selection_functions.append(
+                SelectionFunction(function, probability, self.random_state, *args, **kwargs)
+            )
 
     def __call__(
         self, individuals: List[Individual], *new_args: Any, **new_kwargs: Any
@@ -173,30 +232,26 @@ class Selector:
         Returns:
             List[Individual]: The selected individuals.
         """
-        mutation_tuples_to_apply: List[
-            Tuple[Callable[[Individual, Any], List[Individual]], List[Any], Dict[str, Any]]
-        ]
+        selection_functions_to_apply: List[SelectionFunction] = []
 
         if self.selection_strategy == "all":
-            mutation_tuples_to_apply = self.selection_function_tuples
+            selection_functions_to_apply = self.selection_functions
         elif self.selection_strategy == "one_random":
-            mutation_tuples_to_apply = [self.random_state.choice(self.selection_function_tuples)]
+            selection_functions_to_apply = [self.random_state.choice(self.selection_functions)]
         elif self.selection_strategy == "n_random":
-            mutation_tuples_to_apply = self.random_state.choice(
-                self.selection_function_tuples, self.num_selection_functions, replace=False
+            selection_functions_to_apply = self.random_state.choice(
+                self.selection_functions, self.num_selection_functions, replace=False
             )
         else:
             raise ValueError(f"Invalid selection strategy {self.selection_strategy}.")
 
         selected_individuals = []
-        for selection_function, args, kwargs in mutation_tuples_to_apply:
+        for selection_function in selection_functions_to_apply:
             selected_individuals.extend(
                 selection_function(
                     individuals,
                     _random_state=self.random_state,
-                    *args,
                     *new_args,
-                    **kwargs,
                     **new_kwargs,
                 )
             )
@@ -207,7 +262,7 @@ class Selector:
 if __name__ == "__main__":
     import time
 
-    from rl_testing.evolutionary_algorithms.fitness import EditDistanceFitness
+    from rl_testing.evolutionary_algorithms.fitnesses import EditDistanceFitness
     from rl_testing.evolutionary_algorithms.individuals import BoardIndividual
 
     logging.basicConfig(

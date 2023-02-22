@@ -5,7 +5,6 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import chess
 import numpy as np
-
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.chess import (
     is_really_valid,
@@ -664,6 +663,7 @@ class MutationFunction:
 
 
 class MutationStrategy(metaclass=abc.ABCMeta):
+    @classmethod
     def __subclasshook__(cls, subclass):
         return (
             hasattr(subclass, "__call__")
@@ -1083,16 +1083,17 @@ class Mutator:
             num_mutation_functions (Optional[int], optional): The number of mutation functions to apply if the
                 mutation strategy is "n_random". Defaults to None.
             minimum_probability (Optional[float], optional): The minimum probability of a mutation function if the
-                mutation strategy is "dynamic". Defaults to None.
+                mutation strategy is "all" or "dynamic". Defaults to None.
             _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
         """
         self.num_mutation_functions = num_mutation_functions
+        self.minimum_probability = minimum_probability
         if mutation_strategy == "n_random":
             assert (
                 self.num_mutation_functions is not None
             ), "Must specify the number of mutation functions to apply if the mutation strategy is 'n_random'"
 
-        elif mutation_strategy == "dynamic":
+        elif mutation_strategy in ["all", "dynamic"]:
             assert (
                 minimum_probability is not None
             ), "Must specify the minimum probability if the mutation strategy is 'dynamic'"
@@ -1105,7 +1106,6 @@ class Mutator:
             num_mutation_functions=num_mutation_functions,
             minimum_probability=minimum_probability,
         )
-        self.global_probability: Optional[float] = None
 
     def register_mutation_function(
         self,
@@ -1169,15 +1169,15 @@ class Mutator:
         """Prints the history of the mutation probabilities."""
         self.mutation_strategy.print_mutation_probability_history()
 
-    def set_global_probability(self, probability: float) -> None:
+    def multiply_probabilities(self, factor: float) -> None:
         """Sets the probability of all mutation functions.
 
         Args:
             probability (float): The probability to set.
         """
-        self.global_probability = probability
         for mutation_function in self.mutation_functions:
-            mutation_function.probability = probability
+            if mutation_function.probability * factor >= self.minimum_probability:
+                mutation_function.probability *= factor
 
     def __call__(
         self, individual: Individual, random_seed: Optional[int] = None, *args: Any, **kwargs: Any
