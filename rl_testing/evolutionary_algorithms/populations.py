@@ -339,7 +339,7 @@ class CellularPopulation(Population):
         # Create a 2D grid of individuals
         self.grid: List[List[Individual]] = [
             individuals[start : start + num_columns]
-            for start in range(0, len(individuals), num_rows)
+            for start in range(0, len(individuals), num_columns)
         ]
         self.mutation_grid: List[List[Individual]] = []
         self.crossover_grid: List[List[Individual]] = []

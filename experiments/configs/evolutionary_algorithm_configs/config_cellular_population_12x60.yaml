@@ -1,16 +1,16 @@
 General:
   config_type: 
-  num_runs_per_config: 2
+  num_runs_per_config: 6
   num_workers: 8
-  num_generations: 6
-  population_size: 50
+  num_generations: 50
+  population_size: 720
   probability_decay: False
   early_stopping: True
   early_stopping_value: 1.9
   mutation_probability : 1
   crossover_probability : 1
-  num_rows : 1
-  num_columns : 50
+  num_rows : 12
+  num_columns : 60
   crossover_mode : "two_neighbors"
   apply_operators_on_original_grid : True
 
@@ -25,4 +25,4 @@ Crossover:
 Selector:
   selection_strategy: all
 
-Operators: !include operator_configs/importance_weights_cellular.yaml
+Operators: !include operator_configs/importance_weights_cellular_compact.yaml

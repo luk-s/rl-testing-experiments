@@ -40,8 +40,8 @@ crossover_one_eighth_board:
 
 # Selection functions
 # All names must contain the keyword "select"
-select_grid_linear_binary_tournament:
+select_grid_linear_rank:
   weight: 1.0
   kwargs:
-    arm_length : 2
+    arm_length : 4
     is_bigger_better: True
