@@ -6,7 +6,7 @@ from rl_testing.config_parsers.abstract import Config
 
 
 class EvolutionaryAlgorithmConfig(Config):
-    CONFIG_FOLDER = Path("./configs/evolutionary_algorithm_configs")
+    CONFIG_FOLDER = Path(".")
     DEFAULT_CONFIG_NAME = Path("default.ini")
     REQUIRED_ATTRIBUTES = [
         "config_type",

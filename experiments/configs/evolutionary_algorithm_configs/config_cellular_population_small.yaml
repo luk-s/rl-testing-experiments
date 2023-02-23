@@ -25,4 +25,4 @@ Crossover:
 Selector:
   selection_strategy: all
 
-Operators: !include operator_configs/importance_weights_cellular.yaml
+Operators: !include operator_configs/importance_weights_cellular_compact.yaml
