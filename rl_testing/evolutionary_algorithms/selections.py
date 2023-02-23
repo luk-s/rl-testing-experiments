@@ -114,6 +114,377 @@ def select_tournament(
     return chosen
 
 
+def _get_linear_candidates(
+    grid: List[List[Individual]], row: int, column: int, arm_length: int
+) -> List[Individual]:
+    """Returns the candidates for the linear selection. A linear selection with arm_length 3 in a 2d grid
+    looks like this (x = individuals selected, 0 = individuals not selected):
+            0 0 0 x 0 0 0
+            0 0 0 x 0 0 0
+            0 0 0 x 0 0 0
+            x x x x x x x
+            0 0 0 x 0 0 0
+            0 0 0 x 0 0 0
+            0 0 0 x 0 0 0
+
+    Args:
+        grid (List[List[Individual]]): The grid of individuals.
+        row (int): The row of the current individual.
+        column (int): The column of the current individual.
+        arm_length (int): The arm length of the linear selection.
+
+    Returns:
+        List[Individual]: The candidates for the linear selection.
+    """
+    num_rows, num_columns = len(grid), len(grid[0])
+    # Sanity check on the input parameters
+    assert (
+        0 < arm_length <= (min(num_rows, num_columns) - 1) // 2
+    ), "The arm length must be larger than 0 and not longer than half the number of rows or columns."
+    assert 0 <= row < len(grid), "The row must be between 0 and the number of rows."
+    assert 0 <= column < len(grid[0]), "The column must be between 0 and the number of columns."
+
+    candidates = [grid[row][column]]
+    for offset in range(-arm_length, arm_length + 1):
+        if offset != 0:
+            candidates.append(grid[row][(column + offset) % num_columns])
+            candidates.append(grid[(row + offset) % num_rows][column])
+
+    return candidates
+
+
+def _get_diamond_candidates(
+    grid: List[List[Individual]], row: int, column: int, l1_threshold: int
+) -> List[Individual]:
+    """Returns the candidates for the diamond selection. A diamond selection with l1_threshold 3 in a 2d grid
+    looks like this (x = individuals selected, 0 = individuals not selected):
+            0 0 0 x 0 0 0
+            0 0 x x x 0 0
+            0 x x x x x 0
+            x x x x x x x
+            0 x x x x x 0
+            0 0 x x x 0 0
+            0 0 0 x 0 0 0
+
+    Args:
+        grid (List[List[Individual]]): The grid of individuals.
+        row (int): The row of the current individual.
+        column (int): The column of the current individual.
+        l1_threshold (int): The l1 threshold of the diamond selection.
+    Returns:
+        List[Individual]: The candidates for the diamond selection.
+    """
+    num_rows, num_columns = len(grid), len(grid[0])
+    # Sanity check on the input parameters
+    assert (
+        0 < l1_threshold <= (min(num_rows, num_columns) - 1) // 2
+    ), "The l1_threshold must be larger than 0 and not longer than half the number of rows or columns."
+    assert 0 <= row < num_rows, "The row must be between 0 and the number of rows."
+    assert 0 <= column < num_columns, "The column must be between 0 and the number of columns."
+
+    candidates = []
+    for x_offset in range(-l1_threshold, l1_threshold + 1):
+        for y_offset in range(-l1_threshold, l1_threshold + 1):
+            if abs(x_offset) + abs(y_offset) <= l1_threshold:
+                candidates.append(
+                    grid[(row + x_offset) % num_rows][(column + y_offset) % num_columns]
+                )
+
+    return candidates
+
+
+def _get_compact_candidates(
+    grid: List[List[Individual]], row: int, column: int, l_infinity_threshold: int
+) -> List[Individual]:
+    """Returns the candidates for the compact selection. A compact selection with l_infinity_threshold 2 in a 2d grid
+    looks like this (x = individuals selected, 0 = individuals not selected):
+            0 0 0 0 0 0 0
+            0 x x x x x 0
+            0 x x x x x 0
+            0 x x x x x 0
+            0 x x x x x 0
+            0 x x x x x 0
+            0 0 0 0 0 0 0
+
+    Args:
+        grid (List[List[Individual]]): The grid of individuals.
+        row (int): The row of the current individual.
+        column (int): The column of the current individual.
+        l_infinity_threshold (int): The l_infinity threshold of the compact selection.
+    Returns:
+        List[Individual]: The candidates for the compact selection.
+    """
+    num_rows, num_columns = len(grid), len(grid[0])
+
+    # Sanity check on the input parameters
+    assert (
+        0 < l_infinity_threshold <= (min(num_rows, num_columns) - 1) // 2
+    ), "The l_infinity_threshold must be larger than 0 and not longer than half the number of rows or columns."
+    assert 0 <= row < num_rows, "The row must be between 0 and the number of rows."
+    assert 0 <= column < num_columns, "The column must be between 0 and the number of columns."
+
+    candidates = []
+    for x_offset in range(-l_infinity_threshold, l_infinity_threshold + 1):
+        for y_offset in range(-l_infinity_threshold, l_infinity_threshold + 1):
+            if abs(x_offset) <= l_infinity_threshold and abs(y_offset) <= l_infinity_threshold:
+                candidates.append(
+                    grid[(row + x_offset) % num_rows][(column + y_offset) % num_columns]
+                )
+
+    return candidates
+
+
+def _select_roulette_wheel(
+    population: List[Individual],
+    is_bigger_better: bool = True,
+    _random_state: Optional[np.random.Generator] = None,
+) -> Individual:
+    """Selects one individual from the population using roulette wheel selection.
+
+    Args:
+        population (List[Individual]): The population of individuals.
+        is_bigger_better (bool, optional): Whether a higher fitness is better. Defaults to True.
+        random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        Individual: The selected individual.
+    """
+    random_state = get_random_state(_random_state)
+    fitnesses = np.array([individual.fitness for individual in population])
+
+    if not is_bigger_better:
+        fitnesses = -fitnesses
+
+    fitnesses = fitnesses - fitnesses.min() + 1e-6
+
+    probabilities = fitnesses / fitnesses.sum()
+    return random_state.choice(population, p=probabilities)
+
+
+def _select_binary_tournament(
+    population: List[Individual],
+    is_bigger_better: bool = True,
+    _random_state: Optional[np.random.Generator] = None,
+) -> Individual:
+    """Selects one individual from the population using binary tournament selection, meaning
+    that two individuals are selected at random and the one with the highest fitness is returned.
+
+    Args:
+        population (List[Individual]): The population of individuals.
+        is_bigger_better (bool, optional): Whether a higher fitness is better. Defaults to True.
+        random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        Individual: The selected individual.
+    """
+    random_state = get_random_state(_random_state)
+    if is_bigger_better:
+        return max(random_state.choice(population, 2, replace=False), key=lambda x: x.fitness)
+
+    return min(random_state.choice(population, 2, replace=False), key=lambda x: x.fitness)
+
+
+def _apply_select_and_get_function_on_grid(
+    grid: List[List[Individual]],
+    get_function: Callable[[], Any],
+    get_kwargs: Dict[str, Any],
+    select_function: Callable[[List[Individual]], Individual],
+    is_bigger_better: bool = True,
+    _random_state: Optional[np.random.Generator] = None,
+) -> List[List[Individual]]:
+    """
+    1. Takes a grid of individuals
+    2. Applies the get_function to each entry in the grid. This yields a list of individuals for each entry in the grid.
+    3. For each individual in the grid, selects one individual from the resulting list of individuals using the select_function.
+
+    Args:
+        grid (List[List[Individual]]): A grid of individuals.
+        get_function (Callable[[], Any]): The function to apply to each individual in the grid.
+        get_kwargs (Dict[str, Any]): The keyword arguments to pass to the get_function.
+        select_function (Callable[[List[Individual]], Individual]): The selection function to use.
+        is_bigger_better (bool, optional): Whether a higher fitness is better. Defaults to True.
+        _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        List[List[Individual]]: The new grid of individuals.
+    """
+    random_state = get_random_state(_random_state)
+    result_grid = [
+        [
+            select_function(
+                get_function(grid, row, column, **get_kwargs),
+                is_bigger_better=is_bigger_better,
+                _random_state=random_state,
+            )
+            for column in range(len(grid[0]))
+        ]
+        for row in range(len(grid))
+    ]
+    return result_grid
+
+
+def select_grid_linear_binary_tournament(
+    individuals: List[List[Individual]],
+    arm_length: int,
+    is_bigger_better: bool = True,
+    _random_state: Optional[np.random.Generator] = None,
+) -> List[List[Individual]]:
+    """Perform binary tournament selection, using linear candidates from a grid-like population.
+
+    Args:
+        individuals (List[List[Individual]]): The input grid
+        arm_length (int): The length of the arms of the linear selection
+        is_bigger_better (bool, optional): Whether a bigger fitness value is better.
+        _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        List[List[Individual]]: The selected individuals in grid form.
+    """
+    return _apply_select_and_get_function_on_grid(
+        individuals,
+        _get_linear_candidates,
+        {"arm_length": arm_length},
+        _select_binary_tournament,
+        is_bigger_better=is_bigger_better,
+        _random_state=_random_state,
+    )
+
+
+def select_grid_linear_roulette_wheel(
+    individuals: List[List[Individual]],
+    arm_length: int,
+    is_bigger_better: bool = True,
+    _random_state: Optional[np.random.Generator] = None,
+):
+    """Perform roulette wheel selection, using linear candidates from a grid-like population.
+
+    Args:
+        individuals (List[List[Individual]]): The input grid
+        arm_length (int): The length of the arms of the linear selection
+        is_bigger_better (bool, optional): Whether a bigger fitness value is better.
+        _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        List[List[Individual]]: The selected individuals in grid form.
+    """
+    return _apply_select_and_get_function_on_grid(
+        individuals,
+        _get_linear_candidates,
+        {"arm_length": arm_length},
+        _select_roulette_wheel,
+        is_bigger_better=is_bigger_better,
+        _random_state=_random_state,
+    )
+
+
+def select_grid_diamond_binary_tournament(
+    individuals: List[List[Individual]],
+    l1_threshold: int,
+    is_bigger_better: bool = True,
+    _random_state: Optional[np.random.Generator] = None,
+) -> List[List[Individual]]:
+    """Perform binary tournament selection, using diamond candidates from a grid-like population.
+
+    Args:
+        individuals (List[List[Individual]]): The input grid
+        l1_threshold (int): The threshold for the diamond selection
+        is_bigger_better (bool, optional): Whether a bigger fitness value is better.
+        _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        List[List[Individual]]: The selected individuals in grid form.
+    """
+    return _apply_select_and_get_function_on_grid(
+        individuals,
+        _get_diamond_candidates,
+        {"l1_threshold": l1_threshold},
+        _select_binary_tournament,
+        is_bigger_better=is_bigger_better,
+        _random_state=_random_state,
+    )
+
+
+def select_grid_diamond_roulette_wheel(
+    individuals: List[List[Individual]],
+    l1_threshold: int,
+    is_bigger_better: bool = True,
+    _random_state: Optional[np.random.Generator] = None,
+) -> List[List[Individual]]:
+    """Perform roulette wheel selection, using diamond candidates from a grid-like population.
+
+    Args:
+        individuals (List[List[Individual]]): The input grid
+        l1_threshold (int): The threshold for the diamond selection
+        is_bigger_better (bool, optional): Whether a bigger fitness value is better.
+        _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        List[List[Individual]]: The selected individuals in grid form.
+    """
+    return _apply_select_and_get_function_on_grid(
+        individuals,
+        _get_diamond_candidates,
+        {"l1_threshold": l1_threshold},
+        _select_roulette_wheel,
+        is_bigger_better=is_bigger_better,
+        _random_state=_random_state,
+    )
+
+
+def select_grid_compact_binary_tournament(
+    individuals: List[List[Individual]],
+    l_infinity_threshold: int,
+    is_bigger_better: bool = True,
+    _random_state: Optional[np.random.Generator] = None,
+) -> List[List[Individual]]:
+    """Perform binary tournament selection, using compact candidates from a grid-like population.
+
+    Args:
+        individuals (List[List[Individual]]): The input grid
+        l_infinity_threshold (int): The threshold for the compact selection
+        is_bigger_better (bool, optional): Whether a bigger fitness value is better.
+        _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        List[List[Individual]]: The selected individuals in grid form.
+    """
+    return _apply_select_and_get_function_on_grid(
+        individuals,
+        _get_compact_candidates,
+        {"l_infinity_threshold": l_infinity_threshold},
+        _select_binary_tournament,
+        is_bigger_better=is_bigger_better,
+        _random_state=_random_state,
+    )
+
+
+def select_grid_compact_roulette_wheel(
+    individuals: List[List[Individual]],
+    l_infinity_threshold: int,
+    is_bigger_better: bool = True,
+    _random_state: Optional[np.random.Generator] = None,
+) -> List[List[Individual]]:
+    """Perform roulette wheel selection, using compact candidates from a grid-like population.
+
+    Args:
+        individuals (List[List[Individual]]): The input grid
+        l_infinity_threshold (int): The threshold for the compact selection
+        is_bigger_better (bool, optional): Whether a bigger fitness value is better.
+        _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        List[List[Individual]]: The selected individuals in grid form.
+    """
+    return _apply_select_and_get_function_on_grid(
+        individuals,
+        _get_compact_candidates,
+        {"l_infinity_threshold": l_infinity_threshold},
+        _select_roulette_wheel,
+        is_bigger_better=is_bigger_better,
+        _random_state=_random_state,
+    )
+
+
 class SelectionFunction:
     def __init__(
         self,

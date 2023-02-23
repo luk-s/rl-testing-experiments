@@ -3,7 +3,6 @@ import configparser
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import yaml
-
 from rl_testing.config_parsers.evolutionary_algorithm_config_parser import (
     EvolutionaryAlgorithmConfig,
 )
@@ -24,7 +23,9 @@ class SimpleEvolutionaryAlgorithmConfig(EvolutionaryAlgorithmConfig):
     OPTIONAL_ATTRIBUTES = []
 
     def __init__(
-        self, config: Union[Dict[str, Dict[str, Any]], configparser.ConfigParser]
+        self,
+        config: Union[Dict[str, Dict[str, Any]], configparser.ConfigParser],
+        _initialize: bool = True,
     ) -> None:
         super().__init__(config, _initialize=False)
 
@@ -39,8 +40,9 @@ class SimpleEvolutionaryAlgorithmConfig(EvolutionaryAlgorithmConfig):
         self.mutation_probability = None
         self.crossover_probability = None
 
-        self.set_parameters(config=config)
-        self.check_parameters()
+        if _initialize:
+            self.set_parameters(config=config)
+            self.check_parameters()
 
     def set_parameter(self, section: str, name: str, value: Any) -> None:
         # Parse the value
@@ -48,7 +50,10 @@ class SimpleEvolutionaryAlgorithmConfig(EvolutionaryAlgorithmConfig):
             value = self.parse_string(value, raise_error=False)
 
         # Check if the value belongs to this class or the parent class
-        if name in self.REQUIRED_ATTRIBUTES or name in self.OPTIONAL_ATTRIBUTES:
+        if (
+            name in SimpleEvolutionaryAlgorithmConfig.REQUIRED_ATTRIBUTES
+            or name in SimpleEvolutionaryAlgorithmConfig.OPTIONAL_ATTRIBUTES
+        ):
             setattr(self, name, value)
         else:
             super().set_parameter(section, name, value)
@@ -67,3 +72,38 @@ class SimpleEvolutionaryAlgorithmConfig(EvolutionaryAlgorithmConfig):
                 raise ValueError(
                     "Probability decay can only be enabled if crossover_strategy is 'all'"
                 )
+
+
+class CellularEvolutionaryAlgorithmConfig(SimpleEvolutionaryAlgorithmConfig):
+    REQUIRED_ATTRIBUTES = [
+        "num_rows",
+        "num_columns",
+        "crossover_mode",
+        "apply_operators_on_original_grid",
+    ]
+    OPTIONAL_ATTRIBUTES = []
+
+    def __init__(
+        self, config: Union[Dict[str, Dict[str, Any]], configparser.ConfigParser]
+    ) -> None:
+        super().__init__(config, _initialize=False)
+
+        # General attributes
+        self.num_rows = None
+        self.num_columns = None
+        self.crossover_mode = None
+        self.apply_operators_on_original_grid = None
+
+        self.set_parameters(config=config)
+        self.check_parameters()
+
+    def set_parameter(self, section: str, name: str, value: Any) -> None:
+        # Parse the value
+        if isinstance(value, str):
+            value = self.parse_string(value, raise_error=False)
+
+        # Check if the value belongs to this class or the parent class
+        if name in self.REQUIRED_ATTRIBUTES or name in self.OPTIONAL_ATTRIBUTES:
+            setattr(self, name, value)
+        else:
+            super().set_parameter(section, name, value)
