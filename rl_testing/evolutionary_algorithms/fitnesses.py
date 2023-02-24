@@ -468,10 +468,11 @@ class DifferentialTestingFitness(Fitness):
 
                 # Add the fitness value to the cache
                 self.cache[fen] = fitness
-
-            else:
+            elif output_dict[fen] == "invalid" or score == "invalid":
                 # Cache the invalid value anyway to prevent future re-computations (and crashes) of the same board
                 self.cache[fen] = -1.0
+            elif output_dict[fen] == "nan" or score == "nan":
+                self.cache[fen] = -2.0
 
             self.output_queue2.task_done()
 
