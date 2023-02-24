@@ -70,6 +70,7 @@ class SimpleOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         evolutionary_algorithm_config: SimpleEvolutionaryAlgorithmConfig,
         experiment_config: Dict[str, Any],
         logger: logging.Logger,
+        result_file_path: Optional[Path] = None,
     ):
         # Experiment configs
         self.experiment_config = experiment_config
@@ -91,6 +92,7 @@ class SimpleOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         self._num_fitness_evaluations = 0
         self.fitness: Optional[DifferentialTestingFitness] = None
         self.fitness_cache: Optional[LRUCache] = None
+        self.result_file_path = result_file_path
 
     async def initialize(self, seed: int) -> None:
         # Create the random state
@@ -102,6 +104,7 @@ class SimpleOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         # Create the fitness function
         self.fitness = DifferentialTestingFitness(
             **self.experiment_config["fitness_config"],
+            result_path=self.result_file_path,
             logger=self.logger,
         )
 
@@ -255,11 +258,25 @@ async def main(experiment_config_dict: Dict[str, Any], logger: logging.Logger) -
     # Log the config
     logger.info(f"\nEvolutionary algorithm config:\n{evolutionary_algorithm_config.__dict__}")
 
+    # Store all fens together with their evaluated fitness values in a result file
+    result_file_path = RESULT_DIR / f"oracle_queries_{start_time}.txt"
+    with open(result_file_path, "w") as result_file:
+        # Store the general experiment config
+        for key, value in experiment_config_dict.items():
+            result_file.write(f"{key} = {value}\n")
+
+        # Store the evolutionary algorithm config
+        for key, value in evolutionary_algorithm_config.__dict__.items():
+            result_file.write(f"{key} = {value}\n")
+
+        result_file.write("\n")
+
     # Create the evolutionary algorithm
     evolutionary_algorithm = SimpleOracleQueryEvolutionaryAlgorithm(
         evolutionary_algorithm_config=evolutionary_algorithm_config,
         experiment_config=experiment_config_dict,
         logger=logger,
+        result_file_path=result_file_path,
     )
 
     # Extract the fitness cache and store the cached values in a file
@@ -275,6 +292,11 @@ async def main(experiment_config_dict: Dict[str, Any], logger: logging.Logger) -
     ):
         logger.info(f"\n\nStarting run {run_id + 1}")
 
+        # Print the number of evaluation calls so far
+        logger.info(
+            f"Number of evaluation calls so far: {evolutionary_algorithm.num_fitness_evaluations}"
+        )
+
         # Initialize evolutionary algorithm object
         await evolutionary_algorithm.initialize(start_seed + run_id)
 
@@ -285,21 +307,6 @@ async def main(experiment_config_dict: Dict[str, Any], logger: logging.Logger) -
         await evolutionary_algorithm.cleanup()
 
         run_id += 1
-
-    # Store all fens together with their evaluated fitness values in a result file
-    with open(RESULT_DIR / f"oracle_queries_{start_time}.txt", "w") as result_file:
-        # Store the general experiment config
-        for key, value in experiment_config_dict.items():
-            result_file.write(f"{key} = {value}\n")
-
-        # Store the evolutionary algorithm config
-        for key, value in evolutionary_algorithm_config.__dict__.items():
-            result_file.write(f"{key} = {value}\n")
-
-        result_file.write(f"\nFEN,fitness\n")
-        # Store the fitness cache
-        for fen, fitness in evolutionary_algorithm.fitness_cache.items():
-            result_file.write(f"{fen},{fitness}\n")
 
     return run_statistics
 

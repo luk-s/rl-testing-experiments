@@ -2,6 +2,7 @@ import abc
 import argparse
 import asyncio
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
@@ -301,6 +302,30 @@ class DifferentialTestingFitness(Fitness):
             finally:
                 input_queue.task_done()
 
+    @staticmethod
+    async def write_output(
+        input_queue: asyncio.Queue,
+        result_file_path: str,
+        identifier_str: str = "",
+    ) -> None:
+        buffer_limit = 1000
+        with open(result_file_path, "r+") as result_file:
+            buffer_size = 0
+            config_str = result_file.read()
+
+            result_file.write("fen,fitness")
+            while True:
+                buffer_size += 1
+                fen, fitness = await input_queue.get()
+                result_file.write(f"{fen},{fitness}\n")
+                if buffer_size > 0 and buffer_size % buffer_limit == 0:
+                    logging.info(f"[{identifier_str}] Write {buffer_limit} results to file")
+                    result_file.flush()
+                    os.fsync(result_file.fileno())
+                    buffer_size = 0
+
+                input_queue.task_done()
+
     def __init__(
         self,
         engine_generator1: EngineGenerator,
@@ -311,6 +336,7 @@ class DifferentialTestingFitness(Fitness):
         network_name2: Optional[str] = None,
         num_engines1: int = 1,
         num_engines2: int = 1,
+        result_path: Optional[str] = None,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         """Initializes the DifferentialTestingFitness class.
@@ -337,13 +363,16 @@ class DifferentialTestingFitness(Fitness):
         self.network_name2 = network_name2
         self.num_engines1 = num_engines1
         self.num_engines2 = num_engines2
+        self.result_path = result_path
         self.input_queue1 = asyncio.Queue()
         self.input_queue2 = asyncio.Queue()
         self.output_queue1 = asyncio.Queue()
         self.output_queue2 = asyncio.Queue()
+        self.result_queue = asyncio.Queue()
         self.cache: Dict[FEN, float] = LRUCache(maxsize=200_000)
 
         self.engine_tasks: List[asyncio.Task] = []
+        self.result_task = None
 
         # Log how many times a position has been truly evaluated (not cached)
         self.num_evaluations = 0
@@ -386,6 +415,18 @@ class DifferentialTestingFitness(Fitness):
                 # Add a callback to handle exceptions
                 self.engine_tasks[-1].add_done_callback(handle_task_exception)
 
+        # Create the task for writing the results to file
+        if self.result_path is not None:
+            self.result_task = asyncio.create_task(
+                DifferentialTestingFitness.write_output(
+                    input_queue=self.result_queue,
+                    result_file_path=self.result_path,
+                    identifier_str="RESULT WRITER",
+                )
+            )
+
+            self.result_task.add_done_callback(handle_task_exception)
+
     def cancel_tasks(self) -> None:
         """Cancels all the tasks."""
         # First kill all running engine processes
@@ -395,6 +436,9 @@ class DifferentialTestingFitness(Fitness):
         # Then cancel all the tasks
         for task in self.engine_tasks:
             task.cancel()
+
+        if self.result_task is not None:
+            self.result_task.cancel()
 
     @property
     def use_async(self) -> bool:
@@ -474,7 +518,15 @@ class DifferentialTestingFitness(Fitness):
             elif output_dict[fen] == "nan" or score == "nan":
                 self.cache[fen] = -2.0
 
+            # No matter the outcome, write the result to the result file
+            if self.result_path is not None:
+                await self.result_queue.put((fen, self.cache[fen]))
+
             self.output_queue2.task_done()
+
+        # Wait until all results have been written to file
+        if self.result_path is not None:
+            await self.result_queue.join()
 
         return results
 
