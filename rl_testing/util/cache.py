@@ -119,3 +119,11 @@ class LRUCache:
         if value is not default:
             self._size -= 1
         return value
+
+    def items(self) -> Any:
+        """Get the items in the cache.
+
+        Returns:
+            Any: Items in the cache.
+        """
+        return self._cache.items()

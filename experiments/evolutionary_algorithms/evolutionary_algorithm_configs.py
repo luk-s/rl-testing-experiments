@@ -3,6 +3,7 @@ import configparser
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import yaml
+
 from rl_testing.config_parsers.evolutionary_algorithm_config_parser import (
     EvolutionaryAlgorithmConfig,
 )
@@ -20,7 +21,9 @@ class SimpleEvolutionaryAlgorithmConfig(EvolutionaryAlgorithmConfig):
         "mutation_probability",
         "crossover_probability",
     ]
-    OPTIONAL_ATTRIBUTES = []
+    OPTIONAL_ATTRIBUTES = [
+        "max_num_fitness_evaluations",
+    ]
 
     def __init__(
         self,
@@ -39,6 +42,7 @@ class SimpleEvolutionaryAlgorithmConfig(EvolutionaryAlgorithmConfig):
         self.early_stopping_value = None
         self.mutation_probability = None
         self.crossover_probability = None
+        self.max_num_fitness_evaluations = None
 
         if _initialize:
             self.set_parameters(config=config)

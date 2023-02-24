@@ -1,26 +1,55 @@
 import argparse
 import asyncio
 import logging
+import multiprocessing
 import time
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import chess
+import chess.engine
 import numpy as np
 
 from experiments.evolutionary_algorithms.evolutionary_algorithm_configs import (
     SimpleEvolutionaryAlgorithmConfig,
 )
-from experiments.evolutionary_algorithms.evolutionary_algorithm_simple_async import (
-    SimpleEvolutionaryAlgorithm,
-)
 from rl_testing.config_parsers import get_engine_config
-from rl_testing.engine_generators import get_engine_generator
-from rl_testing.evolutionary_algorithms.populations import AdaptiveWeightPopulation
+from rl_testing.config_parsers.engine_config_parser import EngineConfig
+from rl_testing.engine_generators import EngineGenerator, get_engine_generator
+from rl_testing.evolutionary_algorithms import (
+    get_initialized_crossover,
+    get_initialized_mutator,
+    get_initialized_selector,
+)
+from rl_testing.evolutionary_algorithms.algorithms import AsyncEvolutionaryAlgorithm
+from rl_testing.evolutionary_algorithms.crossovers import Crossover
+from rl_testing.evolutionary_algorithms.fitnesses import (
+    BoardSimilarityFitness,
+    DifferentialTestingFitness,
+    EditDistanceFitness,
+    Fitness,
+    HashFitness,
+    PieceNumberFitness,
+)
+from rl_testing.evolutionary_algorithms.individuals import BoardIndividual
+from rl_testing.evolutionary_algorithms.mutations import Mutator
+from rl_testing.evolutionary_algorithms.populations import Population, SimplePopulation
+from rl_testing.evolutionary_algorithms.selections import (
+    Selector,
+    select_tournament_fast,
+)
 from rl_testing.evolutionary_algorithms.statistics import SimpleStatistics
-from rl_testing.util.evolutionary_algorithm import should_decrease_probability
-from rl_testing.util.experiment import get_experiment_params_dict
-from rl_testing.util.util import log_time
+from rl_testing.util.cache import LRUCache
+from rl_testing.util.chess import is_really_valid
+from rl_testing.util.evolutionary_algorithm import (
+    get_random_individuals,
+    should_decrease_probability,
+)
+from rl_testing.util.experiment import (
+    get_experiment_params_dict,
+    store_experiment_params,
+)
+from rl_testing.util.util import get_random_state, log_time
 
 RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm")
 CONFIG_FOLDER = Path(__file__).parent.parent
@@ -32,15 +61,66 @@ EVOLUTIONARY_ALGORITHM_CONFIG_FOLDER = CONFIG_FOLDER / Path(
     "configs/evolutionary_algorithm_configs"
 )
 DEBUG = True
+Time = float
 
 
-class AdaptiveWeightsEvolutionaryAlgorithm(SimpleEvolutionaryAlgorithm):
+class SimpleOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
+    def __init__(
+        self,
+        evolutionary_algorithm_config: SimpleEvolutionaryAlgorithmConfig,
+        experiment_config: Dict[str, Any],
+        logger: logging.Logger,
+    ):
+        # Experiment configs
+        self.experiment_config = experiment_config
+        self.evolutionary_algorithm_config = evolutionary_algorithm_config
+        self.logger = logger
+
+        # Evolutionary algorithm configs
+        self.num_generations = evolutionary_algorithm_config.num_generations
+        self.crossover_probability = evolutionary_algorithm_config.crossover_probability
+        self.mutation_probability = evolutionary_algorithm_config.mutation_probability
+        self.early_stopping = evolutionary_algorithm_config.early_stopping
+        self.early_stopping_value = evolutionary_algorithm_config.early_stopping_value
+        self.probability_decay = evolutionary_algorithm_config.probability_decay
+
+        # Fitness function configs
+        self.max_num_fitness_evaluations = (
+            evolutionary_algorithm_config.max_num_fitness_evaluations
+        )
+        self._num_fitness_evaluations = 0
+        self.fitness: Optional[DifferentialTestingFitness] = None
+        self.fitness_cache: Optional[LRUCache] = None
+
     async def initialize(self, seed: int) -> None:
-        await super().initialize(seed)
+        # Create the random state
+        self.random_state = get_random_state(seed)
 
-        # Overwrite the population with an adaptive weight population
-        individuals = self.population.individuals
-        self.population = AdaptiveWeightPopulation(
+        # Create a multiprocessing pool
+        self.pool = multiprocessing.Pool(processes=self.evolutionary_algorithm_config.num_workers)
+
+        # Create the fitness function
+        self.fitness = DifferentialTestingFitness(
+            **self.experiment_config["fitness_config"],
+            logger=self.logger,
+        )
+
+        # Reuse the fitness cache if it exists
+        if self.fitness_cache is not None:
+            self.fitness.cache = self.fitness_cache
+
+        # Create the evolutionary operators
+        self.mutate: Mutator = get_initialized_mutator(self.evolutionary_algorithm_config)
+        self.crossover: Crossover = get_initialized_crossover(self.evolutionary_algorithm_config)
+        self.select: Selector = get_initialized_selector(self.evolutionary_algorithm_config)
+
+        # Create the population
+        individuals = get_random_individuals(
+            "data/random_positions.txt",
+            self.evolutionary_algorithm_config.population_size,
+            self.random_state,
+        )
+        self.population = SimplePopulation(
             individuals=individuals,
             fitness=self.fitness,
             mutator=self.mutate,
@@ -50,14 +130,32 @@ class AdaptiveWeightsEvolutionaryAlgorithm(SimpleEvolutionaryAlgorithm):
             _random_state=self.random_state,
         )
 
+        await self.fitness.create_tasks()
+
+    @property
+    def num_fitness_evaluations(self) -> int:
+        if self.fitness is None:
+            return self._num_fitness_evaluations
+        return len(self.fitness.cache)
+
     async def run(self) -> SimpleStatistics:
         start_time = time.time()
 
         # Create the statistics
         statistics = SimpleStatistics()
 
+        # Check if the maximum number of fitness evaluations is reached
+        if self.num_fitness_evaluations >= self.max_num_fitness_evaluations:
+            return statistics
+
         # Evaluate the entire population
         await self.population.evaluate_individuals_async()
+
+        # Check if the maximum number of fitness evaluations is reached
+        if self.num_fitness_evaluations >= self.max_num_fitness_evaluations:
+            statistics.fill_time_series(0, self.num_generations, self.population)
+            logging.info("Early stopping!")
+            return statistics
 
         for generation in range(self.num_generations):
             logging.info(f"\n\nGeneration {generation}")
@@ -78,29 +176,29 @@ class AdaptiveWeightsEvolutionaryAlgorithm(SimpleEvolutionaryAlgorithm):
             log_time(start_time, "before evaluating")
             await self.population.evaluate_individuals_async()
 
-            # Update the mutation- and crossover probability distributions
-            log_time(start_time, "before updating the operator probability distributions")
-            self.mutate.analyze_mutation_effects(
-                self.population.flat_population, print_update=True
-            )
-            self.crossover.analyze_crossover_effects(
-                self.population.flat_population, print_update=True
-            )
-
             log_time(start_time, "before updating the statistics")
             statistics.update_time_series(self.population, log_statistics=True)
 
             # Check if the best fitness is above the early stopping threshold
+            # or if the maximum number of fitness evaluations is reached
             if (
                 self.early_stopping
                 and statistics.best_fitness_values[-1] >= self.early_stopping_value
-            ):
+            ) or self.num_fitness_evaluations >= self.max_num_fitness_evaluations:
                 statistics.fill_time_series(generation, self.num_generations, self.population)
                 logging.info("Early stopping!")
                 break
 
+            # Check if the probabilities of mutation and crossover are too high
+            if self.probability_decay and should_decrease_probability(
+                statistics.best_fitness_values[-1], difference_threshold=0.5
+            ):
+                logging.info("Decreasing mutation and crossover probabilities")
+                self.mutate.multiply_probabilities(factor=0.5, log=True)
+                self.crossover.multiply_probabilities(factor=0.5, log=True)
+
         end_time = time.time()
-        logging.info(f"Number of evaluations: {self.fitness.num_evaluations}")
+        logging.info(f"Number of evaluations = {self.fitness.num_evaluations}")
         logging.info(f"Total time: {end_time - start_time} seconds")
         statistics.set_scalars(
             runtime=end_time - start_time, num_evaluations=self.fitness.num_evaluations
@@ -119,9 +217,30 @@ class AdaptiveWeightsEvolutionaryAlgorithm(SimpleEvolutionaryAlgorithm):
 
         return statistics
 
+    async def cleanup(self) -> None:
+        # Cancel all running subprocesses which the fitness evaluator spawned
+        self.fitness.cancel_tasks()
+
+        self.pool.close()
+
+        # Add the number of fitness evaluations to the total number of fitness evaluations
+        self._num_fitness_evaluations += len(self.fitness.cache) - self._num_fitness_evaluations
+
+        # Save the fitness cache
+        self.fitness_cache = self.fitness.cache
+
+        self.fitness = None
+        del self.mutate
+        del self.crossover
+        del self.select
+        del self.population
+
 
 async def main(experiment_config_dict: Dict[str, Any], logger: logging.Logger) -> None:
     """Run the experiment."""
+
+    # Store the start time
+    start_time = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
 
     # Extract path to evolutionary algorithm config file
     evolutionary_algorithm_config_name = experiment_config_dict[
@@ -137,19 +256,24 @@ async def main(experiment_config_dict: Dict[str, Any], logger: logging.Logger) -
     logger.info(f"\nEvolutionary algorithm config:\n{evolutionary_algorithm_config.__dict__}")
 
     # Create the evolutionary algorithm
-    evolutionary_algorithm = AdaptiveWeightsEvolutionaryAlgorithm(
+    evolutionary_algorithm = SimpleOracleQueryEvolutionaryAlgorithm(
         evolutionary_algorithm_config=evolutionary_algorithm_config,
         experiment_config=experiment_config_dict,
         logger=logger,
     )
 
-    # Repeat multiple times
+    # Extract the fitness cache and store the cached values in a file
+
     run_statistics = []
     start_seed = experiment_config_dict["seed"]
-    for run_id in range(evolutionary_algorithm_config.num_runs_per_config):
-        logger.info(
-            f"\n\nStarting run {run_id + 1}/{evolutionary_algorithm_config.num_runs_per_config}"
-        )
+    run_id = 0
+
+    # Run algorithm as long as the number of oracle calls hasn't reached the maximum
+    while (
+        evolutionary_algorithm.num_fitness_evaluations
+        < evolutionary_algorithm.max_num_fitness_evaluations
+    ):
+        logger.info(f"\n\nStarting run {run_id + 1}")
 
         # Initialize evolutionary algorithm object
         await evolutionary_algorithm.initialize(start_seed + run_id)
@@ -159,6 +283,23 @@ async def main(experiment_config_dict: Dict[str, Any], logger: logging.Logger) -
 
         # Cleanup evolutionary algorithm object
         await evolutionary_algorithm.cleanup()
+
+        run_id += 1
+
+    # Store all fens together with their evaluated fitness values in a result file
+    with open(RESULT_DIR / f"oracle_queries_{start_time}.txt", "w") as result_file:
+        # Store the general experiment config
+        for key, value in experiment_config_dict.items():
+            result_file.write(f"{key} = {value}\n")
+
+        # Store the evolutionary algorithm config
+        for key, value in evolutionary_algorithm_config.__dict__.items():
+            result_file.write(f"{key} = {value}\n")
+
+        result_file.write(f"\nFEN,fitness\n")
+        # Store the fitness cache
+        for fen, fitness in evolutionary_algorithm.fitness_cache.items():
+            result_file.write(f"{fen},{fitness}\n")
 
     return run_statistics
 
@@ -182,10 +323,10 @@ if __name__ == "__main__":
     parser.add_argument("--seed",                type=int,  default=42)
     # parser.add_argument("--evolutionary_algorithm_config_name", type=str,  default="config_simple_population.yaml")  # noqa: E501
     parser.add_argument("--evolutionary_algorithm_config_name", type=str,  default="config_simple_population_small.yaml")  # noqa: E501
-    # parser.add_argument("--engine_config_name1", type=str,  default="local_400_nodes.ini")  # noqa: E501
-    # parser.add_argument("--engine_config_name2", type=str,  default="local_400_nodes.ini")  # noqa: E501
-    parser.add_argument("--engine_config_name1", type=str,  default="remote_400_nodes.ini")  # noqa: E501
-    parser.add_argument("--engine_config_name2", type=str,  default="remote_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name1", type=str,  default="local_400_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name2", type=str,  default="local_400_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name1", type=str,  default="remote_400_nodes.ini")  # noqa: E501
+    # parser.add_argument("--engine_config_name2", type=str,  default="remote_400_nodes.ini")  # noqa: E501
     parser.add_argument("--network_name1",       type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
     parser.add_argument("--network_name2",       type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
     parser.add_argument("--num_engines1" ,       type=int,  default=2)

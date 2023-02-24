@@ -222,6 +222,9 @@ async def main(experiment_config_dict: Dict[str, Any], logger: logging.Logger) -
         EVOLUTIONARY_ALGORITHM_CONFIG_FOLDER / evolutionary_algorithm_config_name
     )
 
+    # Log the config
+    logger.info(f"\nEvolutionary algorithm config:\n{evolutionary_algorithm_config.__dict__}")
+
     # Create the evolutionary algorithm
     evolutionary_algorithm = CellularEvolutionaryAlgorithm(
         evolutionary_algorithm_config=evolutionary_algorithm_config,
@@ -233,6 +236,10 @@ async def main(experiment_config_dict: Dict[str, Any], logger: logging.Logger) -
     run_statistics = []
     start_seed = experiment_config_dict["seed"]
     for run_id in range(evolutionary_algorithm_config.num_runs_per_config):
+        logger.info(
+            f"\n\nStarting run {run_id + 1}/{evolutionary_algorithm_config.num_runs_per_config}"
+        )
+
         # Initialize evolutionary algorithm object
         await evolutionary_algorithm.initialize(start_seed + run_id)
 

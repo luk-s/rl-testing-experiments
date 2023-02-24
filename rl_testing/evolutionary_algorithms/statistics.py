@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 import wandb
+
 from rl_testing.evolutionary_algorithms.individuals import Individual
 from rl_testing.evolutionary_algorithms.populations import Population
 
@@ -101,7 +102,7 @@ class SimpleStatistics(Statistics):
             logging.info(f"{worst_individual = }, {worst_fitness = }")
             logging.info(f"{average_fitness = }")
             logging.info(
-                f"Number of unique individuals: {np.round(unique_individual_fraction * population.size).astype(int)}"
+                f"Number of unique individuals = {np.round(unique_individual_fraction * population.size).astype(int)}"
             )
             logging.info(f"{best_individual.history = }")
 

@@ -91,7 +91,7 @@ class SimplePopulation(Population):
         pool: Optional[Pool] = None,
         _random_state: Optional[int] = None,
     ):
-        super().__init__(individuals, fitness, mutator, crossover, pool, _random_state)
+        super().__init__(fitness, mutator, crossover, pool, _random_state)
         self.individuals = individuals
         self.selector = selector
 
