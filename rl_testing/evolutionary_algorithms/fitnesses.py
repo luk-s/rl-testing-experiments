@@ -531,6 +531,100 @@ class DifferentialTestingFitness(Fitness):
         return results
 
 
+def less_pieces_fitness(individual: chess.Board) -> float:
+    """A fitness function which rewards individuals with less pieces on the board.
+    The fitness is normalized to lie in the interval [0, 0.5] where a higher value means a better fitness.
+
+    Args:
+        individual: The individual to evaluate.
+
+    Returns:
+        The fitness value of the individual.
+    """
+    # The minimum number of possible pieces is 2 (two kings)
+    # The maximum number of possible pieces is 32 (16 white and 16 black pieces)
+    return (1.0 - (len(individual.piece_map()) - 2) / 30.0) / 2
+
+
+class CrashTestingFitness(DifferentialTestingFitness):
+    async def evaluate_async(self, individuals: List[BoardIndividual]) -> List[float]:
+        """Evaluates the given individuals asynchronously.
+
+        Args:
+            individuals: The individuals to evaluate.
+
+        Returns:
+            The fitness values of the individuals.
+        """
+        # A dictionary to store fens which are currently being processed together with their positions in the results list
+        fens_in_progress: Dict[FEN, List[int]] = {}
+
+        # Prepare the result list and fill it with a negative value. This fitness function only
+        # produces positive values, so this is a good way to mark invalid individuals.
+        results: List[float] = [-1.0] * len(individuals)
+
+        # Iterate over the individuals and either compute their fitness or fetch the fitness from the cache
+        for index, individual in enumerate(individuals):
+            fen: FEN = individual.fen()
+            if fen in self.cache:
+                results[index] = self.cache[fen]
+            elif fen not in fens_in_progress:
+                fens_in_progress[fen] = [index]
+                await self.input_queue1.put((index, individual))
+                await self.input_queue2.put((index, individual))
+                self.num_evaluations += 1
+            else:
+                fens_in_progress[fen].append(index)
+
+        # Wait until all boards have been processed
+        await self.input_queue1.join()
+        await self.input_queue2.join()
+
+        # An output dictionary to match the results of the two output queues
+        output_dict: Dict[FEN, float] = {}
+
+        # Extract all results from the first output queue
+        while not self.output_queue1.empty():
+            fen, _, score = await self.output_queue1.get()
+            output_dict[fen] = score
+            self.output_queue1.task_done()
+
+        # Extract all results from the second output queue and compute the score difference
+        while not self.output_queue2.empty():
+            fen, _, score = await self.output_queue2.get()
+            board = chess.Board(fen)
+
+            # Both results are valid
+            if (output_dict[fen] != "invalid" and score != "invalid") and (
+                output_dict[fen] != "nan" and score != "nan"
+            ):
+                fitness = abs(output_dict[fen] - score) + less_pieces_fitness(board)
+            elif output_dict[fen] == "invalid" or score == "invalid":
+                # Cache the invalid value anyway to prevent future re-computations (and crashes) of the same board
+                fitness = 2.0 + less_pieces_fitness(board)
+            elif output_dict[fen] == "nan" or score == "nan":
+                fitness = 2.0 + less_pieces_fitness(board)
+
+            # Add the fitness value to all individuals with the same fen
+            for index in fens_in_progress[fen]:
+                results[index] = fitness
+
+            # Add the fitness value to the cache
+            self.cache[fen] = fitness
+
+            # No matter the outcome, write the result to the result file
+            if self.result_path is not None:
+                await self.result_queue.put((fen, self.cache[fen]))
+
+            self.output_queue2.task_done()
+
+        # Wait until all results have been written to file
+        if self.result_path is not None:
+            await self.result_queue.join()
+
+        return results
+
+
 if __name__ == "__main__":
     # board1 = chess.Board("8/1p6/1p6/pPp1p1n1/P1P1P1k1/1K1P4/8/2B5 w - - 110 118")
     # board2 = chess.Board("r3qb1r/pppbk1p1/2np2np/4p2Q/2BPP3/2P5/PP3PPP/RNB2RK1 w - - 4 11")

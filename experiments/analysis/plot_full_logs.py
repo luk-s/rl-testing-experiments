@@ -110,7 +110,7 @@ def plot_full_logs(
         stockfish_score = stockfish_scores.loc[stockfish_scores["fen"] == fen, "score"].values[0]
         if " b " in fen:
             stockfish_score = -stockfish_score
-        assert 390 <= x_values[-1] <= 410
+        # assert 390 <= x_values[-1] <= 410
         ax.hlines(
             stockfish_score,
             0,
@@ -180,7 +180,7 @@ def plot_average_stockfish_deviation(
                     break
                 all_data_dict[network_name][x - 1].append(deviation)
 
-            assert 390 <= x_values[-1] <= 410
+            # assert 390 <= x_values[-1] <= 410
 
     # For each model, compute the average deviation for each x value over all fens
     for network_name in models_ordered:
@@ -245,10 +245,11 @@ if __name__ == "__main__":
     result_folder = RESULT_DIRECTORY / Path("score_positions")
     result_folder_stockfish = RESULT_DIRECTORY / Path("board_analysis")
     result_file_patterns = [
-        "results_ENGINE_local_full_logs_400_nodes_DATA_interesting_fen_database_NETWORK*"
+        # "results_ENGINE_local_full_logs_400_nodes_DATA_interesting_fen_database_NETWORK*"
+        "results_ENGINE_remote_full_logs_2000_nodes*"
     ]
     result_file_stockfish = Path("logs_board_analysis.csv")
-    image_subdirectory = "full_logs/400_nodes_combined"
+    image_subdirectory = "full_logs/2000_nodes_combined"
     image_subdirectory2 = "full_logs/400_nodes_average_deviation"
 
     color_map = matplotlib.cm.get_cmap("RdPu")
@@ -296,8 +297,8 @@ if __name__ == "__main__":
     stockfish_scores = pd.read_csv(result_folder_stockfish / result_file_stockfish)
     stockfish_scores["fen"] = stockfish_scores["fen"].str.strip()
 
-    # plot_full_logs(result_data, stockfish_scores, image_directory, models_ordered, model_color_map)
+    plot_full_logs(result_data, stockfish_scores, image_directory, models_ordered, model_color_map)
 
-    plot_average_stockfish_deviation(
-        result_data, stockfish_scores, image_directory2, models_ordered, model_color_map
-    )
+    # plot_average_stockfish_deviation(
+    #    result_data, stockfish_scores, image_directory2, models_ordered, model_color_map
+    # )
