@@ -246,7 +246,8 @@ if __name__ == "__main__":
     result_folder_stockfish = RESULT_DIRECTORY / Path("board_analysis")
     result_file_patterns = [
         # "results_ENGINE_local_full_logs_400_nodes_DATA_interesting_fen_database_NETWORK*"
-        "results_ENGINE_remote_full_logs_2000_nodes*"
+        # "results_ENGINE_remote_full_logs_2000_nodes*"
+        "results_ENGINE_remote_full_logs_2000_nodes_DATA_interesting_fen_database_NETWORK_T80*"
     ]
     result_file_stockfish = Path("logs_board_analysis.csv")
     image_subdirectory = "full_logs/2000_nodes_combined"

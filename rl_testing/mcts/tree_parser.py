@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 import chess
 import networkx as nx
 import numpy as np
+from rl_testing.util.chess import is_really_valid
 
 # from chess.engine import AnalysisResult
 if TYPE_CHECKING:
@@ -32,6 +33,7 @@ class TreeParser:
         "U": "u_value",
         "S": "s_value",
         "V": "v_value",
+        "T": "is_terminal",
     }
 
     def __init__(self, analysis_result: "ExtendedAnalysisResult") -> None:
@@ -39,7 +41,10 @@ class TreeParser:
         self.node: Optional[NodeInfo] = None
         self.parent_id: Optional[int] = None
         self.node_cache: dict[int, NodeInfo] = {}
-        self.analysis_result = analysis_result
+        self.analysis_result: "ExtendedAnalysisResult" = analysis_result
+
+    def is_line_parsable(self, line: str) -> bool:
+        return self.PARSE_TOKEN in line
 
     def parse_line(self, line: str) -> None:
         # Remove the PARSE_TOKEN and everything before it from the line.
@@ -190,6 +195,152 @@ class TreeParser:
         self.node.check_required_attributes()
 
     def parse_edge_line(self, line: str) -> None:
+        attribute_dict = self.parse_data_line(line)
+
+        # Create a new edge
+        edge = EdgeInfo(attribute_dict["move"], self.node)
+        del attribute_dict["move"]
+
+        for attribute in attribute_dict:
+            setattr(edge, attribute, attribute_dict[attribute])
+
+        edge.check_required_attributes()
+
+
+class OneNodeParser(TreeParser):
+    EDGE_TOKEN = "S:"  # A substring that is present in every edge line
+    NODE_TOKEN = "node"  # A substring that is present in every node line
+
+    def __init__(self, analysis_result: "ExtendedAnalysisResult") -> None:
+        self.node: NodeInfo = NodeInfo(visit_index=0)
+        self.analysis_result: "ExtendedAnalysisResult" = analysis_result
+
+    def is_line_parsable(self, line: str) -> bool:
+        return "string" in line and (self.EDGE_TOKEN in line or self.NODE_TOKEN in line)
+
+    def parse_line(self, line: str) -> None:
+        # TODO: CHANGE THIS!
+        if self.EDGE_TOKEN in line:
+            self.parse_edge_line(line)
+        elif self.NODE_TOKEN in line:
+            self.parse_node_line(line)
+        else:
+            raise ValueError(f"Can't parse line: {line}")
+
+    def start_tree(self) -> None:
+        raise NotImplementedError("This class does not support parsing trees.")
+
+    def end_tree(self) -> None:
+        raise NotImplementedError("This class does not support parsing trees.")
+
+    def start_node(self) -> None:
+        raise NotImplementedError("This class does not require a start_node function.")
+
+    def end_node(self) -> None:
+        # Compute the depth of each node
+        num_per_depth = []
+        self.node.assign_depth(0, num_per_depth)
+
+        # Add the node to the analysis result
+        self.analysis_result.root_and_child_scores = self.node
+        for index in range(len(self.analysis_result.multipv)):
+            self.analysis_result.multipv[index]["root_and_child_scores"] = self.node
+
+        # Reset the parser
+        self.node = NodeInfo(visit_index=0)
+
+    def parse_position(self, line: str) -> None:
+        raise NotImplementedError("This class does not require a parse_position function.")
+
+    def preprocess_line(self, line: str) -> str:
+        # Remove the "info string" prefix from the line
+        line = line.split("info string ", 1)[1]
+
+        # Add a name to the first token
+        line = "move:" + line
+
+        # If the last token is a terminal token, add a value to it
+        if line[-1] == "T":
+            line = line[:-4] + ":True"
+        else:
+            line = line + " T:False"
+
+        # Convert values of type "+0" to "IN_FLIGHT:0"
+        line = line.replace("+", "IN_FLIGHT:")
+
+        bracket_open = False
+        fixed_line = []
+        # First make sure that all the data is in the form "(...)"
+        for index, char in enumerate(line):
+            if not str.isspace(char) and char != "(" and not bracket_open:
+                fixed_line.append("(")
+                bracket_open = True
+            elif not str.isspace(char) and char == "(" and bracket_open:
+                fixed_line.append(")")
+            if char == ")":
+                bracket_open = False
+            elif char == "(":
+                bracket_open = True
+
+            fixed_line.append(char)
+
+        if bracket_open:
+            fixed_line.append(")")
+
+        # Remove all white spaces
+        fixed_line = "".join(fixed_line)
+        fixed_line = fixed_line.replace(" ", "")
+
+        return fixed_line
+
+    def parse_data_line(self, line: str) -> None:
+        # TODO: FIX THIS!
+        line = line.strip()
+        line = line[line.index("(") + 1 : -1]
+        tokens = line.split(")(")
+        tokens = [token for token in tokens if ":" in token]
+
+        result_dict = {}
+        for token in tokens:
+            key, value = token.split(":")
+            key, value = key.strip(), value.strip()
+
+            if value.endswith("%"):
+                value = float(value[:-1]) / 100
+            elif value.startswith("+"):
+                value = int(value[1:])
+            elif "-.-" in value:
+                value = None
+            elif key == "T":
+                value = value == "True"
+            elif key == "move":
+                if value != "node":
+                    value = chess.Move.from_uci(value)
+                else:
+                    value = None
+            else:
+                try:
+                    value = float(value)
+                except ValueError:
+                    raise ValueError(f"Can't parse value {value}")
+
+            if value is not None:
+                result_dict[self.attribute_map[key]] = value
+
+        return result_dict
+
+    def parse_node_line(self, line: str) -> None:
+        line = self.preprocess_line(line)
+        attribute_dict = self.parse_data_line(line)
+
+        for attribute in attribute_dict:
+            setattr(self.node, attribute, attribute_dict[attribute])
+
+        self.node.check_required_attributes()
+        self.end_node()
+
+    def parse_edge_line(self, line: str) -> None:
+        line = self.preprocess_line(line)
         attribute_dict = self.parse_data_line(line)
 
         # Create a new edge

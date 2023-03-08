@@ -247,6 +247,9 @@ class InfoParser:
 
             fixed_line.append(char)
 
+        if bracket_open:
+            fixed_line.append(")")
+
         # Remove all white spaces
         fixed_line = "".join(fixed_line)
         fixed_line = fixed_line.replace(" ", "")
@@ -286,6 +289,8 @@ class InfoParser:
 
     def parse_line(self, line: str) -> None:
         is_node_stat = "node" in line
+
+        print(f"Line: {line}")
 
         # Extract the data from the line
         data = self._extract_data(line)

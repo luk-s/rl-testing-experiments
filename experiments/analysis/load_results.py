@@ -33,7 +33,9 @@ def load_data(result_path: Union[str, Path], separator=",") -> Tuple[pd.DataFram
         start_line += 1
 
     # Read in the data
-    dataframe = pd.read_csv(result_path, header=start_line, skip_blank_lines=False, sep=separator)
+    dataframe = pd.read_csv(
+        result_path, header=start_line, skip_blank_lines=False, sep=separator, on_bad_lines="warn"
+    )
 
     return dataframe, config
 

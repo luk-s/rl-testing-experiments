@@ -313,7 +313,7 @@ class DifferentialTestingFitness(Fitness):
             buffer_size = 0
             config_str = result_file.read()
 
-            result_file.write("fen,fitness")
+            result_file.write("fen,fitness\n")
             while True:
                 buffer_size += 1
                 fen, fitness = await input_queue.get()

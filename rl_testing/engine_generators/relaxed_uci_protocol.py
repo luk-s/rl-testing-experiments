@@ -26,7 +26,8 @@ from chess.engine import (
     UciProtocol,
     Wdl,
 )
-from rl_testing.mcts.tree_parser import TreeInfo, TreeParser
+
+from rl_testing.mcts.tree_parser import NodeInfo, OneNodeParser, TreeInfo, TreeParser
 
 
 def parse_uci_relaxed(self, uci: str) -> Move:
@@ -216,6 +217,7 @@ class ExtendedAnalysisResult(AnalysisResult):
     def __init__(self, stop: Optional[Callable[[], None]] = None):
         super().__init__(stop)
         self.mcts_tree: Optional[TreeInfo] = None
+        self.root_and_child_scores: Optional[NodeInfo] = None
 
 
 class RelaxedUciProtocol(UciProtocol):
@@ -242,6 +244,7 @@ class RelaxedUciProtocol(UciProtocol):
             def start(self, engine: UciProtocol) -> None:
                 self.analysis = ExtendedAnalysisResult(stop=lambda: self.cancel(engine))
                 self.tree_parser = TreeParser(self.analysis)
+                self.last_node_parser = OneNodeParser(self.analysis)
                 self.sent_isready = False
 
                 if "Ponder" in engine.options:
@@ -267,10 +270,12 @@ class RelaxedUciProtocol(UciProtocol):
 
             def line_received(self, engine: UciProtocol, line: str) -> None:
                 # print(line)
-                if TreeParser.PARSE_TOKEN in line:
+                if self.tree_parser.is_line_parsable(line):
                     self.tree_parser.parse_line(line)
                 elif line.startswith("info "):
                     self._info(engine, line.split(" ", 1)[1])
+                    if self.last_node_parser.is_line_parsable(line):
+                        self.last_node_parser.parse_line(line)
                 elif line.startswith("bestmove "):
                     self._bestmove(engine, line.split(" ", 1)[1])
                 elif line == "readyok" and self.sent_isready:

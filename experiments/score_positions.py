@@ -247,12 +247,13 @@ if __name__ == "__main__":
     # fmt: off
     parser.add_argument("--seed",                   type=int,  default=42)
     # parser.add_argument("--engine_config_name",     type=str,  default="local_100_nodes.ini")  # noqa: E501
-    parser.add_argument("--engine_config_name",     type=str, default="remote_full_logs_2000_nodes.ini")  # noqa: E501
+    parser.add_argument("--engine_config_name",     type=str, default="remote_full_logs_400_nodes.ini")  # noqa: E501
     # parser.add_argument("--engine_config_name",     type=str,  default="local_full_logs_400_nodes.ini")  # noqa: E501
     parser.add_argument("--data_config_name",       type=str,  default="interesting_fen_database.ini")  # noqa: E501
     # parser.add_argument("--network_name",           type=str, default="T807301-c85375d37b369db8db6b0665d12647e7a7a3c9453f5ba46235966bc2ed433638")  # noqa: E501
-    parser.add_argument("--network_name",           type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
-    parser.add_argument("--num_positions",      type=int,  default=3)
+    parser.add_argument("--network_name",           type=str, default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
+    # parser.add_argument("--network_name",           type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
+    parser.add_argument("--num_positions",      type=int,  default=1)
     parser.add_argument("--full_logs",              type=bool, default=True)
     parser.add_argument("--num_evals_per_position", type=int,  default=1)
     parser.add_argument("--result_subdir",          type=str,  default="")
