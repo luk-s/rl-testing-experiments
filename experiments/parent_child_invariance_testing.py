@@ -42,6 +42,14 @@ async def create_positions(
 
         legal_moves = list(board_candidate.legal_moves)
 
+        # Check if one of the legal moves results in a checkmate for the current player
+        # If so, we do not want to use this position
+        for move in legal_moves:
+            board_candidate.push(move)
+            if board_candidate.is_checkmate():
+                continue
+            board_candidate.pop()
+
         # Check if the generated position should be further processed
         if board_candidate.fen() not in fen_cache and 0 < len(legal_moves):
             fen_cache.add(board_candidate.fen())
