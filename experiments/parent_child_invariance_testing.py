@@ -22,6 +22,7 @@ RESULT_DIR = Path(__file__).parent / Path("results/parent_child_testing")
 
 async def create_positions(
     output_queue: asyncio.Queue,
+    output_queue_max_size: int,
     data_generator: BoardGenerator,
     num_positions: int = 1,
     sleep_between_positions: float = 0.1,
@@ -52,6 +53,16 @@ async def create_positions(
             # Send the base-position to all queues
             # We store the position based on the following format:
             # (base_board, most_promising_child_board, base_score, most_promising_child_score)
+
+            # We need to prevent the output queue from deadlocking. This can happen because both,
+            # this coroutine and the 'analyze_position' coroutine, are pushing to the queue.
+            # Since the 'analyze_position' coroutine is also the consumer of the queue, it can
+            # happen that the queue is full and the 'analyze_position' coroutine is waiting for
+            # the queue to be emptied so it can push on it itself before consuming another item.
+            # This is why we need to make sure that the queue does not become full from this coroutine.
+            if output_queue.qsize() >= output_queue_max_size - 100:
+                # The queue is almost full. Wait until it is empty again
+                await output_queue.join()
             await output_queue.put((board_candidate.copy(), None, None, None))
 
             await asyncio.sleep(delay=sleep_between_positions)
@@ -271,6 +282,7 @@ async def parent_child_invariance_testing(
     data_generator_task = asyncio.create_task(
         create_positions(
             output_queue=engine_queue_in,
+            output_queue_max_size=queue_max_size,
             data_generator=data_generator,
             num_positions=num_positions,
             sleep_between_positions=sleep_after_get,
