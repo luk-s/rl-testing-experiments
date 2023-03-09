@@ -49,6 +49,7 @@ async def create_positions(
             board_candidate.push(move)
             if board_candidate.is_checkmate():
                 should_break = True
+                board_candidate.pop()
                 break
             board_candidate.pop()
 

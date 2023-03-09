@@ -2,10 +2,7 @@ from pathlib import Path
 
 import chess
 import chess.pgn
-
-from rl_testing.config_parsers.data_generator_config_parser import (
-    DatabaseBoardGeneratorConfig,
-)
+from rl_testing.config_parsers.data_generator_config_parser import DatabaseBoardGeneratorConfig
 from rl_testing.data_generators.generators import BoardGenerator
 
 DATA_PATH = data_path = Path(__file__).parent.parent.parent / "data"
@@ -94,7 +91,7 @@ class DatabaseBoardGenerator(BoardGenerator):
         self.moves_read += 1
 
         # Return the new position
-        return self.current_board
+        return self.current_board.copy()
 
 
 if __name__ == "__main__":
