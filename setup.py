@@ -8,6 +8,7 @@ setuptools.setup(
     url="https://github.com/luk-s/rl-testing-experiments",
     install_requires=[
         "asyncssh==2.12.0",
+        "chess==1.9.4",
         "imgkit==1.2.2",
         "matplotlib==3.6.1",
         "netwulf==0.1.5",
