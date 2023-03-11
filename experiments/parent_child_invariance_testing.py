@@ -188,9 +188,19 @@ async def analyze_position(
                     if base_board.find_move(edge.move.from_square, edge.move.to_square)
                     == best_move
                 ]
-                if len(edges) == 0:
-                    print("This shouldn't happen!")
-                best_edge: EdgeInfo = edges[0]
+
+                try:
+                    best_edge: EdgeInfo = edges[0]
+                except IndexError:
+                    logging.error(
+                        f"[{identifier_str}] Could not find edge corresponding to best move {best_move} "
+                        + f"for board {base_board.fen(en_passant='fen')}"
+                    )
+                    logging.error(f"[{identifier_str}] Edges: {edges}")
+                    logging.error(
+                        f"[{identifier_str}] child edges: {info['root_and_child_scores'].child_edges}"
+                    )
+                    raise
 
                 # Get the score of the best move
                 best_move_score_q = best_edge.q_value

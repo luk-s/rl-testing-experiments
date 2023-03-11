@@ -2,7 +2,7 @@ import asyncio
 from typing import Any, Callable, Iterable, List, Optional, Tuple, Union
 
 import chess
-from chess import Move
+from chess import InvalidMoveError, Move
 from chess.engine import (
     INFO_ALL,
     INFO_CURRLINE,
@@ -43,7 +43,7 @@ def parse_uci_relaxed(self, uci: str) -> Move:
     """
     try:
         move = Move.from_uci(uci)
-    except chess.InvalidMoveError:
+    except InvalidMoveError:
         move = Move.from_uci("0000")
 
     if not move:
@@ -195,7 +195,7 @@ def _parse_uci_bestmove_relaxed(board: chess.Board, args: str) -> BestMove:
             # Testing it on the copy first to not change the state of the original
             board_copy.push_uci(tokens[0].lower())
             move = board.push_uci(tokens[0].lower())
-        except (ValueError, chess.InvalidMoveError) as err:
+        except (ValueError, InvalidMoveError) as err:
             failed = True
             print("Illegal move detected!")
             print(err)
