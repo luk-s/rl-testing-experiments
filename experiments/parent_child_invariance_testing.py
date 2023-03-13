@@ -185,7 +185,9 @@ async def analyze_position(
                     # This strange comparison is only necessary because LC0 has a stupid bug where each castling
                     # has two different notations (e.g. e1g1 and e1h1). This line of code basically
                     # casts one of the two notations to the other one.
-                    if base_board.find_move(edge.move.from_square, edge.move.to_square)
+                    if base_board.find_move(
+                        edge.move.from_square, edge.move.to_square, promotion=edge.move.promotion
+                    )
                     == best_move
                 ]
 
@@ -198,7 +200,7 @@ async def analyze_position(
                     )
                     logging.error(f"[{identifier_str}] Edges: {edges}")
                     logging.error(
-                        f"[{identifier_str}] child edges: {info['root_and_child_scores'].child_edges}"
+                        f"[{identifier_str}] child edges: {[edge.move for edge in info['root_and_child_scores'].child_edges]}"
                     )
                     raise
 
