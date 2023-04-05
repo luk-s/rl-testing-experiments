@@ -147,6 +147,7 @@ old/
 *old.py
 *OLD.py
 *OLD.txt
+*.csv
 *.zip
 *OLD
 *old

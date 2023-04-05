@@ -85,14 +85,18 @@ def is_really_valid(board: chess.Board) -> bool:
 def plot_board(
     board: chess.Board,
     title: str = "",
-    fen: str = "",
+    x_label: str = "",
     fontsize: int = 22,
+    plot_size: int = 800,
     save: bool = True,
     show: bool = False,
     save_path: Union[str, Path] = "",
+    **kwargs,
 ) -> None:
+    margin = 15
+
     # Get the XML representation of an SVG image of the board
-    svg = chess.svg.board(board, size=800)
+    svg = chess.svg.board(board, size=plot_size, **kwargs)
 
     # Convert the XML representation into an SVG image
     transformed = imgkit.from_string(svg, output_path=False, options={"format": "png"})
@@ -114,9 +118,12 @@ def plot_board(
     ax = plt.gca()
     ax.get_yaxis().set_visible(False)
 
-    if fen:
+    plt.xlim(0, plot_size + margin)
+    plt.ylim(plot_size + margin, 0)
+
+    if x_label:
         font["size"] = fontsize - 4
-        plt.xlabel(fen, fontdict=font)
+        plt.xlabel(x_label, fontdict=font)
 
     # x_axis.set_visible(False)
     plt.xticks([])
@@ -131,6 +138,7 @@ def plot_board(
 
         save_path = Path(save_path)
         save_path.absolute().parent.mkdir(parents=True, exist_ok=True)
+        plt.tight_layout()
         plt.savefig(save_path, dpi=400)
 
     if show:
@@ -140,11 +148,6 @@ def plot_board(
 
 
 if __name__ == "__main__":
-    board = chess.Board("6rk/1bp1q2p/p4p1Q/1p1ppPP1/3bP3/2NP3R/PPP3r1/1K1R4 b - - 0 24")
-    board = remove_pawns(board)
+    board1 = chess.Board("r4r1k/1pp3pp/p1pb1q2/4Nb2/2Q2B2/3P4/PPP2P2/RN3RK1 w - - 3 17")
 
-    for i in range(4):
-        print(board.fen())
-        board = board.transform(rotate_90_clockwise)
-
-    print(board.transform(chess.flip_vertical).fen())
+    plot_board(board1, title="Board 1", save_path="board1.png", x_label="Evaluation: -0.79")
