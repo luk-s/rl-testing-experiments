@@ -53,8 +53,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("pgn_path", type=str, help="Path to the PGN file.")
-    parser.add_argument("output_path", type=str, help="Path to the output file.")
+    parser.add_argument("--pgn_path", type=str, help="Path to the PGN file.")
+    parser.add_argument("--output_path", type=str, help="Path to the output file.")
     parser.add_argument(
         "--max_num",
         type=int,
