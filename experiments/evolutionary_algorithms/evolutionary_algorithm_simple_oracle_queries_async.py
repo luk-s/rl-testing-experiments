@@ -86,9 +86,7 @@ class SimpleOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         self.probability_decay = evolutionary_algorithm_config.probability_decay
 
         # Fitness function configs
-        self.max_num_fitness_evaluations = (
-            evolutionary_algorithm_config.max_num_fitness_evaluations
-        )
+        self.max_num_fitness_evaluations = evolutionary_algorithm_config.max_num_fitness_evaluations
         self._num_fitness_evaluations = 0
         self.fitness: Optional[DifferentialTestingFitness] = None
         self.fitness_cache: Optional[LRUCache] = None
@@ -335,7 +333,8 @@ if __name__ == "__main__":
     # parser.add_argument("--engine_config_name1", type=str,  default="remote_400_nodes.ini")  # noqa: E501
     # parser.add_argument("--engine_config_name2", type=str,  default="remote_400_nodes.ini")  # noqa: E501
     parser.add_argument("--network_name1",       type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
-    parser.add_argument("--network_name2",       type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
+    # parser.add_argument("--network_name2",       type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
+    parser.add_argument("--network_name2",       type=str,  default="T811154_7237d93a42e03f36d6991ff0b85fece551c9e9f3dac3aed1184c1d8b54d50e90")  # noqa: E501
     parser.add_argument("--num_engines1" ,       type=int,  default=2)
     parser.add_argument("--num_engines2" ,       type=int,  default=2)
     parser.add_argument("--result_subdir",       type=str,  default="main_results")

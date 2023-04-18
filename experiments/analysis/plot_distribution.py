@@ -52,7 +52,8 @@ def differences_density_plot(
 if __name__ == "__main__":
     # result_folder = RESULT_DIRECTORY / Path("differential_testing/main_experiment/")
     # result_folder = RESULT_DIRECTORY / Path("differential_testing/main_results")
-    result_folder = RESULT_DIRECTORY / Path("evolutionary_algorithm/max_oracle_queries")
+    # result_folder = RESULT_DIRECTORY / Path("evolutionary_algorithm/max_oracle_queries")
+    result_folder = RESULT_DIRECTORY / Path("parent_child_testing")
     # result_folder = RESULT_DIRECTORY / Path("forced_moves/main_experiment/")
     # result_file = Path("results_ENGINE_local_5000_nodes_DATA_random_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_forced_moves_fen_database.txt")
@@ -60,18 +61,21 @@ if __name__ == "__main__":
     # result_file = Path("results_ENGINE_local_minibatch_1_1_node_DATA_database.txt")
     # result_file = Path("results_ENGINE_local_minibatch_1_400_nodes_DATA_database.txt")
     # result_file = Path("results_ENGINE_local_2500_nodes_DATA_database.txt")
-    result_file = Path("oracle_queries_2023-02-24_18:55:04.txt")
+    # result_file = Path("oracle_queries_2023-02-24_18:55:04.txt")
     # result_file = Path("oracle_queries_2023-02-24_18:55:44.txt")
     # result_file = Path("oracle_queries_2023-02-25_08:01:01.txt")
     # result_file = Path("oracle_queries_2023-02-25_08:01:24.txt")
     # result_file = Path("oracle_queries_2023-02-25_11:49:11.txt")
+    # result_file = Path("results_ENGINE_local_400_nodes_DATA_middlegame_fen_database.txt")
+    # result_file = Path("results_ENGINE_local_400_nodes_DATA_endgame_fen_database.txt")
+    result_file = Path("results_ENGINE_local_400_nodes_DATA_combined_fen_database.txt")
 
-    column_name1, column_name2 = None, None  # "score1", "score2"
-    column_difference_name = "fitness"
+    column_name1, column_name2 = "parent_score", "child_score"  # "score1", "score2"
+    column_difference_name = None  # "fitness"
     result_path = result_folder / result_file
-    x_limits = (0, 2.5)
+    x_limits = (0, 2)
     y_limits = None  # (0, 10)
-    q_vals_to_flip = []  # ["Q2"]
+    q_vals_to_flip = ["child_score"]  # ["Q2"]
     columns_to_compare = []  # ["Move1", "Move2"]
     compare_string = "!="
 
