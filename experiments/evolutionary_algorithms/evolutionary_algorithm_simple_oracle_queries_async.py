@@ -327,7 +327,7 @@ if __name__ == "__main__":
     # Engine parameters
     parser.add_argument("--seed",                type=int,  default=42)
     # parser.add_argument("--evolutionary_algorithm_config_name", type=str,  default="config_simple_population.yaml")  # noqa: E501
-    parser.add_argument("--evolutionary_algorithm_config_name", type=str,  default="config_simple_population_small.yaml")  # noqa: E501
+    parser.add_argument("--evolutionary_algorithm_config_name", type=str,  default="config_simple_population_max_oracle.yaml")  # noqa: E501
     parser.add_argument("--engine_config_name1", type=str,  default="local_400_nodes.ini")  # noqa: E501
     parser.add_argument("--engine_config_name2", type=str,  default="local_400_nodes.ini")  # noqa: E501
     # parser.add_argument("--engine_config_name1", type=str,  default="remote_400_nodes.ini")  # noqa: E501
