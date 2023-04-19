@@ -78,7 +78,7 @@ if __name__ == "__main__":
                             break
 
             print(
-                f"Found forced move {i+1}/{num_positions_to_create}: {fen} "
+                f"Found position without pawns {i+1}/{num_positions_to_create}: {fen} "
                 f"after scanning {boards_read} boards."
             )
 
