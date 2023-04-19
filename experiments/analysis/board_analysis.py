@@ -8,7 +8,11 @@ from chess.engine import Score
 
 from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
-from rl_testing.mcts.tree_parser import TreeInfo, convert_tree_to_networkx
+from rl_testing.mcts.tree_parser import (
+    TreeInfo,
+    convert_tree_to_networkx,
+    plot_networkx_tree,
+)
 from rl_testing.util.chess import cp2q
 
 
@@ -65,20 +69,25 @@ if __name__ == "__main__":
     ################
     # CONFIG START #
     ################
-    fens = ["1r6/pN4K1/3R4/n1R2qp1/PpPp2qB/6p1/p1kPpp2/bB5r b - - 46 117"]
+    fens = [
+        # "1r6/pN4K1/3R4/n1R2qp1/PpPp2qB/6p1/p1kPpp2/bB5r b - - 46 117"
+        "r5k1/r5Pp/8/1q2p3/4Q3/1p6/p2R4/K5R1 b - - 2 39",
+        "4r1k1/r5Pp/8/1q2p3/4Q3/1p6/p2R4/K5R1 w - - 3 40",
+    ]
 
     network_name = (
         # "T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2"
         "T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207"
     )
     # network_name = None
-    plot_graph = False
+    plot_graph = True
     score_type = "q"
 
     # engine_config_name = "remote_25_depth_stockfish.ini"
     # search_limit = {"depth": 40}
     # engine_config_name = "remote_debug_500_nodes.ini"
-    engine_config_name = "remote_400_nodes.ini"
+    # engine_config_name = "remote_400_nodes.ini"
+    engine_config_name = "remote_debug_400_nodes.ini"
     search_limit = {"nodes": 400}
     ################
     #  CONFIG END  #
@@ -114,5 +123,6 @@ if __name__ == "__main__":
             graph = convert_tree_to_networkx(tree, only_basic_info=True)
             print(f"Number of nodes: {len(graph.nodes)}")
             print(f"Number of edges: {len(graph.edges)}")
-            stylized_network, config = nw.visualize(graph)
+            # stylized_network, config = nw.visualize(graph)
+            plot_networkx_tree(tree, only_basic_info=True)
         index += 1

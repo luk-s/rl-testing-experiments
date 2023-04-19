@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 import chess
 import networkx as nx
 import numpy as np
-from rl_testing.util.chess import is_really_valid
+from matplotlib import pyplot as plt
 
 # from chess.engine import AnalysisResult
 if TYPE_CHECKING:
@@ -106,6 +106,8 @@ class TreeParser:
             int(multi_visit.strip()),
         )
 
+        assert visit_index > parent, "Parent index is not smaller than child index!"
+
         # If the multi-visit part is not 0, then log a warning
         if multi_visit != 0:
             print(f"WARNING: Multi-visit is not 0: {multi_visit}")
@@ -123,6 +125,7 @@ class TreeParser:
         self.node_cache[visit_index] = self.node
 
     def end_node(self) -> None:
+        assert self.node.fen is not None, "FEN is not set!"
         self.node = None
         self.parent_id = None
 
@@ -430,7 +433,7 @@ class NodeInfo(Info):
     def set_fen(self, fen: str) -> None:
         # Check if the fen string is valid.
         temp_board = chess.Board(fen)
-        if is_really_valid(temp_board):
+        if temp_board.is_valid():
             self.fen = fen
         else:
             raise ValueError(f"Fen string {fen} is not valid.")
@@ -532,11 +535,14 @@ def convert_tree_to_networkx(tree: TreeInfo, only_basic_info: bool = False) -> n
         color = color.round().astype(int)
         color_str = f"#{color[0]:0{2}x}{color[1]:0{2}x}{color[2]:0{2}x}"
 
+        x, y = node.depth_index * 10, node.depth * 5
+
         graph.add_node(
             node.visit_index if only_basic_info else node,
             color=color_str,
-            x=node.depth_index * 30,
-            y=node.depth * 5,
+            x=x,
+            y=y,
+            pos=(x, y),
         )
     for index in tree.node_cache:
         node = tree.node_cache[index]
@@ -556,3 +562,27 @@ def convert_tree_to_networkx(tree: TreeInfo, only_basic_info: bool = False) -> n
                     graph.add_edge(edge.start_node, edge.end_node, size=edge.q_value)
 
     return graph
+
+
+def plot_networkx_tree(tree: TreeInfo, only_basic_info: bool = False) -> None:
+    graph = convert_tree_to_networkx(tree, only_basic_info)
+    pos = nx.get_node_attributes(graph, "pos")
+
+    # Flip the y axis
+    for key in pos:
+        pos[key] = (pos[key][0], -pos[key][1])
+    colors = nx.get_node_attributes(graph, "color").values()
+    sizes = 1  # [graph[u][v]["size"] * 5 for u, v in graph.edges]
+    nx.draw(
+        graph,
+        pos,
+        node_color=colors,
+        # Make the node border black
+        edgecolors="black",
+        with_labels=False,
+        node_size=100,
+        width=sizes,
+        arrowsize=10,
+    )
+
+    plt.show()
