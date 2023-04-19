@@ -1,12 +1,17 @@
+import os
 from pathlib import Path
 
 import chess
+
 from rl_testing.config_parsers.data_generator_config_parser import (
     FENDatabaseBoardGeneratorConfig,
 )
 from rl_testing.data_generators.generators import BoardGenerator
 
-DATA_PATH = data_path = Path(__file__).parent.parent.parent / "data"
+if "DATASET_PATH" in os.environ:
+    DATA_PATH = Path(os.environ["DATASET_PATH"]) / "chess_data"
+else:
+    DATA_PATH = data_path = Path(__file__).parent.parent.parent / "data"
 
 
 class FENDatabaseBoardGenerator(BoardGenerator):
