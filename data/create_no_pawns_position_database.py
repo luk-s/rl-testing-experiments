@@ -28,12 +28,21 @@ if __name__ == "__main__":
         default="data/forced_move_positions_leela.txt",
         help="The name of the output file to write the positions to.",
     )
+    # Add minimum number of pieces parameter
+    parser.add_argument(
+        "--min_pieces",
+        type=int,
+        default=8,
+        help="The minimum number of pieces to have on the board.",
+    )
 
     args = parser.parse_args()
 
     data_config_name = args.data_config
     num_positions_to_create = args.num_positions
     output_file = args.output_file
+    min_pieces = args.min_pieces
+    assert 2 <= min_pieces <= 32, "min_pieces must be between 1 and 32."
 
     data_config = get_data_generator_config(
         data_config_name,
@@ -51,11 +60,22 @@ if __name__ == "__main__":
                     print(f"Scanned {boards_read} boards")
                 board = data_generator.next()
                 boards_read += 1
-                if board.legal_moves.count() == 1:
-                    fen = board.fen(en_passant="fen")
-                    if fen not in boards_found:
-                        boards_found.add(fen)
-                        break
+                if board.pawns == 0:
+
+                    # Check if the number of pieces is at least min_pieces
+                    num_fields_occupied = 0
+                    occupied_bitboard = board.occupied
+                    for _ in range(min_pieces):
+                        if occupied_bitboard == 0:
+                            break
+                        occupied_bitboard &= occupied_bitboard - 1
+                        num_fields_occupied += 1
+                    else:
+                        # If we get here, we have at least min_pieces pieces
+                        fen = board.fen(en_passant="fen")
+                        if fen not in boards_found:
+                            boards_found.add(fen)
+                            break
 
             print(
                 f"Found forced move {i+1}/{num_positions_to_create}: {fen} "
