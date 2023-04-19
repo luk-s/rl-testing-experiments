@@ -4,6 +4,21 @@ from pathlib import Path
 from rl_testing.config_parsers import get_data_generator_config
 from rl_testing.data_generators import get_data_generator
 
+
+def has_at_least_k_pieces(board, k):
+    num_fields_occupied = 0
+    occupied_bitboard = board.occupied
+    for _ in range(k):
+        if occupied_bitboard == 0:
+            break
+        occupied_bitboard &= occupied_bitboard - 1
+        num_fields_occupied += 1
+    else:
+        # If we get here, we have at least min_pieces pieces
+        return True
+    return False
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
@@ -63,15 +78,7 @@ if __name__ == "__main__":
                 if board.legal_moves.count() == 1:
                     fen = board.fen(en_passant="fen")
                     if fen not in boards_found:
-                        # Check if the number of pieces is at least min_pieces
-                        num_fields_occupied = 0
-                        occupied_bitboard = board.occupied
-                        for _ in range(min_pieces):
-                            if occupied_bitboard == 0:
-                                break
-                            occupied_bitboard &= occupied_bitboard - 1
-                            num_fields_occupied += 1
-                        else:
+                        if has_at_least_k_pieces(board, min_pieces):
                             boards_found.add(fen)
                             break
 

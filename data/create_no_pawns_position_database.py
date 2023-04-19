@@ -1,8 +1,48 @@
 import argparse
 from pathlib import Path
 
+import chess
+
 from rl_testing.config_parsers import get_data_generator_config
 from rl_testing.data_generators import get_data_generator
+from rl_testing.util.chess import is_really_valid, remove_pawns
+
+
+def has_at_least_k_pieces(board: chess.Board, k: int) -> bool:
+    num_fields_occupied = 0
+    occupied_bitboard = board.occupied
+    for _ in range(k):
+        if occupied_bitboard == 0:
+            break
+        occupied_bitboard &= occupied_bitboard - 1
+        num_fields_occupied += 1
+    else:
+        # If we get here, we have at least k pieces
+        return True
+    return False
+
+
+def has_less_than_k_pawns(board: chess.Board, k: int) -> bool:
+    num_pawns = 0
+    pawns_bitboard = board.pawns
+    for _ in range(k):
+        if pawns_bitboard == 0:
+            break
+        pawns_bitboard &= pawns_bitboard - 1
+        num_pawns += 1
+    else:
+        # If we get here, we have at least k pieces
+        return False
+    return True
+
+
+def is_legal(board: chess.Board) -> bool:
+    return board.is_valid()
+
+
+def game_over(board: chess.Board) -> bool:
+    return board.is_game_over()
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -35,6 +75,13 @@ if __name__ == "__main__":
         default=8,
         help="The minimum number of pieces to have on the board.",
     )
+    # Add the maximum number of pawns parameter
+    parser.add_argument(
+        "--max_pawns",
+        type=int,
+        default=0,
+        help="The minimum number of pawns to have on the board.",
+    )
 
     args = parser.parse_args()
 
@@ -42,6 +89,7 @@ if __name__ == "__main__":
     num_positions_to_create = args.num_positions
     output_file = args.output_file
     min_pieces = args.min_pieces
+    max_pawns = args.max_pawns
     assert 2 <= min_pieces <= 32, "min_pieces must be between 1 and 32."
 
     data_config = get_data_generator_config(
@@ -60,17 +108,20 @@ if __name__ == "__main__":
                     print(f"Scanned {boards_read} boards")
                 board = data_generator.next()
                 boards_read += 1
-                if board.pawns == 0:
+                if (
+                    not game_over(board)
+                    and has_less_than_k_pawns(board, max_pawns + 1)
+                    and has_at_least_k_pieces(board, min_pieces)
+                ):
+                    if board.pawns > 0:
+                        # Remove the pawns and check if the position is still valid
+                        board = remove_pawns(board)
+                        if board == "failed":
+                            continue
 
-                    # Check if the number of pieces is at least min_pieces
-                    num_fields_occupied = 0
-                    occupied_bitboard = board.occupied
-                    for _ in range(min_pieces):
-                        if occupied_bitboard == 0:
-                            break
-                        occupied_bitboard &= occupied_bitboard - 1
-                        num_fields_occupied += 1
-                    else:
+                        if not is_really_valid(board):
+                            continue
+
                         # If we get here, we have at least min_pieces pieces
                         fen = board.fen(en_passant="fen")
                         if fen not in boards_found:
