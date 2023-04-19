@@ -9,7 +9,7 @@ from rl_testing.config_parsers.data_generator_config_parser import (
 from rl_testing.data_generators.generators import BoardGenerator
 
 if "DATASET_PATH" in os.environ:
-    DATA_PATH = Path(os.environ["DATASET_PATH"]) / "chess_data"
+    DATA_PATH = Path(os.environ["DATASET_PATH"]) / "chess-data"
 else:
     DATA_PATH = data_path = Path(__file__).parent.parent.parent / "data"
 
