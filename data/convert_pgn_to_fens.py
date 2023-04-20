@@ -100,6 +100,10 @@ def get_fens_from_pgn(
                 board.push(move)
                 fen = board.fen()
 
+                # Make sure that the game is not over
+                if board.is_game_over():
+                    break
+
                 if mode == "middlegame" and not is_middle_game_position(
                     board, min_pieces=min_pieces
                 ):
