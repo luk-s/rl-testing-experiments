@@ -108,11 +108,7 @@ if __name__ == "__main__":
                     print(f"Scanned {boards_read} boards")
                 board = data_generator.next()
                 boards_read += 1
-                if (
-                    not game_over(board)
-                    and has_less_than_k_pawns(board, max_pawns + 1)
-                    and has_at_least_k_pieces(board, min_pieces)
-                ):
+                if not game_over(board) and has_less_than_k_pawns(board, max_pawns + 1):
                     if board.pawns > 0:
                         # Remove the pawns and check if the position is still valid
                         board = remove_pawns(board)
@@ -122,11 +118,12 @@ if __name__ == "__main__":
                         if not is_really_valid(board):
                             continue
 
-                    # If we get here, we have at least min_pieces pieces
-                    fen = board.fen(en_passant="fen")
-                    if fen not in boards_found:
-                        boards_found.add(fen)
-                        break
+                    if has_at_least_k_pieces(board, min_pieces):
+                        # If we get here, we have at least min_pieces pieces
+                        fen = board.fen(en_passant="fen")
+                        if fen not in boards_found:
+                            boards_found.add(fen)
+                            break
 
             print(
                 f"Found position without pawns {i+1}/{num_positions_to_create}: {fen} "
