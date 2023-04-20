@@ -122,11 +122,11 @@ if __name__ == "__main__":
                         if not is_really_valid(board):
                             continue
 
-                        # If we get here, we have at least min_pieces pieces
-                        fen = board.fen(en_passant="fen")
-                        if fen not in boards_found:
-                            boards_found.add(fen)
-                            break
+                    # If we get here, we have at least min_pieces pieces
+                    fen = board.fen(en_passant="fen")
+                    if fen not in boards_found:
+                        boards_found.add(fen)
+                        break
 
             print(
                 f"Found position without pawns {i+1}/{num_positions_to_create}: {fen} "
