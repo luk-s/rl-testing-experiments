@@ -349,8 +349,8 @@ if __name__ == "__main__":
     # parser.add_argument("--num_positions",      type=int,  default=100_000)
     parser.add_argument("--num_positions",      type=int,  default=5_000_000)
     # parser.add_argument("--num_positions",      type=int,  default=3)
-    # parser.add_argument("--full_logs",          type=bool, default=False)
-    parser.add_argument("--full_logs",          type=bool, default=True)
+    parser.add_argument("--full_logs",          type=bool, default=False)
+    # parser.add_argument("--full_logs",          type=bool, default=True)
     parser.add_argument("--network_path1",      type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
     parser.add_argument("--network_path2",      type=str,  default="T811154_7237d93a42e03f36d6991ff0b85fece551c9e9f3dac3aed1184c1d8b54d50e90")  # noqa: E501
     # parser.add_argument("--network_path2",      type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501

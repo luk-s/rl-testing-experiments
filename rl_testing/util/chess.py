@@ -1,7 +1,7 @@
 import datetime
 import io
 from pathlib import Path
-from typing import Union
+from typing import Callable, Union
 
 import chess
 import chess.engine
@@ -44,6 +44,13 @@ def remove_pawns(board: chess.Board) -> Union[chess.Board, str]:
         return "failed"
 
     return new_board
+
+
+def apply_transformation(board: chess.Board, transformation: Callable) -> chess.Board:
+    if transformation == "mirror":
+        return board.mirror()
+
+    return board.transform(transformation)
 
 
 def rotate_90_clockwise(board: chess.Bitboard) -> chess.Bitboard:

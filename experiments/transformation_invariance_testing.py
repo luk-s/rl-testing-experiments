@@ -14,6 +14,7 @@ from rl_testing.config_parsers import get_data_generator_config, get_engine_conf
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.util.chess import (
+    apply_transformation,
     cp2q,
     remove_pawns,
     rotate_90_clockwise,
@@ -33,6 +34,7 @@ transformation_dict = {
     "flip_anti_diag": flip_anti_diagonal,
     "flip_hor": flip_horizontal,
     "flip_vert": flip_vertical,
+    "mirror": "mirror",
 }
 
 
@@ -99,14 +101,16 @@ async def create_positions(
             # Apply the transformations to the board
             transformed_boards = [board_candidate]
             for transformation_function in transformation_functions:
-                transformed_boards.append(board_candidate.transform(transformation_function))
+                transformed_boards.append(
+                    apply_transformation(board_candidate, transformation_function)
+                )
 
             fen = board_candidate.fen(en_passant="fen")
 
-            logging.info(f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}")
+            logging.info(f"[{identifier_str}] Created base board {board_index + 1}: {fen}")
             for transformed_board in transformed_boards[1:]:
                 fen = transformed_board.fen(en_passant="fen")
-                logging.info(f"[{identifier_str}] Created transformed board: " f"{fen}")
+                logging.info(f"[{identifier_str}] Created transformed board: {fen}")
 
             for queue in queues:
                 for transform_index, transformed_board in enumerate(transformed_boards):
