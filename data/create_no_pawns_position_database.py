@@ -72,7 +72,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data_config",
         type=str,
-        default="database_late_moves.ini",
+        default="random_endgame_boards.ini",
         help="The name of the database config file to use.",
     )
     # Add number of positions to create parameter

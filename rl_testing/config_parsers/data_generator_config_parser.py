@@ -53,7 +53,10 @@ class DatabaseBoardGeneratorConfig(BoardGeneratorConfig):
         self.check_parameters()
 
     def set_parameter(self, section: str, name: str, value: str) -> None:
-        if name in self.REQUIRED_ATTRIBUTES or name in self.OPTIONAL_ATTRIBUTES:
+        if (
+            name in DatabaseBoardGeneratorConfig.REQUIRED_ATTRIBUTES
+            or name in DatabaseBoardGeneratorConfig.OPTIONAL_ATTRIBUTES
+        ):
             setattr(self, name, self.parse_string(value, raise_error=False))
         else:
             super().set_parameter(section, name, value)
@@ -76,7 +79,10 @@ class FENDatabaseBoardGeneratorConfig(BoardGeneratorConfig):
         self.check_parameters()
 
     def set_parameter(self, section: str, name: str, value: str) -> None:
-        if name in self.REQUIRED_ATTRIBUTES or name in self.OPTIONAL_ATTRIBUTES:
+        if (
+            name in FENDatabaseBoardGeneratorConfig.REQUIRED_ATTRIBUTES
+            or name in FENDatabaseBoardGeneratorConfig.OPTIONAL_ATTRIBUTES
+        ):
             setattr(self, name, self.parse_string(value, raise_error=False))
         else:
             super().set_parameter(section, name, value)
@@ -96,6 +102,7 @@ class RandomBoardGeneratorConfig(BoardGeneratorConfig):
     def __init__(
         self,
         config: Union[Dict[str, Dict[str, Any]], configparser.ConfigParser],
+        _initialize: bool = True,
     ):
         super().__init__(config=config, _initialize=False)
 
@@ -106,11 +113,53 @@ class RandomBoardGeneratorConfig(BoardGeneratorConfig):
         self.raise_error_when_failed = False
         self.seed = None
 
+        if _initialize:
+            self.set_parameters(config=config)
+            self.check_parameters()
+
+    def set_parameter(self, section: str, name: str, value: str) -> None:
+        if (
+            name in RandomBoardGeneratorConfig.REQUIRED_ATTRIBUTES
+            or name in RandomBoardGeneratorConfig.OPTIONAL_ATTRIBUTES
+        ):
+            setattr(self, name, self.parse_string(value, raise_error=False))
+        else:
+            super().set_parameter(section, name, value)
+
+
+class RandomEndgameGeneratorConfig(RandomBoardGeneratorConfig):
+    OPTIONAL_ATTRIBUTES = [
+        "no_pawns",
+        "no_free_pieces",
+        "color_balance",
+        "identical_pieces",
+    ]
+
+    def __init__(
+        self,
+        config: Union[Dict[str, Dict[str, Any]], configparser.ConfigParser],
+    ):
+        super().__init__(config=config, _initialize=False)
+
+        self.num_pieces = None
+        self.num_pieces_min = None
+        self.num_pieces_max = None
+        self.no_pawns = False
+        self.no_free_pieces = False
+        self.color_balance = False
+        self.identical_pieces = False
+        self.max_attempts_per_position = 100000
+        self.raise_error_when_failed = False
+        self.seed = None
+
         self.set_parameters(config=config)
         self.check_parameters()
 
     def set_parameter(self, section: str, name: str, value: str) -> None:
-        if name in self.REQUIRED_ATTRIBUTES or name in self.OPTIONAL_ATTRIBUTES:
+        if (
+            name in RandomEndgameGeneratorConfig.REQUIRED_ATTRIBUTES
+            or name in RandomEndgameGeneratorConfig.OPTIONAL_ATTRIBUTES
+        ):
             setattr(self, name, self.parse_string(value, raise_error=False))
         else:
             super().set_parameter(section, name, value)

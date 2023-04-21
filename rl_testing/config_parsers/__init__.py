@@ -4,6 +4,7 @@ from rl_testing.config_parsers.data_generator_config_parser import (
     DatabaseBoardGeneratorConfig,
     FENDatabaseBoardGeneratorConfig,
     RandomBoardGeneratorConfig,
+    RandomEndgameGeneratorConfig,
 )
 from rl_testing.config_parsers.engine_config_parser import (
     EngineConfig,
@@ -18,7 +19,7 @@ def get_engine_config(config_name: str, config_folder_path: str) -> EngineConfig
     # Get the engine type
     if engine_type is None:
         raise ValueError(
-            "The engine config requires a field 'engine_type' " "in the section 'General'"
+            "The engine config requires a field 'engine_type' in the section 'General'"
         )
     engine_config_class: EngineConfig
 
@@ -55,6 +56,8 @@ def get_data_generator_config(config_name: str, config_folder_path: str) -> Boar
         data_generator_config_class = FENDatabaseBoardGeneratorConfig
     elif data_generator_type == "random_board_generator":
         data_generator_config_class = RandomBoardGeneratorConfig
+    elif data_generator_type == "random_endgame_generator":
+        data_generator_config_class = RandomEndgameGeneratorConfig
     else:
         raise ValueError(f"Engine type {data_generator_type} not supported!")
 
