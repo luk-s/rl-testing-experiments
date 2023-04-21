@@ -22,6 +22,27 @@ def has_at_least_k_pieces(board: chess.Board, k: int) -> bool:
     return False
 
 
+def at_most_k_pieces_more(board: chess.Board, k: int) -> bool:
+    # Checks that White has at most k pieces more than Black
+    # and that Black has at most k pieces more than White.
+    num_white_pieces = 0
+    num_black_pieces = 0
+    white_pieces = board.occupied_co[chess.WHITE]
+    black_pieces = board.occupied_co[chess.BLACK]
+
+    # Count the number of white pieces on the board
+    while white_pieces:
+        white_pieces &= white_pieces - 1
+        num_white_pieces += 1
+
+    # Count the number of black pieces on the board
+    while black_pieces:
+        black_pieces &= black_pieces - 1
+        num_black_pieces += 1
+
+    return abs(num_white_pieces - num_black_pieces) <= k
+
+
 def has_less_than_k_pawns(board: chess.Board, k: int) -> bool:
     num_pawns = 0
     pawns_bitboard = board.pawns
@@ -82,6 +103,13 @@ if __name__ == "__main__":
         default=0,
         help="The minimum number of pawns to have on the board.",
     )
+    # Add a parameter to specify how many pieces one side can have more than the other
+    parser.add_argument(
+        "--max_pieces_more",
+        type=int,
+        default=32,
+        help="The maximum number of pieces one side can have more than the other.",
+    )
 
     args = parser.parse_args()
 
@@ -90,6 +118,7 @@ if __name__ == "__main__":
     output_file = args.output_file
     min_pieces = args.min_pieces
     max_pawns = args.max_pawns
+    max_pieces_more = args.max_pieces_more
     assert 2 <= min_pieces <= 32, "min_pieces must be between 1 and 32."
 
     data_config = get_data_generator_config(
@@ -118,7 +147,9 @@ if __name__ == "__main__":
                         if not is_really_valid(board):
                             continue
 
-                    if has_at_least_k_pieces(board, min_pieces):
+                    if has_at_least_k_pieces(board, min_pieces) and at_most_k_pieces_more(
+                        board, max_pieces_more
+                    ):
                         # If we get here, we have at least min_pieces pieces
                         fen = board.fen(en_passant="fen")
                         if fen not in boards_found:
