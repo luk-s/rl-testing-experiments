@@ -93,8 +93,8 @@ def random_endgame_fen_candidate(
     # Create the FEN
     board = chess.Board()
     board.set_piece_map(piece_map)
-    board.halfmove_clock = _rng.integers(3, 41)
     board.fullmove_number = _rng.integers(30, 71)
+    board.halfmove_clock = _rng.integers(0, board.fullmove_number // 3)
     board.set_castling_fen("")
 
     return board.fen()
