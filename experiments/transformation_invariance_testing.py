@@ -13,10 +13,9 @@ from chess import flip_anti_diagonal, flip_diagonal, flip_horizontal, flip_verti
 from rl_testing.config_parsers import get_data_generator_config, get_engine_config
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
+from rl_testing.util.chess import apply_transformation, cp2q
+from rl_testing.util.chess import remove_pawns as remove_pawns_func
 from rl_testing.util.chess import (
-    apply_transformation,
-    cp2q,
-    remove_pawns,
     rotate_90_clockwise,
     rotate_180_clockwise,
     rotate_270_clockwise,
@@ -77,6 +76,7 @@ async def create_positions(
     queues: List[asyncio.Queue],
     data_generator: BoardGenerator,
     transformation_functions: List[Callable[[chess.Bitboard], chess.Bitboard]],
+    remove_pawns: bool = False,
     num_positions: int = 1,
     sleep_between_positions: float = 0.1,
     identifier_str: str = "",
@@ -91,8 +91,8 @@ async def create_positions(
         # Create a random chess position
         board_candidate = data_generator.next()
 
-        if board_candidate != "failed":
-            board_candidate = remove_pawns(board_candidate)
+        if board_candidate != "failed" and remove_pawns:
+            board_candidate = remove_pawns_func(board_candidate)
 
         # Check if the generated position was valid
         if board_candidate != "failed" and board_candidate.fen() not in fen_cache:
@@ -253,6 +253,7 @@ async def transformation_invariance_testing(
     *,
     search_limits: Optional[Dict[str, Any]] = None,
     result_file_path: Optional[Union[str, Path]] = None,
+    remove_pawns: bool = False,
     num_positions: int = 1,
     queue_max_size: int = 10000,
     num_engine_workers: int = 2,
@@ -277,6 +278,7 @@ async def transformation_invariance_testing(
             queues=[engine_queue_in],
             data_generator=data_generator,
             transformation_functions=transformation_functions,
+            remove_pawns=remove_pawns,
             num_positions=num_positions,
             sleep_between_positions=sleep_after_get,
             identifier_str="BOARD_GENERATOR",
@@ -351,13 +353,14 @@ if __name__ == "__main__":
     parser.add_argument("--engine_config_name",             type=str, default="local_400_nodes.ini")  # noqa: E501
     # parser.add_argument("--engine_config_name",             type=str, default="remote_400_nodes.ini")  # noqa: E501
     parser.add_argument("--data_config_name",               type=str, default="database.ini")  # noqa: E501
-    parser.add_argument("--num_positions",                  type=int, default=100_000)  # noqa: E501
+    parser.add_argument("--remove_pawns",                   action="store_true")  # noqa: E501
+    parser.add_argument("--num_positions",                  type=int, default=1_000_000)  # noqa: E501
     # parser.add_argument("--num_positions",                  type=int, default=100)  # noqa: E501
     # parser.add_argument("--network_path",                   type=str, default="network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42")  # noqa: E501
-    parser.add_argument("--network_path",                   type=str, default="network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501
+    parser.add_argument("--network_path",                   type=str, default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
     parser.add_argument("--transformations",                type=str, default=["rot90", "rot180", "rot270", "flip_diag", "flip_anti_diag", "flip_hor", "flip_vert"], nargs="+",  # noqa: E501
-                                                            choices=["rot90", "rot180", "rot270", "flip_diag", "flip_anti_diag", "flip_hor", "flip_vert"])  # noqa: E501 E127
-    parser.add_argument("--queue_max_size",                 type=int, default=10000)  # noqa: E501
+                                                            choices=["rot90", "rot180", "rot270", "flip_diag", "flip_anti_diag", "flip_hor", "flip_vert", "mirror"])  # noqa: E501 E127
+    parser.add_argument("--queue_max_size",                 type=int, default=100_000)  # noqa: E501
     parser.add_argument("--num_engine_workers",             type=int, default=2)  # noqa: E501
     parser.add_argument("--result_subdir",                  type=str, default="")  # noqa: E501
     # fmt: on
@@ -423,6 +426,11 @@ if __name__ == "__main__":
         )
         result_file.write(f"{transformation_str[:-1]}\n")
 
+    # Extract the boolean parameter
+    remove_pawns = args.remove_pawns
+    if remove_pawns is None:
+        remove_pawns = False
+
     # Run the differential testing
     start_time = time.perf_counter()
 
@@ -435,6 +443,7 @@ if __name__ == "__main__":
             transformation_functions=transformation_functions,
             search_limits=engine_config.search_limits,
             result_file_path=result_file_path,
+            remove_pawns=remove_pawns,
             num_positions=args.num_positions,
             queue_max_size=args.queue_max_size,
             num_engine_workers=args.num_engine_workers,
