@@ -383,12 +383,12 @@ if __name__ == "__main__":
     parser.add_argument("--engine_config_name",    type=str, default="local_400_nodes.ini")  # noqa: E501
     # parser.add_argument("--engine_config_name",    type=str, default="remote_400_nodes.ini")  # noqa: E501
     parser.add_argument("--data_config_name",      type=str, default="database.ini")  # noqa: E501
-    parser.add_argument("--num_positions",         type=int, default=100_000)  # noqa: E501
+    parser.add_argument("--num_positions",         type=int, default=1_000_000)  # noqa: E501
     # parser.add_argument("--num_positions",         type=int, default=100)  # noqa: E501
     # parser.add_argument("--network_path",          type=str, default="network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42")  # noqa: E501
     parser.add_argument("--network_path",          type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa: E501
     # parser.add_argument("--network_path",          type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa: E501    
-    parser.add_argument("--queue_max_size",        type=int, default=10_000)  # noqa: E501
+    parser.add_argument("--queue_max_size",        type=int, default=100_000)  # noqa: E501
     parser.add_argument("--num_engine_workers",    type=int, default=4)  # noqa: E501
     parser.add_argument("--result_subdir",         type=str, default="")  # noqa: E501
     # fmt: on
