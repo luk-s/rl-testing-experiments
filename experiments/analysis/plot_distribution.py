@@ -23,7 +23,8 @@ def differences_density_plot(
     column_name2: Optional[str] = None,
     x_limits: Tuple[float, float] = (0, 2),
     y_limits: Optional[Tuple[float, float]] = None,
-) -> None:
+    title: Optional[str] = None,
+) -> pd.DataFrame:
     if column_name1 is not None and column_name2 is not None:
         dataframe = compute_differences(dataframe, column_name1, column_name2)
     else:
@@ -46,11 +47,16 @@ def differences_density_plot(
     print(max_difference)
     _, y_max = plt.gca().get_ylim()
     plt.vlines([max_difference], ymin=[0], ymax=y_max, colors=["red"])
+    if title is not None:
+        plt.title(title)
     plt.show()
+
+    return dataframe
 
 
 if __name__ == "__main__":
-    result_folder = RESULT_DIRECTORY / Path("differential_testing/main_results")
+    # result_folder = RESULT_DIRECTORY / Path("differential_testing/main_results")
+    result_folder = RESULT_DIRECTORY / Path("final_temp_data")
     # result_folder = RESULT_DIRECTORY / Path("evolutionary_algorithm/max_oracle_queries")
     # result_folder = RESULT_DIRECTORY / Path("parent_child_testing")
     # result_folder = RESULT_DIRECTORY / Path("forced_moves/main_experiment/")
@@ -71,9 +77,16 @@ if __name__ == "__main__":
     # This one contains the example we're using in the paper
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_combined_fen_database.txt")
     # result_file = Path("results_ENGINE_local_400_nodes_DATA_endgame_fen_database.txt")
-    result_file = Path("results_ENGINE_local_400_nodes_DATA_middlegame_fen_database.txt")
+    # result_file = Path("results_ENGINE_local_400_nodes_DATA_middlegame_fen_database.txt")
+    result_file = Path(
+        "mirror_results_ENGINE_local_400_nodes_DATA_final_middlegame_master_dense_fen.txt"  # Not good! Current outliers are just instabilities # noqa
+        # "parent_child_results_ENGINE_local_400_nodes_DATA_final_forced_moves_master_fen.txt"  # Good! # noqa
+        # "parent_child_results_ENGINE_local_400_nodes_DATA_final_middlegame_master_dense_fen.txt"  # Almost good # noqa
+        # "parent_child_results_ENGINE_local_400_nodes_DATA_final_endgame_master_dense_fen.txt"  # Good! # noqa
+    )
 
-    column_name1, column_name2 = "score1", "score2"  # "parent_score", "child_score"
+    title = "Recommended move testing: Endgame positions from Master games"
+    column_name1, column_name2 = "original", "mirror"  # "parent_score", "child_score"  #
     column_difference_name = None  # "fitness"
     result_path = result_folder / result_file
     x_limits = (0, 2)
@@ -99,10 +112,15 @@ if __name__ == "__main__":
             dataframe, *columns_to_compare, compare_string=compare_string
         )
 
-    differences_density_plot(
+    dataframe = differences_density_plot(
         dataframe=dataframe,
         column_name1=column_name1,
         column_name2=column_name2,
         x_limits=x_limits,
         y_limits=y_limits,
+        title=title,
     )
+
+    # Store the dataframe
+    store_path = str(result_path).split(".")[0] + "_differences_sorted.csv"
+    dataframe.to_csv(store_path)
