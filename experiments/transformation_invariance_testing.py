@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Union
 
@@ -409,8 +410,13 @@ if __name__ == "__main__":
     # Build the result file path
     result_directory = RESULT_DIR / args.result_subdir
     result_directory.mkdir(parents=True, exist_ok=True)
+
+    # Store current date and time as string
+    now = datetime.now()
+    dt_string = now.strftime("%Y_%m_%d_%H:%M:%S")
+
     result_file_path = result_directory / Path(
-        f"results_ENGINE_{engine_config_name}_DATA_{data_config_name}.txt"
+        f"results_ENGINE_{engine_config_name}_DATA_{data_config_name}_{dt_string}.txt"
     )
 
     # Store the experiment configuration in the result file
