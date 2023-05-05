@@ -153,3 +153,5 @@ old/
 *old
 tensorboard
 experiments/analysis/images
+wandb/*
+logs/*
