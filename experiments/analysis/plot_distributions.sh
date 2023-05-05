@@ -56,7 +56,22 @@ fi
 COMMON_ARGS="$COMMON_ARGS $SAVE_RESULT_CSV_STRING $SAVE_PLOT_STRING $SHOW_PLOT_STRING"
 
 ## Plot the distributions
+echo "============"
+echo "Forced moves"
+echo "============"
 python3 experiments/analysis/plot_distribution.py --result_path $FILE_FORCED_MOVES --title $TITLE_FORCED_MOVES $COMMON_ARGS $PARENT_CHILD_EXPERIMENT_ARGS
+
+echo "======================="
+echo "Best moves (middlegame)"
+echo "======================="
 python3 experiments/analysis/plot_distribution.py --result_path $FILE_BEST_MOVES_MIDDLEGAMES --title $TITLE_BEST_MOVES_MIDDLEGAMES $COMMON_ARGS $PARENT_CHILD_EXPERIMENT_ARGS
+
+echo "====================="
+echo "Best moves (endgames)"
+echo "====================="
 python3 experiments/analysis/plot_distribution.py --result_path $FILE_BEST_MOVES_ENDGAMES --title $TITLE_BEST_MOVES_ENDGAMES $COMMON_ARGS $PARENT_CHILD_EXPERIMENT_ARGS
+
+echo "============"
+echo "Mirror board"
+echo "============"
 python3 experiments/analysis/plot_distribution.py --result_path $FILE_MIRROR_BOARD --title $TITLE_MIRROR_BOARD $COMMON_ARGS $MIRROR_EXPERIMENT_ARGS
