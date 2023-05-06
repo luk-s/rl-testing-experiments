@@ -52,7 +52,7 @@ async def create_positions(
 
             # Log the base position
             fen = board_candidate.fen(en_passant="fen")
-            logging.info(f"[{identifier_str}] Created base board {board_index + 1}: " f"{fen}")
+            logging.info(f"[{identifier_str}] Created base board {board_index + 1}: {fen}")
 
             # Send the base position to all queues
             for queue in queues:
@@ -117,7 +117,7 @@ async def analyze_position(
             # Add an error to the receiver queue
             await producer_queue.put((board, "invalid", "invalid"))
         else:
-            score_cp = info["score"].relative.score(mate_score=12800)
+            score_cp = info["score"].relative.score(mate_score=12780)
 
             # Check if the computed score is valid
             if engine_generator is not None and not engine_generator.cp_score_valid(score_cp):
@@ -125,9 +125,9 @@ async def analyze_position(
 
             else:
                 # Add the board to the receiver queue
-                # The 12800 is used as maximum value because we use the q2cp function
+                # The 12780 is used as maximum value because we use the q2cp function
                 # to convert q_values to centipawns. This formula has values in
-                # [-12800, 12800] for q_values in [-1, 1]
+                # [-12780, 12780] for q_values in [-1, 1]
                 await producer_queue.put(
                     (
                         board,
@@ -175,7 +175,7 @@ async def evaluate_candidates(
 
             # Write the found adversarial example into a file
             result_str = (
-                f"{fen},{score_reference},{move_reference}," f"{score_ensemble},{move_ensemble}\n"
+                f"{fen},{score_reference},{move_reference},{score_ensemble},{move_ensemble}\n"
             )
 
             # Write the result to the file

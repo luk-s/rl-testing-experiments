@@ -93,7 +93,7 @@ async def analyze_positions(
                 info = result
 
             best_move = info["pv"][0]
-            score_cp = info["score"].relative.score(mate_score=12800)
+            score_cp = info["score"].relative.score(mate_score=12780)
 
         except chess.engine.EngineTerminatedError:
             if engine_generator is None or network_name is None:

@@ -49,7 +49,7 @@ async def analyze_with_engine(
         info = await engine.analyse(board, chess.engine.Limit(**search_limits))
 
         # Extract the score
-        cp_score = info["score"].relative.score(mate_score=12800)
+        cp_score = info["score"].relative.score(mate_score=12780)
         if score_type == "cp":
             engine_scores.append(cp_score)
         elif score_type == "q":

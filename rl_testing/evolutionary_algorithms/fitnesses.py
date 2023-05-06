@@ -287,7 +287,7 @@ class DifferentialTestingFitness(Fitness):
                 )
 
             else:
-                score_cp = info["score"].relative.score(mate_score=12800)
+                score_cp = info["score"].relative.score(mate_score=12780)
 
                 # Check if the computed score is valid
                 if engine_generator is not None and not engine_generator.cp_score_valid(score_cp):

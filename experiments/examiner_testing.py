@@ -95,7 +95,7 @@ async def create_positions(
         # Check if the generated position was valid
         if board_candidate != "failed":
             fen = board_candidate.fen(en_passant="fen")
-            logging.info(f"[{identifier_str}] Created board {board_index + 1}: " f"{fen}")
+            logging.info(f"[{identifier_str}] Created board {board_index + 1}: {fen}")
             await data_queue.put(board_candidate.copy())
             for queue_in, queue_out, queue_identifier_str in analysis_queue_tuples:
                 # Assign low priority to the new boards (0 = high, 1 = low)
@@ -141,8 +141,7 @@ async def create_candidates(
             await asyncio.sleep(delay=sleep_after_get)
 
             logging.info(
-                f"[{identifier_str}] Received board {board_counter}: "
-                + board.fen(en_passant="fen")
+                f"[{identifier_str}] Received board {board_counter}: " + board.fen(en_passant="fen")
             )
 
             # Check if the board is promising
@@ -470,15 +469,15 @@ async def analyze_position(
             # Add an error to the receiver queue
             await producer_queue.put((board, "invalid"))
         else:
-            score_cp = info["score"].relative.score(mate_score=12800)
+            score_cp = info["score"].relative.score(mate_score=12780)
             # Check if the computed score is valid
             if engine_generator is not None and not engine_generator.cp_score_valid(score_cp):
                 await producer_queue.put((board, "invalid"))
             else:
                 # Add the board to the receiver queue
-                # The 12800 is used as maximum value because we use the q2cp function
+                # The 12780 is used as maximum value because we use the q2cp function
                 # to convert q_values to centipawns. This formula has values in
-                # [-12800, 12800] for q_values in [-1, 1]
+                # [-12780, 12780] for q_values in [-1, 1]
                 await producer_queue.put((board, cp2q(score_cp)))
         finally:
             consumer_queue.task_done()

@@ -108,7 +108,7 @@ async def analyze_positions(
                 board, chess.engine.Limit(**search_limits), game=analysis_counter
             )
             best_move = info["pv"][0]
-            score_cp = info["score"].relative.score(mate_score=12800)
+            score_cp = info["score"].relative.score(mate_score=12780)
         except chess.engine.EngineTerminatedError:
             if engine_generator is None or network_name is None:
                 logging.info(f"[{identifier_str}] Can't restart engine due to missing generator")

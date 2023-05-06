@@ -16,11 +16,11 @@ AGGRESSIVE_VALIDATION = True
 
 
 def q2cp(q_value: float) -> float:
-    return chess.engine.Cp(round(111.714640912 * np.tan(1.5620688421 * q_value)))
+    return chess.engine.Cp(round(90 * np.tan(1.5620688421 * q_value)))
 
 
 def cp2q(cp_value: float) -> float:
-    return np.arctan(cp_value / 111.714640912) / 1.5620688421
+    return np.arctan(cp_value / 90) / 1.5637541897
 
 
 def fen_to_file_name(fen: str, suffix: str = ""):
