@@ -6,17 +6,31 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import chess
 import chess.engine
 import pandas as pd
+from chess import flip_anti_diagonal, flip_diagonal, flip_horizontal, flip_vertical
 from chess.engine import Score
 
 from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
-from rl_testing.mcts.tree_parser import (
-    NodeInfo,
-    TreeInfo,
-    convert_tree_to_networkx,
-    plot_networkx_tree,
+from rl_testing.mcts.tree_parser import NodeInfo, TreeInfo
+from rl_testing.util.chess import (
+    apply_transformation,
+    cp2q,
+    plot_two_boards,
+    rotate_90_clockwise,
+    rotate_180_clockwise,
+    rotate_270_clockwise,
 )
-from rl_testing.util.chess import cp2q, plot_two_boards, transform_board_to_png
+
+transformation_dict = {
+    "rot90": rotate_90_clockwise,
+    "rot180": rotate_180_clockwise,
+    "rot270": rotate_270_clockwise,
+    "flip_diag": flip_diagonal,
+    "flip_anti_diag": flip_anti_diagonal,
+    "flip_hor": flip_horizontal,
+    "flip_vert": flip_vertical,
+    "mirror": "mirror",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,6 +52,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--show_plot", action="store_true", help="Show the resulting plots", required=False, default=False)  # noqa
     # fmt: on
     return parser.parse_args()
+
+
+def build_second_fens(original_fens: List[str], transformation_name: str) -> List[str]:
+    assert transformation_name.startswith(
+        "create_"
+    ), "Invalid transformation name! Must start with 'create_'"
+
+    # Remove the prefix
+    transformation_name = transformation_name.replace("create_", "")
+
+    assert transformation_name in transformation_dict, (
+        f"Invalid transformation name: {transformation_name}. Must be one of"
+        f" {list(transformation_dict.keys())}"
+    )
+
+    # Get the transformation function
+    transformation_function = transformation_dict[transformation_name]
+
+    # Build the second fens
+    second_fens = []
+    for fen in original_fens:
+        board = chess.Board(fen=fen)
+        second_board = apply_transformation(board, transformation_function)
+        second_fens.append(second_board.fen(en_passant="fen"))
+
+    return second_fens
 
 
 async def analyze_with_engine(
@@ -134,6 +174,8 @@ def extract_win_prob_and_best_move_from_verbose_stat(
         q_value = best_edge.q_value
         d_value = best_edge.draw_value
 
+    print(f"fen: {verbose_stat.fen}, q_value: {q_value}, d_value: {d_value}")
+
     if flip_q_value:
         q_value *= -1
 
@@ -188,11 +230,23 @@ def create_two_board_plot(
     # Create the x-axis labels
     x_label1 = f"Win probability:{first_spaces}{first_win_prob}% for {first_color}"  # 16
     if best_move_first:
-        x_label1 += f"\nBest move:{first_spaces + ' ' * 6}{str(best_move_first)}"  # 10
+        first_line_length = len(x_label1)
+        move_san = first_board.san(best_move_first)
+        second_line = f"\nBest move:{first_spaces + ' ' * 7}{move_san}"  # 10
+        second_line_length = len(second_line)
+        x_label1 += second_line
+        if first_line_length > second_line_length:
+            x_label1 += " " * (first_line_length - second_line_length)
 
     x_label2 = f"Win probability:{second_spaces}{second_win_prob}% for {second_color}"
     if best_move_second:
-        x_label2 += f"\nBest move:{}{str(best_move_second)}"
+        first_line_length = len(x_label2)
+        move_san = second_board.san(best_move_second)
+        second_line = f"\nBest move:{second_spaces + ' ' * 7}{move_san}"
+        second_line_length = len(second_line)
+        x_label2 += second_line
+        if first_line_length > second_line_length:
+            x_label2 += " " * (first_line_length - second_line_length)
 
     # Build the arrows of the best moves
     arrows1 = []
@@ -233,7 +287,10 @@ def plot_interesting_examples(args: argparse.Namespace):
 
     # Extract the FENs
     first_fens = dataframe[[args.fen_column1]].values.transpose().tolist()[0]
-    second_fens = dataframe[[args.fen_column2]].values.transpose().tolist()[0]
+    if "create" not in args.fen_column2:
+        second_fens = dataframe[[args.fen_column2]].values.transpose().tolist()[0]
+    else:
+        second_fens = build_second_fens(first_fens[: args.num_examples], args.fen_column2)
 
     # Extract only the first args.num_examples
     first_fens = first_fens[: args.num_examples]
@@ -248,10 +305,13 @@ def plot_interesting_examples(args: argparse.Namespace):
     )
 
     # Extract the win probabilities
+    print("First Scores:")
     first_win_probs_and_best_moves = [
         extract_win_prob_and_best_move_from_verbose_stat(stat, args.score_type1)
         for stat in first_stats
     ]
+
+    print("Second Scores:")
     second_win_probs_and_best_moves = [
         extract_win_prob_and_best_move_from_verbose_stat(
             stat, args.score_type2, args.flip_second_score

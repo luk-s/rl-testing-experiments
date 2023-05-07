@@ -137,7 +137,7 @@ def plot_board(
 
     if x_label:
         font["size"] = fontsize - 4
-        plt.xlabel(x_label, fontdict=font)
+        plt.xlabel(x_label, fontdict=font, loc="left")
 
     # x_axis.set_visible(False)
     plt.xticks([])
