@@ -197,7 +197,7 @@ async def analyze_position(
 
             else:  # Case 2
                 # Get the score of the most promising child board
-                most_promising_child_score_cp = info["score"]
+                most_promising_child_score_cp = info["score"].relative.score(mate_score=12780)
                 most_promising_child_score_q = cp2q(most_promising_child_score_cp)
 
                 # Add the board to the receiver queue
