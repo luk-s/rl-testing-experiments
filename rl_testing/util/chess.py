@@ -1,7 +1,7 @@
 import datetime
 import io
 from pathlib import Path
-from typing import Callable, Union
+from typing import Callable, List, Union
 
 import chess
 import chess.engine
@@ -89,19 +89,7 @@ def is_really_valid(board: chess.Board) -> bool:
     return board.is_valid()
 
 
-def plot_board(
-    board: chess.Board,
-    title: str = "",
-    x_label: str = "",
-    fontsize: int = 22,
-    plot_size: int = 800,
-    save: bool = True,
-    show: bool = False,
-    save_path: Union[str, Path] = "",
-    **kwargs,
-) -> None:
-    margin = 15
-
+def transform_board_to_png(board: chess.Board, plot_size: int = 800, **kwargs) -> np.ndarray:
     # Get the XML representation of an SVG image of the board
     svg = chess.svg.board(board, size=plot_size, **kwargs)
 
@@ -113,6 +101,25 @@ def plot_board(
 
         # Read the image as if it was a file
         im = mimage.imread(image_bytes)
+
+    return im
+
+
+def plot_board(
+    board: chess.Board,
+    title: str = "",
+    x_label: str = "",
+    fontsize: int = 22,
+    plot_size: int = 800,
+    save: bool = True,
+    show: bool = False,
+    save_path: Union[str, Path] = "",
+    close_plot: bool = True,
+    **kwargs,
+) -> None:
+    margin = 15
+
+    im = transform_board_to_png(board, plot_size=plot_size, **kwargs)
 
     # Plot the image
     plt.imshow(im)
@@ -150,6 +157,74 @@ def plot_board(
 
     if show:
         plt.show()
+
+    if close_plot:
+        plt.close()
+
+
+def plot_two_boards(
+    board1: chess.Board,
+    board2: chess.Board,
+    arrows1: List[chess.svg.Arrow] = [],
+    arrows2: List[chess.svg.Arrow] = [],
+    title1: str = "",
+    title2: str = "",
+    x_label1: str = "",
+    x_label2: str = "",
+    fontsize: int = 22,
+    plot_size: int = 800,
+    save: bool = True,
+    show: bool = False,
+    save_path: Union[str, Path] = "",
+    **kwargs,
+):
+    if save:
+        assert save_path != "", "If save is True, save_path must be specified!"
+    # margin = 15
+
+    # Create the plot
+    # figure, (ax1, ax2) = plt.subplots(1, 2)
+
+    # Build the images
+    # ax1.imshow(transform_board_to_png(board1, plot_size=plot_size, **kwargs))
+    # ax2.imshow(transform_board_to_png(board2, plot_size=plot_size, **kwargs))
+
+    plt.subplot(1, 2, 1)
+    plot_board(
+        board1,
+        title=title1,
+        x_label=x_label1,
+        fontsize=fontsize,
+        plot_size=plot_size,
+        save=False,
+        show=False,
+        close_plot=False,
+        arrows=arrows1,
+        **kwargs,
+    )
+
+    plt.subplot(1, 2, 2)
+    plot_board(
+        board2,
+        title=title2,
+        x_label=x_label2,
+        fontsize=fontsize,
+        plot_size=plot_size,
+        save=False,
+        show=False,
+        close_plot=False,
+        arrows=arrows2,
+        **kwargs,
+    )
+
+    if show:
+        plt.show()
+
+    if save:
+        save_path = Path(save_path)
+        save_path.absolute().parent.mkdir(parents=True, exist_ok=True)
+        plt.tight_layout()
+        plt.savefig(save_path, dpi=400)
 
     plt.close()
 
