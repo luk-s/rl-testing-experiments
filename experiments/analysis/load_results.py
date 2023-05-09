@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union
 
 import pandas as pd
 
@@ -45,11 +45,15 @@ def flip_q_values(dataframe: pd.DataFrame, column_name: str) -> pd.DataFrame:
     return dataframe
 
 
-def compute_differences(
-    dataframe: pd.DataFrame, column_name1: str, column_name2: str
-) -> pd.DataFrame:
-    dataframe["difference"] = dataframe[column_name1] - dataframe[column_name2]
-    dataframe["difference"] = dataframe["difference"].abs()
+def compute_differences(dataframe: pd.DataFrame, *score_columns: List[str]) -> pd.DataFrame:
+    print(f"columns = {dataframe.columns}")
+    print(f"scores = {score_columns}")
+
+    # Extract all columns which contain score values
+    scores: pd.DataFrame = dataframe[list(score_columns)]
+
+    # Compute the row-wise difference between the columns
+    dataframe["difference"] = scores.max(axis=1) - scores.min(axis=1)
     dataframe = dataframe.sort_values(by="difference", ascending=False)
     return dataframe
 

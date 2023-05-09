@@ -136,7 +136,7 @@ def plot_board(
     plt.ylim(plot_size + margin, 0)
 
     if x_label:
-        font["size"] = fontsize - 4
+        font["size"] = fontsize - 3
         plt.xlabel(x_label, fontdict=font, loc="left")
 
     # x_axis.set_visible(False)

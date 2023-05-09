@@ -39,11 +39,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--result_path", type=str, help="Path to result file which stores the results that should be analyzed", required=True)  # noqa
     parser.add_argument("--score_type1", type=str, help="Whether the score of the root node should be extracted or the score of the best move for each first position", required=False, choices=["node", "best_move"], default="best_move")  # noqa
     parser.add_argument("--score_type2", type=str, help="Whether the score of the root node should be extracted or the score of the best move for each second position", required=False, choices=["node", "best_move"], default="node")  # noqa
+    parser.add_argument("--build_fens_from_transformations", action="store_true", help="Whether the fens should be built from transformations", required=False, default=False)  # noqa
     parser.add_argument("--num_examples", type=int, help="Number of examples to plot", required=False, default=10)  # noqa
     parser.add_argument("--engine_config_name", type=str, help="Name of the engine config to use", required=True)  # noqa
     parser.add_argument("--network_name", type=str, default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa
     parser.add_argument("--fen_column1", type=str, help="Name of the column storing the first fen value", required=False, default="parent_fen")  # noqa
     parser.add_argument("--fen_column2", type=str, help="Name of the column storing the second fen value", required=False, default="child_fen")  # noqa
+    parser.add_argument("--score_column1", type=str, help="Name of the column storing the first score value. Only required if the fens are built from transformations.", required=False, default=None)  # noqa
     parser.add_argument("--flip_second_score", action="store_true", help="Whether the second Q-value should be flipped (multiplied by -1)", required=False, default=False)  # noqa
     parser.add_argument("--show_best_move_first", action="store_true", help="Whether the best move should be shown for the first position", required=False, default=False)  # noqa
     parser.add_argument("--show_best_move_second", action="store_true", help="Whether the best move should be shown for the second position", required=False, default=False)  # noqa
@@ -52,6 +54,72 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--show_plot", action="store_true", help="Show the resulting plots", required=False, default=False)  # noqa
     # fmt: on
     return parser.parse_args()
+
+
+def build_fens_from_transformations(
+    dataframe: pd.DataFrame,
+    first_fen_column: str,
+    first_score_column: str,
+    original_fens: List[str],
+) -> Tuple[List[str], List[str]]:
+    # Only extract the lines of the dataframe that contain one of the first fens
+    dataframe = dataframe[dataframe[first_fen_column].isin(original_fens)].copy()
+
+    # Get all column names which are also keys in the transformation dictionary
+    transformation_names = [
+        column_name for column_name in dataframe.columns if column_name in transformation_dict
+    ]
+
+    if len(transformation_names) == 0:
+        raise ValueError(
+            "No transformation names found! Make sure that the column names of the dataframe"
+            " are also keys in the transformation dictionary"
+        )
+
+    # Get all columns which store scores
+    score_names = [first_score_column] + list(transformation_names)
+    score_columns = dataframe[score_names]
+
+    # For each row, store the column name storing the lowest score and the column name storing
+    # the highest score
+    dataframe["min_score_column"] = score_columns.idxmin(axis=1)
+    dataframe["max_score_column"] = score_columns.idxmax(axis=1)
+
+    # Iterate over all rows and build the first- and second fens
+    first_fens = []
+    second_fens = []
+    for index, row in dataframe.iterrows():
+        # Get the transformation name
+        row_transformation_names = [
+            row["min_score_column"],
+            row["max_score_column"],
+        ]
+
+        # Build the two fens from the two transformations
+        fens = []
+        for transformation_name in row_transformation_names:
+            # Get the original fen of this row
+            original_fen = row[first_fen_column]
+            # If the transformation name is just first_score_column, then the fen is the original fen
+            if transformation_name == first_score_column:
+                fens.append(row[first_fen_column])
+            else:
+                # First build the original board which will then be transformed
+                original_board = chess.Board(fen=original_fen)
+
+                # Get the transformation function
+                transformed_board = apply_transformation(
+                    original_board, transformation_dict[transformation_name]
+                )
+
+                # Add the fen to the list
+                fens.append(transformed_board.fen(en_passant="fen"))
+
+        # Add the fens to the list
+        first_fens.append(fens[0])
+        second_fens.append(fens[1])
+
+    return first_fens, second_fens
 
 
 def build_second_fens(original_fens: List[str], transformation_name: str) -> List[str]:
@@ -224,8 +292,8 @@ def create_two_board_plot(
     second_len = len(str(second_win_prob))
 
     # Compute the correct amount of spaces to add
-    first_spaces = " " * (8 - first_len)
-    second_spaces = " " * (8 - second_len)
+    first_spaces = " " * (13 - first_len)
+    second_spaces = " " * (13 - second_len)
 
     # Create the x-axis labels
     x_label1 = f"Win probability:{first_spaces}{first_win_prob}% for {first_color}"  # 16
@@ -287,10 +355,15 @@ def plot_interesting_examples(args: argparse.Namespace):
 
     # Extract the FENs
     first_fens = dataframe[[args.fen_column1]].values.transpose().tolist()[0]
-    if "create" not in args.fen_column2:
-        second_fens = dataframe[[args.fen_column2]].values.transpose().tolist()[0]
+    if args.build_fens_from_transformations:
+        first_fens, second_fens = build_fens_from_transformations(
+            dataframe=dataframe,
+            first_fen_column=args.fen_column1,
+            first_score_column=args.score_column1,
+            original_fens=first_fens[: args.num_examples],
+        )
     else:
-        second_fens = build_second_fens(first_fens[: args.num_examples], args.fen_column2)
+        second_fens = dataframe[[args.fen_column2]].values.transpose().tolist()[0]
 
     # Extract only the first args.num_examples
     first_fens = first_fens[: args.num_examples]
@@ -306,18 +379,22 @@ def plot_interesting_examples(args: argparse.Namespace):
 
     # Extract the win probabilities
     print("First Scores:")
-    first_win_probs_and_best_moves = [
-        extract_win_prob_and_best_move_from_verbose_stat(stat, args.score_type1)
-        for stat in first_stats
-    ]
+    first_win_probs_and_best_moves = []
+    for index, stat in enumerate(first_stats):
+        stat.set_fen(first_fens[index])
+        first_win_probs_and_best_moves.append(
+            extract_win_prob_and_best_move_from_verbose_stat(stat, args.score_type1)
+        )
 
     print("Second Scores:")
-    second_win_probs_and_best_moves = [
-        extract_win_prob_and_best_move_from_verbose_stat(
-            stat, args.score_type2, args.flip_second_score
+    second_win_probs_and_best_moves = []
+    for index, stat in enumerate(second_stats):
+        stat.set_fen(second_fens[index])
+        second_win_probs_and_best_moves.append(
+            extract_win_prob_and_best_move_from_verbose_stat(
+                stat, args.score_type2, args.flip_second_score
+            )
         )
-        for stat in second_stats
-    ]
     first_win_probs, first_best_moves = zip(*first_win_probs_and_best_moves)
     second_win_probs, second_best_moves = zip(*second_win_probs_and_best_moves)
 

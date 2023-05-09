@@ -1,6 +1,6 @@
 import argparse
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--result_path", type=str, help="Path to result file", required=True)  # noqa
     parser.add_argument("--column_name1", type=str, help="Name of first column to use for comparison", required=False, default="parent_score")  # noqa
     parser.add_argument("--column_name2", type=str, help="Name of second column to use for comparison", required=False, default="child_score")  # noqa
+    parser.add_argument("--column_names", nargs="*", help="List of columns to use for comparison if there are more than 2. This parameter has priority over 'column_name1' and 'column_name2'", required=False, default=None)  # noqa
     parser.add_argument("--column_difference_name", type=str, help="If the difference between two columns has already been computed, use this argument to specify the name of the column storing the difference", required=False, default=None)  # noqa
     parser.add_argument("--q_vals_to_flip", nargs="*", help="List of columns where the stored q-values should be flipped (multiplied by -1)", required=False, default=[])  # noqa
     parser.add_argument("--column1_for_compare_and_prefilter", type=str, help="Name of the first column to use for comparison and prefiltering (Done before computing difference)", required=False, default=None)  # noqa
@@ -42,6 +43,7 @@ def differences_density_plot(
     dataframe: pd.DataFrame,
     column_name1: Optional[str] = None,
     column_name2: Optional[str] = None,
+    column_names: Optional[List[str]] = None,
     x_limits: Tuple[float, float] = (0, 2),
     y_limits: Optional[Tuple[float, float]] = None,
     title: Optional[str] = None,
@@ -52,7 +54,9 @@ def differences_density_plot(
     if save_plot:
         assert save_plot_path is not None, "If save_plot is True, save_plot_path must be specified!"
 
-    if column_name1 is not None and column_name2 is not None:
+    if column_names is not None:
+        dataframe = compute_differences(dataframe, *column_names)
+    elif column_name1 is not None and column_name2 is not None:
         dataframe = compute_differences(dataframe, column_name1, column_name2)
     else:
         dataframe = dataframe.sort_values(by="difference", ascending=False)
@@ -144,6 +148,7 @@ if __name__ == "__main__":
         dataframe=dataframe,
         column_name1=args.column_name1,
         column_name2=args.column_name2,
+        column_names=args.column_names,
         x_limits=x_limits,
         y_limits=y_limits,
         title=title,
