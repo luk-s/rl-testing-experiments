@@ -1,4 +1,5 @@
 import abc
+import itertools
 import logging
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
@@ -7,7 +8,7 @@ import chess
 import numpy as np
 
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
-from rl_testing.util.chess import is_really_valid
+from rl_testing.util.chess import is_really_valid, has_undefended_attacked_pieces
 from rl_testing.util.util import get_random_state
 
 
@@ -15,6 +16,7 @@ class CrossoverName(Enum):
     CROSSOVER_HALF_BOARD = 0
     CROSSOVER_ONE_QUARTER_BOARD = 1
     CROSSOVER_ONE_EIGHTH_BOARD = 2
+    CROSSOVER_EXCHANGE_PIECE_PAIRS = 3
 
 
 def _ensure_single_kings(
@@ -188,7 +190,6 @@ def crossover_one_eighth_board(
     ensure_single_kings: bool = True,
     _random_state: Optional[np.random.Generator] = None,
 ) -> Tuple[chess.Board, chess.Board]:
-
     """Crossover function that swaps the eighth boards of the two boards.
 
     Args:
@@ -222,6 +223,203 @@ def crossover_one_eighth_board(
         board2 = _ensure_single_kings(board2, random_state)
 
     logging.debug(f"Swapped ({start_rank},{start_file}) eighth of the boards.")
+
+    return board1, board2
+
+
+def _crossover_exchange_piece_pairs_build_candidates(
+    board1: chess.Board,
+    board2: chess.Board,
+    piece_combination1: Tuple[int, int],
+    piece_combination2: Tuple[int, int],
+) -> Tuple[chess.Board, chess.Board]:
+    # Add the new pieces
+    board1_new_pos1, board1_new_pos2 = piece_combination2
+    board1_new_piece1, board1_new_piece2 = board2.piece_at(piece_combination2[0]), board2.piece_at(
+        piece_combination2[1]
+    )
+    board2_new_pos1, board2_new_pos2 = piece_combination1
+    board2_new_piece1, board2_new_piece2 = board1.piece_at(piece_combination1[0]), board1.piece_at(
+        piece_combination1[1]
+    )
+    board1.set_piece_at(board1_new_pos1, board1_new_piece1)
+    board1.set_piece_at(board1_new_pos2, board1_new_piece2)
+    board2.set_piece_at(board2_new_pos1, board2_new_piece1)
+    board2.set_piece_at(board2_new_pos2, board2_new_piece2)
+
+    # Remove the old pieces
+    if piece_combination1[0] not in piece_combination2:
+        board1.remove_piece_at(piece_combination1[0])
+    if piece_combination1[1] not in piece_combination2:
+        board1.remove_piece_at(piece_combination1[1])
+    if piece_combination2[0] not in piece_combination1:
+        board2.remove_piece_at(piece_combination2[0])
+    if piece_combination2[1] not in piece_combination1:
+        board2.remove_piece_at(piece_combination2[1])
+
+    # Ensure that the number of pieces is 8
+    assert len(board1.piece_map()) == 8, f"Board1 has {len(board1.piece_map())} pieces."
+    assert len(board2.piece_map()) == 8, f"Board2 has {len(board2.piece_map())} pieces."
+
+    return board1, board2
+
+
+def crossover_exchange_piece_pairs(
+    board1: chess.Board,
+    board2: chess.Board,
+    ensure_single_kings: bool = True,
+    _random_state: Optional[np.random.Generator] = None,
+) -> Tuple[chess.Board, chess.Board]:
+    """Crossover function that swaps one pair of pieces of the same type and opposite color with each other.
+    E.G. board1 could have a white and black Knight, and board2 could have a white and black Bishop. This function
+    would then move the two Knights on board2 and the two Bishops on board1.
+
+    This function expects that the boards have symmetric positions, where White and Black have the same pieces.
+
+    Args:
+        board1 (chess.Board): First board.
+        board2 (chess.Board): Second board.
+        ensure_single_kings (bool, optional): Whether to ensure that the boards have only one king per color after the crossover.
+        _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        Tuple[chess.Board, chess.Board]: The two boards after the crossover.
+    """
+    random_state = get_random_state(_random_state)
+
+    # Get the two piece maps
+    piece_map1 = board1.piece_map()
+    piece_map2 = board2.piece_map()
+
+    def create_piece_combinations(
+        piece_map: Dict[chess.Square, chess.Piece]
+    ) -> List[Tuple[chess.Square, chess.Square]]:
+        # Separate white and black pieces
+        white_pieces = {
+            square: piece for square, piece in piece_map.items() if piece.color == chess.WHITE
+        }
+        black_pieces = {
+            square: piece for square, piece in piece_map.items() if piece.color == chess.BLACK
+        }
+
+        # Create a list of piece-combinations of pieces of the same type and opposite color
+        piece_combinations = []
+        for piece_type in [chess.ROOK, chess.KNIGHT, chess.BISHOP, chess.QUEEN, chess.KING]:
+            white_piece_squares = [
+                square for square, piece in white_pieces.items() if piece.piece_type == piece_type
+            ]
+            black_piece_squares = [
+                square for square, piece in black_pieces.items() if piece.piece_type == piece_type
+            ]
+
+            # Create all possible combinations of pieces of the same type and opposite color
+            piece_combinations.extend(
+                list(itertools.product(white_piece_squares, black_piece_squares))
+            )
+
+        return piece_combinations
+
+    # Create all possible piece combinations for the two boards
+    piece_combinations1 = create_piece_combinations(piece_map1)
+    piece_combinations2 = create_piece_combinations(piece_map2)
+
+    # Create all possible combinations of piece combinations
+    final_piece_combinations = list(itertools.product(piece_combinations1, piece_combinations2))
+
+    # Check for each combination whether this is a valid crossover, i.e. whether there wouldn't be
+    # too many pieces of the same type and color on one board
+    valid_piece_combinations = []
+    for piece_combination1, piece_combination2 in final_piece_combinations:
+        # Check that the squares would not remove some other piece from the board
+        combination_invalid = False
+        for square in piece_combination1:
+            if square not in piece_combination2 and board2.piece_at(square) is not None:
+                combination_invalid = True
+                break
+
+        for square in piece_combination2:
+            if square not in piece_combination1 and board1.piece_at(square) is not None:
+                combination_invalid = True
+                break
+
+        if combination_invalid:
+            continue
+
+        # Get the pieces on the boards
+        piece1_1 = piece_map1[piece_combination1[0]]
+        piece2_1 = piece_map1[piece_combination1[1]]
+        piece1_2 = piece_map2[piece_combination2[0]]
+        piece2_2 = piece_map2[piece_combination2[1]]
+
+        # Assert that the pieces coming from the same board are of the same type
+        assert (
+            piece1_1.piece_type == piece2_1.piece_type
+        ), f"Piece types of {piece1_1} and {piece2_1} are not the same."
+        assert (
+            piece1_2.piece_type == piece2_2.piece_type
+        ), f"Piece types of {piece1_2} and {piece2_2} are not the same."
+
+        # Extract the piece types of the two boards
+        piece_type1 = piece1_1.piece_type
+        piece_type2 = piece1_2.piece_type
+
+        # Get the number of pieces of piece_type2 which currently are on board1
+        num_pieces1 = sum(
+            [
+                piece.piece_type == piece_type2 and piece.color == chess.WHITE
+                for piece in piece_map1.values()
+            ]
+        )
+
+        # Get the number of pieces of piece_type1 which currently are on board2
+        num_pieces2 = sum(
+            [
+                piece.piece_type == piece_type1 and piece.color == chess.WHITE
+                for piece in piece_map2.values()
+            ]
+        )
+        max_pieces_allowed = {
+            chess.ROOK: 2,
+            chess.KNIGHT: 2,
+            chess.BISHOP: 2,
+            chess.QUEEN: 1,
+            chess.KING: 1,
+        }
+
+        # Filter out the combination if it would lead to too many pieces of the same type on
+        # one board
+        if (num_pieces1 + 1 > max_pieces_allowed[piece_type1] and piece_type1 != piece_type2) or (
+            num_pieces2 + 1 > max_pieces_allowed[piece_type2] and piece_type1 != piece_type2
+        ):
+            continue
+
+        # Build the new boards and check if they are valid
+        new_board1, new_board2 = _crossover_exchange_piece_pairs_build_candidates(
+            board1.copy(), board2.copy(), piece_combination1, piece_combination2
+        )
+
+        # Check if the new boards are valid
+        if not is_really_valid(new_board1) or not is_really_valid(new_board2):
+            continue
+
+        # If the combination is valid, add it to the list of valid combinations
+        valid_piece_combinations.append((piece_combination1, piece_combination2))
+
+    # If there are no valid piece combinations, return the original boards
+    if len(valid_piece_combinations) == 0:
+        return board1, board2
+
+    # Select a random piece combination
+    piece_combination1, piece_combination2 = random_state.choice(valid_piece_combinations)
+
+    # Reverse the piece combinations with a probability of 0.5
+    if random_state.choice([True, False]):
+        piece_combination1 = piece_combination1[::-1]
+
+    # Build the new boards
+    board1, board2 = _crossover_exchange_piece_pairs_build_candidates(
+        board1, board2, piece_combination1, piece_combination2
+    )
 
     return board1, board2
 
@@ -316,6 +514,7 @@ CROSSOVER_NAME_MAP = {
     crossover_half_board: CrossoverName.CROSSOVER_HALF_BOARD,
     crossover_one_quarter_board: CrossoverName.CROSSOVER_ONE_QUARTER_BOARD,
     crossover_one_eighth_board: CrossoverName.CROSSOVER_ONE_EIGHTH_BOARD,
+    crossover_exchange_piece_pairs: CrossoverName.CROSSOVER_EXCHANGE_PIECE_PAIRS,
 }
 
 
@@ -326,6 +525,7 @@ class CrossoverFunction:
         probability: float = 1.0,
         retries: int = 0,
         check_game_not_over: bool = False,
+        check_undefended_attacked_pieces: bool = False,
         clear_fitness_values: bool = False,
         _random_state: Optional[np.random.Generator] = None,
         *args,
@@ -347,6 +547,7 @@ class CrossoverFunction:
 
         self.clear_fitness_values = clear_fitness_values
         self.check_game_not_over = check_game_not_over
+        self.check_undefended_attacked_pieces = check_undefended_attacked_pieces
         self.function: Callable[
             [chess.Board, chess.Board, Any], Tuple[chess.Board, chess.Board]
         ] = function
@@ -401,6 +602,12 @@ class CrossoverFunction:
                     len(list(board_candidate1.legal_moves)) > 0
                     and len(list(board_candidate2.legal_moves)) > 0
                 ):
+                    if self.check_undefended_attacked_pieces:
+                        if has_undefended_attacked_pieces(
+                            board_candidate1
+                        ) or has_undefended_attacked_pieces(board_candidate2):
+                            continue
+
                     # Clear the fitness values if requested
                     if self.clear_fitness_values:
                         del board_candidate1.fitness
@@ -602,9 +809,7 @@ class NRandomCrossoverFunctionsStrategy(CrossoverStrategy):
         )
 
         for crossover_function in crossover_functions:
-            individual1, individual2 = crossover_function(
-                individual1, individual2, *args, **kwargs
-            )
+            individual1, individual2 = crossover_function(individual1, individual2, *args, **kwargs)
 
         return individual1, individual2
 
@@ -697,7 +902,7 @@ class DynamicCrossoverFunctionStrategy(CrossoverStrategy):
         }
 
         # Gather the crossover stats
-        for (mated1, mated2) in self.crossover_cache:
+        for mated1, mated2 in self.crossover_cache:
             crossover_function = mated1.custom_data["crossover_function"]
             parent_fitness1 = mated1.custom_data["crossover_parent_fitness"]
             parent_fitness2 = mated2.custom_data["crossover_parent_fitness"]
@@ -749,7 +954,8 @@ class DynamicCrossoverFunctionStrategy(CrossoverStrategy):
         if print_update:
             for crossover_function, progress_value in progress_values.items():
                 logging.info(
-                    f"{crossover_function.function.__name__}: Progress value: {progress_value:.4f}, Probability {probability:.4f}"
+                    f"{crossover_function.function.__name__}: Progress value: {progress_value:.4f},"
+                    f" Probability {probability:.4f}"
                 )
 
         # Clear the crossover cache
@@ -798,7 +1004,7 @@ def get_crossover_strategy(
     else:
         raise ValueError(
             f"Invalid crossover strategy '{crossover_strategy}'. Must be one of "
-            f"['all', 'one_random', 'n_random']"
+            "['all', 'one_random', 'n_random']"
         )
 
 
@@ -826,9 +1032,10 @@ class Crossover:
         self.num_crossover_functions = num_crossover_functions
         self.minimum_probability = minimum_probability
         if crossover_strategy == "n_random":
-            assert (
-                self.num_crossover_functions is not None
-            ), "Must specify the number of crossover functions to use if crossover strategy is 'n_random'."
+            assert self.num_crossover_functions is not None, (
+                "Must specify the number of crossover functions to use if crossover strategy is"
+                " 'n_random'."
+            )
 
         elif crossover_strategy in ["all", "dynamic"]:
             assert (

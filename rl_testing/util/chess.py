@@ -46,6 +46,26 @@ def remove_pawns(board: chess.Board) -> Union[chess.Board, str]:
     return new_board
 
 
+def has_undefended_attacked_pieces(board: chess.Board) -> bool:
+    """Checks whether a given board contains pieces which are attacked by the opponent
+    but not defended by any of the player's pieces.
+
+    Args:
+        board (chess.Board): The board to check.
+
+    Returns:
+        bool: True if the board contains free pieces, False otherwise.
+    """
+    for square, piece in board.piece_map().items():
+        if chess.piece_name(piece.piece_type) == "king":
+            continue
+        if board.is_attacked_by(not piece.color, square) and not board.is_attacked_by(
+            piece.color, square
+        ):
+            return True
+    return False
+
+
 def apply_transformation(board: chess.Board, transformation: Callable) -> chess.Board:
     if transformation == "mirror":
         return board.mirror()
@@ -98,7 +118,6 @@ def transform_board_to_png(board: chess.Board, plot_size: int = 800, **kwargs) -
 
     # Trick matplotlib into thinking that transformed is actually a file
     with io.BytesIO(transformed) as image_bytes:
-
         # Read the image as if it was a file
         im = mimage.imread(image_bytes)
 

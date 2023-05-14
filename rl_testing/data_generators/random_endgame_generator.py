@@ -5,7 +5,7 @@ import chess
 import numpy as np
 from rl_testing.config_parsers import RandomEndgameGeneratorConfig
 from rl_testing.data_generators import BoardGenerator
-from rl_testing.util.chess import is_really_valid
+from rl_testing.util.chess import is_really_valid, has_undefended_attacked_pieces
 
 CHESS_PIECES_WHITE_NON_ESSENTIAL = "RNBQBNRPPPPPPPP"
 CHESS_PIECES_BLACK_NON_ESSENTIAL = "rnbqbnrpppppppp"
@@ -15,26 +15,6 @@ CHESS_PIECES_BLACK_NON_ESSENTIAL_NO_PAWNS = "rnbqbnr"
 CHESS_PIECES_NON_ESSENTIAL_NO_PAWNS = (
     CHESS_PIECES_WHITE_NON_ESSENTIAL_NO_PAWNS + CHESS_PIECES_BLACK_NON_ESSENTIAL_NO_PAWNS
 )
-
-
-def has_undefended_attacked_pieces(board: chess.Board) -> bool:
-    """Checks whether a given board contains pieces which are attacked by the opponent
-    but not defended by any of the player's pieces.
-
-    Args:
-        board (chess.Board): The board to check.
-
-    Returns:
-        bool: True if the board contains free pieces, False otherwise.
-    """
-    for square, piece in board.piece_map().items():
-        if chess.piece_name(piece.piece_type) == "king":
-            continue
-        if board.is_attacked_by(not piece.color, square) and not board.is_attacked_by(
-            piece.color, square
-        ):
-            return True
-    return False
 
 
 def random_endgame_fen_candidate(

@@ -7,6 +7,7 @@ import chess
 import numpy as np
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.chess import (
+    has_undefended_attacked_pieces,
     is_really_valid,
     rotate_90_clockwise,
     rotate_180_clockwise,
@@ -32,6 +33,7 @@ class MutationName(Enum):
     MUTATE_REMOVE_ONE_PIECE = 7
     MUTATE_ROTATE_BOARD = 8
     MUTATE_SUBSTITUTE_PIECE = 9
+    MUTATE_SUBSTITUTE_ONE_PIECE_PER_COLOR = 10
 
 
 def mutate_player_to_move(
@@ -263,7 +265,8 @@ def mutate_move_one_piece(
                 # Check validity of new position
                 if is_really_valid(board):
                     logging.debug(
-                        f"Moved {piece.symbol()} from {chess.square_name(start_square)} to {chess.square_name(target_square)}\n"
+                        f"Moved {piece.symbol()} from {chess.square_name(start_square)} to"
+                        f" {chess.square_name(target_square)}\n"
                     )
                     break
                 else:
@@ -382,7 +385,8 @@ def mutate_move_one_piece_adjacent(
                 # Check validity of new position
                 if is_really_valid(board):
                     logging.debug(
-                        f"Moved {piece.symbol()} from {chess.square_name(start_square)} to {chess.square_name(target_square)}\n"
+                        f"Moved {piece.symbol()} from {chess.square_name(start_square)} to"
+                        f" {chess.square_name(target_square)}\n"
                     )
                     break
                 else:
@@ -520,6 +524,95 @@ def mutate_substitute_piece(
     return board
 
 
+def mutate_substitute_one_piece_per_color(
+    board: chess.Board,
+    _random_state: Optional[np.random.Generator] = None,
+):
+    """This is for special boards where both sides have the same pieces. This mutation operation is
+    designed to keep up this symmetry. It selects one piece and then substitutes it with another
+    piece for both colors.
+
+    Args:
+        board (chess.Board): The board to mutate.
+        _random_state (Optional[np.random.Generator], optional): The random state to use.
+            Defaults to None.
+    """
+    STRONG_PIECES_CURRENT_PLAYER = [
+        chess.ROOK,
+        chess.KNIGHT,
+        chess.BISHOP,
+        chess.QUEEN,
+        chess.BISHOP,
+        chess.KNIGHT,
+        chess.ROOK,
+    ]
+    STRONG_PIECES_OTHER_PLAYER = list(STRONG_PIECES_CURRENT_PLAYER)
+
+    random_state = get_random_state(_random_state)
+
+    # Make sure that the board is valid. This allows us to assume that there are at least two kings
+    # on the board.
+    assert is_really_valid(board), "Board is not valid"
+
+    # Get all pieces on the board
+    pieces_dict = board.piece_map()
+
+    # Filter out kings
+    pieces_dict = {k: v for k, v in pieces_dict.items() if v.symbol() not in ["k", "K"]}
+
+    # If there are more than just kings on the board, select a random piece to substitute
+    if pieces_dict:
+        # Select a random piece
+        selection = random_state.choice(list(pieces_dict.items()))
+        square: chess.Square = selection[0]
+        piece: chess.Piece = selection[1]
+
+        # Remove all pieces currently on the board from the list of strong pieces
+        for other_square, other_piece in pieces_dict.items():
+            if (
+                other_piece.piece_type in STRONG_PIECES_CURRENT_PLAYER
+                and other_piece.color == piece.color
+            ):
+                STRONG_PIECES_CURRENT_PLAYER.remove(other_piece.piece_type)
+            elif (
+                other_piece.piece_type in STRONG_PIECES_OTHER_PLAYER
+                and other_piece.color != piece.color
+            ):
+                STRONG_PIECES_OTHER_PLAYER.remove(other_piece.piece_type)
+
+        # Select a random piece type from the remaining strong pieces
+        piece_type = random_state.choice(STRONG_PIECES_CURRENT_PLAYER)
+
+        # Create a black and white piece of this type
+        new_piece_current_player = chess.Piece(piece_type, piece.color)
+        new_piece_other_player = chess.Piece(piece_type, not piece.color)
+
+        # Find the corresponding piece of the other color
+        for other_square, other_piece in pieces_dict.items():
+            if other_piece.color != piece.color and other_piece.piece_type == piece.piece_type:
+                break
+        else:
+            raise ValueError("Could not find corresponding piece of the other color")
+
+        # Remove the original pieces
+        board.remove_piece_at(square)
+        board.remove_piece_at(other_square)
+
+        # Add the new pieces
+        board.set_piece_at(square, new_piece_current_player)
+        board.set_piece_at(other_square, new_piece_other_player)
+
+        logging.debug(
+            f"Substituted {piece.symbol()} with {new_piece_current_player.symbol()} at {square}\n"
+        )
+        logging.debug(
+            f"Substituted {other_piece.symbol()} with {new_piece_other_player.symbol()} at"
+            f" {other_square}\n"
+        )
+
+    return board
+
+
 def validity_wrapper(
     function: Callable[[chess.Board, Any], chess.Board],
     retries: int = 0,
@@ -550,7 +643,8 @@ def validity_wrapper(
                 return board_candidate
 
         logging.debug(
-            f"Board {board_candidate.fen()} is invalid after mutation '{function.__name__}', returning original board"
+            f"Board {board_candidate.fen()} is invalid after mutation '{function.__name__}',"
+            " returning original board"
         )
         return board
 
@@ -569,6 +663,7 @@ MUTATION_NAME_MAP = {
     mutate_remove_one_piece: MutationName.MUTATE_REMOVE_ONE_PIECE,
     mutate_rotate_board: MutationName.MUTATE_ROTATE_BOARD,
     mutate_substitute_piece: MutationName.MUTATE_SUBSTITUTE_PIECE,
+    mutate_substitute_one_piece_per_color: MutationName.MUTATE_SUBSTITUTE_ONE_PIECE_PER_COLOR,
 }
 
 
@@ -579,6 +674,7 @@ class MutationFunction:
         probability: float = 1.0,
         retries: int = 0,
         check_game_not_over: bool = False,
+        check_undefended_attacked_pieces: bool = False,
         clear_fitness_values: bool = False,
         _random_state: Optional[np.random.Generator] = None,
         *args,
@@ -601,6 +697,7 @@ class MutationFunction:
         self.function: Callable[[chess.Board, Any], chess.Board] = function
         self.clear_fitness_values = clear_fitness_values
         self.check_game_not_over = check_game_not_over
+        self.check_undefended_attacked_pieces = check_undefended_attacked_pieces
 
         self.args = args
         self.kwargs = kwargs
@@ -645,6 +742,10 @@ class MutationFunction:
             if is_really_valid(board_candidate) and (
                 not self.check_game_not_over or len(list(board_candidate.legal_moves)) > 0
             ):
+                if self.check_undefended_attacked_pieces:
+                    if has_undefended_attacked_pieces(board_candidate):
+                        continue
+
                 # Remove the fitness values if requested
                 if self.clear_fitness_values:
                     del board_candidate.fitness
@@ -657,7 +758,8 @@ class MutationFunction:
                 return board_candidate
 
         logging.debug(
-            f"Board {board.fen()} is invalid after mutation '{self.function.__name__}', returning original board"
+            f"Board {board.fen()} is invalid after mutation '{self.function.__name__}', returning"
+            " original board"
         )
         return board
 
@@ -965,14 +1067,17 @@ class DynamicMutationFunctionStrategy(MutationStrategy):
 
                 if mutation_weights[mutation_function] < self.minimum_probability:
                     raise ValueError(
-                        f"Mutation weight is too small!: {mutation_weights[mutation_function]}. Progress value: {progress_values[mutation_function]} "
-                        f"Progress value sum: {progress_value_sum}. Mutation weights: {mutation_weights}. Progress values: {progress_values}"
+                        f"Mutation weight is too small!: {mutation_weights[mutation_function]}."
+                        f" Progress value: {progress_values[mutation_function]} Progress value sum:"
+                        f" {progress_value_sum}. Mutation weights: {mutation_weights}. Progress"
+                        f" values: {progress_values}"
                     )
 
         weight_sum = sum(mutation_weights.values())
         if abs(weight_sum - 1) > 1e-3:
             raise ValueError(
-                f"Mutation weights do not sum to 1: {weight_sum}. Mutation weights: {mutation_weights}"
+                f"Mutation weights do not sum to 1: {weight_sum}. Mutation weights:"
+                f" {mutation_weights}"
             )
 
         return mutation_weights
@@ -1021,7 +1126,8 @@ class DynamicMutationFunctionStrategy(MutationStrategy):
         if print_update:
             for mutation_function, progress_value in progress_values.items():
                 logging.info(
-                    f"{mutation_function.function.__name__}: Progress value: {progress_value:.4f}, Probability: {mutation_function.probability:.4f}"
+                    f"{mutation_function.function.__name__}: Progress value: {progress_value:.4f},"
+                    f" Probability: {mutation_function.probability:.4f}"
                 )
 
     def print_mutation_probability_history(self) -> None:
@@ -1061,7 +1167,8 @@ def get_mutation_strategy(
         )
     else:
         raise ValueError(
-            f"Invalid mutation strategy '{mutation_strategy}', must be one of ['all', 'one_random', 'n_random', 'dynamic']"
+            f"Invalid mutation strategy '{mutation_strategy}', must be one of ['all', 'one_random',"
+            " 'n_random', 'dynamic']"
         )
 
 
@@ -1089,9 +1196,10 @@ class Mutator:
         self.num_mutation_functions = num_mutation_functions
         self.minimum_probability = minimum_probability
         if mutation_strategy == "n_random":
-            assert (
-                self.num_mutation_functions is not None
-            ), "Must specify the number of mutation functions to apply if the mutation strategy is 'n_random'"
+            assert self.num_mutation_functions is not None, (
+                "Must specify the number of mutation functions to apply if the mutation strategy is"
+                " 'n_random'"
+            )
 
         elif mutation_strategy in ["all", "dynamic"]:
             assert (
