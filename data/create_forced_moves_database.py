@@ -75,8 +75,19 @@ if __name__ == "__main__":
                     print(f"Scanned {boards_read} boards")
                 board = data_generator.next()
                 boards_read += 1
+
+                # Check that the board is a forced move position
                 if board.legal_moves.count() == 1:
                     fen = board.fen(en_passant="fen")
+
+                    # Check that the game is not over after the only legal move
+                    legal_moves = list(board.legal_moves)
+                    assert len(legal_moves) == 1
+                    move = legal_moves[0]
+                    board.push(move)
+                    if board.is_game_over():
+                        continue
+
                     if fen not in boards_found:
                         if has_at_least_k_pieces(board, min_pieces):
                             boards_found.add(fen)
