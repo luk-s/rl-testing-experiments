@@ -11,7 +11,7 @@ mutate_move_one_piece:
   weight: 0.15
 mutate_move_one_piece_adjacent:
   weight: 0.2
-mutate_move_one_piece_legal:
+mutate_move_one_piece_legal_no_taking:
   weight: 0.15
 mutate_player_to_move:
   weight: 0.08
@@ -27,7 +27,8 @@ global_crossover_kwargs:
   check_game_not_over : True
   clear_fitness_values : True
   check_undefended_attacked_pieces : True
-crossover_exchange_piece_pairs: 1.0
+crossover_exchange_piece_pairs:
+  weight: 1.0
 
 # Selection functions
 # All names must contain the keyword "select"

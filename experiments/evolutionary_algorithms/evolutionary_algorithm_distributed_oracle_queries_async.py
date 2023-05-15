@@ -93,8 +93,8 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         self.fitness: Optional[BoardTransformationFitness] = None
         self.fitness_cache: Optional[LRUCache] = None
         self.result_file_path = result_file_path
-        self.input_queue: queue.Queue = QueueManager.Queue()
-        self.output_queue: queue.Queue = QueueManager.Queue()
+        self.input_queue: queue.Queue = queue.Queue()
+        self.output_queue: queue.Queue = queue.Queue()
 
         def get_input_queue() -> queue.Queue:
             return self.input_queue
@@ -121,8 +121,8 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         # Create the fitness function
         self.fitness = BoardTransformationFitness(
             **self.experiment_config["fitness_config"],
-            input_queue=self.input_queue,
-            output_queue=self.output_queue,
+            # input_queue=self.input_queue,
+            # output_queue=self.output_queue,
             result_path=self.result_file_path,
             logger=self.logger,
         )
@@ -138,7 +138,7 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
 
         # Create the population
         individuals = get_random_individuals(
-            "data/random_positions.txt",
+            "/data/chess-data/no_pawns_positions_large_synthetic.txt",
             self.evolutionary_algorithm_config.population_size,
             self.random_state,
         )
@@ -340,8 +340,7 @@ if __name__ == "__main__":
     # Engine parameters
     parser.add_argument("--seed",                type=int,  default=42)  # noqa
     # parser.add_argument("--evolutionary_algorithm_config_name", type=str,  default="config_simple_population.yaml")  # noqa
-    parser.add_argument("--evolutionary_algorithm_config_name", type=str,  default="config_simple_population_max_oracle.yaml")  # noqa
-    parser.add_argument("--result_subdir",       type=str,  default="main_results")  # noqa
+    parser.add_argument("--evolutionary_algorithm_config_name", type=str,  default="config_simple_population_max_oracle_distributed.yaml")  # noqa
     # fmt: on
 
     ##################################

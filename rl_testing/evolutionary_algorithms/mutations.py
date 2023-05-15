@@ -34,6 +34,7 @@ class MutationName(Enum):
     MUTATE_ROTATE_BOARD = 8
     MUTATE_SUBSTITUTE_PIECE = 9
     MUTATE_SUBSTITUTE_ONE_PIECE_PER_COLOR = 10
+    MUTATE_MOVE_ONE_PIECE_LEGAL_NO_TAKING = 11
 
 
 def mutate_player_to_move(
@@ -320,6 +321,33 @@ def mutate_move_one_piece_legal(
     logging.debug(f"Moved {move}\n")
 
     board.turn = real_color
+    return board
+
+
+def mutate_move_one_piece_legal_no_taking(
+    board: chess.Board,
+    color: Optional[chess.Color] = None,
+    _random_state: Optional[np.random.Generator] = None,
+) -> chess.Board:
+    """Move one piece by performing a legal move.
+
+    Args:
+        board (chess.Board): The board to mutate.
+        color (Optional[chess.Color], optional): The color of the piece to move. Defaults to None which means choose randomly.
+        _random_state (Optional[np.random.Generator], optional): The random state to use. Defaults to None.
+
+    Returns:
+        chess.Board: The mutated board.
+    """
+    board_candidate = board.copy()
+
+    # Perform a legal move
+    board_candidate = mutate_move_one_piece_legal(board_candidate, color, _random_state)
+
+    # Check if the number of pieces is still the same
+    if len(board.piece_map()) == len(board_candidate.piece_map()):
+        return board_candidate
+
     return board
 
 
@@ -664,6 +692,7 @@ MUTATION_NAME_MAP = {
     mutate_rotate_board: MutationName.MUTATE_ROTATE_BOARD,
     mutate_substitute_piece: MutationName.MUTATE_SUBSTITUTE_PIECE,
     mutate_substitute_one_piece_per_color: MutationName.MUTATE_SUBSTITUTE_ONE_PIECE_PER_COLOR,
+    mutate_move_one_piece_legal_no_taking: MutationName.MUTATE_MOVE_ONE_PIECE_LEGAL_NO_TAKING,
 }
 
 
@@ -737,6 +766,12 @@ class MutationFunction:
                 **self.kwargs,
                 **new_kwargs,
             )
+
+            if len(board_candidate.piece_map()) != 8:
+                print(f"Original board1: {board.fen()}")
+                print(f"Board1: {board_candidate.fen()}")
+                print(f"Mutation function: {self.function.__name__}")
+                raise ValueError(f"Board1 has {len(board_candidate.piece_map())} pieces.")
 
             # Check if the board is valid
             if is_really_valid(board_candidate) and (

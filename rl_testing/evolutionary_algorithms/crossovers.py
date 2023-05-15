@@ -233,6 +233,9 @@ def _crossover_exchange_piece_pairs_build_candidates(
     piece_combination1: Tuple[int, int],
     piece_combination2: Tuple[int, int],
 ) -> Tuple[chess.Board, chess.Board]:
+    board1_original = board1.copy()
+    board2_original = board2.copy()
+
     # Add the new pieces
     board1_new_pos1, board1_new_pos2 = piece_combination2
     board1_new_piece1, board1_new_piece2 = board2.piece_at(piece_combination2[0]), board2.piece_at(
@@ -258,8 +261,27 @@ def _crossover_exchange_piece_pairs_build_candidates(
         board2.remove_piece_at(piece_combination2[1])
 
     # Ensure that the number of pieces is 8
-    assert len(board1.piece_map()) == 8, f"Board1 has {len(board1.piece_map())} pieces."
-    assert len(board2.piece_map()) == 8, f"Board2 has {len(board2.piece_map())} pieces."
+    if len(board1.piece_map()) != 8:
+        print(f"Original board1: {board1_original.fen()}")
+        print(f"Original board2: {board2_original.fen()}")
+        print(
+            f"Square combination1: {[chess.square_name(square) for square in piece_combination1]}"
+        )
+        print(
+            f"Square combination2: {[chess.square_name(square) for square in piece_combination2]}"
+        )
+        raise ValueError(f"Board1 has {len(board1.piece_map())} pieces.")
+
+    if len(board2.piece_map()) != 8:
+        print(f"Original board1: {board1_original.fen()}")
+        print(f"Original board2: {board2_original.fen()}")
+        print(
+            f"Square combination1: {[chess.square_name(square) for square in piece_combination1]}"
+        )
+        print(
+            f"Square combination2: {[chess.square_name(square) for square in piece_combination2]}"
+        )
+        raise ValueError(f"Board2 has {len(board2.piece_map())} pieces.")
 
     return board1, board2
 
@@ -595,6 +617,22 @@ class CrossoverFunction:
                 **self.kwargs,
                 **new_kwargs,
             )
+
+            # Ensure that the number of pieces is 8
+            if len(board_candidate1.piece_map()) != 8:
+                print(f"Original board1: {board1.fen()}")
+                print(f"Original board2: {board2.fen()}")
+                print(f"Board1: {board_candidate1.fen()}")
+                print(f"Board2: {board_candidate2.fen()}")
+                print(f"Crossover function: {self.function.__name__}")
+                raise ValueError(f"Board1 has {len(board_candidate1.piece_map())} pieces.")
+            if len(board_candidate2.piece_map()) != 8:
+                print(f"Original board1: {board1.fen()}")
+                print(f"Original board2: {board2.fen()}")
+                print(f"Board1: {board_candidate1.fen()}")
+                print(f"Board2: {board_candidate2.fen()}")
+                print(f"Crossover function: {self.function.__name__}")
+                raise ValueError(f"Board1 has {len(board_candidate2.piece_map())} pieces.")
 
             # Check if the board is valid
             if is_really_valid(board_candidate1) and is_really_valid(board_candidate2):

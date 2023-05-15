@@ -18,12 +18,15 @@ from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.engine_generators.generators import EngineGenerator
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.cache import LRUCache
-from rl_testing.util.chess import cp2q
+from rl_testing.util.chess import cp2q, rotate_180_clockwise
 from rl_testing.util.engine import RelaxedUciProtocol, engine_analyse
 from rl_testing.util.experiment import get_experiment_params_dict
 from rl_testing.util.util import get_task_result_handler
 from rl_testing.evolutionary_algorithms.worker import AnalysisObject, PLACEHOLDER_ANALYSIS_OBJECT
-from rl_testing.evolutionary_algorithms.distributed_queue_manager import QueueManager
+from rl_testing.evolutionary_algorithms.distributed_queue_manager import (
+    QueueManager,
+    connect_to_manager,
+)
 
 FEN = str
 
@@ -655,8 +658,6 @@ class BoardTransformationFitness(Fitness):
 
     def __init__(
         self,
-        input_queue: queue.Queue,
-        output_queue: queue.Queue,
         result_path: Optional[str] = None,
         logger: Optional[logging.Logger] = None,
     ) -> None:
@@ -671,8 +672,7 @@ class BoardTransformationFitness(Fitness):
 
         # Initialize all the variables
         self.result_path = result_path
-        self.input_queue = input_queue # TODO: Use manager!
-        self.output_queue = output_queue # TODO: Use manager!
+        self.input_queue, self.output_queue = connect_to_manager()
         self.result_queue = asyncio.Queue()
         self.cache: Dict[FEN, float] = LRUCache(maxsize=200_000)
 
@@ -686,12 +686,10 @@ class BoardTransformationFitness(Fitness):
             logger=self.logger, message="Task raised an exception"
         )
 
-
-
         # Create the task for writing the results to file
         if self.result_path is not None:
             self.result_task = asyncio.create_task(
-                DifferentialTestingFitness.write_output(
+                BoardTransformationFitness.write_output(
                     input_queue=self.result_queue,
                     result_file_path=self.result_path,
                     identifier_str="RESULT WRITER",
@@ -740,10 +738,12 @@ class BoardTransformationFitness(Fitness):
         # An output dictionary to match the results of the two output queues
         output_dict: Dict[FEN, float] = {}
 
+        print(f"Before processing: {len(individuals)})")
+
         # Iterate over the individuals and either compute their fitness or fetch the fitness from the cache
         for index, individual in enumerate(individuals):
             fen1: FEN = individual.fen()
-            fen2: FEN = TODO!!!
+            fen2: FEN = chess.Board(fen1).transform(rotate_180_clockwise).fen()
             result_fens.append((fen1, fen2))
 
             for fen in [fen1, fen2]:
@@ -766,7 +766,11 @@ class BoardTransformationFitness(Fitness):
         # Extract all results from the second output queue and compute the score difference
         for index, (fen1, fen2) in enumerate(result_fens):
             # Both results are valid
-            if (output_dict[fen1] not in ["invalid", "nan", None] and output_dict[fen2] not in ["invalid", "nan", None]):
+            if output_dict[fen1] not in ["invalid", "nan", None] and output_dict[fen2] not in [
+                "invalid",
+                "nan",
+                None,
+            ]:
                 fitness = abs(output_dict[fen1] - output_dict[fen2])
 
                 results[index] = fitness
@@ -778,8 +782,6 @@ class BoardTransformationFitness(Fitness):
             # No matter the outcome, write the result to the result file
             if self.result_path is not None:
                 await self.result_queue.put((fen1, self.cache[fen1], fen2, self.cache[fen2]))
-
-            self.output_queue.task_done()
 
         # Wait until all results have been written to file
         if self.result_path is not None:
