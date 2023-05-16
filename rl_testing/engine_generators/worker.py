@@ -25,6 +25,14 @@ class AnalysisObject:
         self.score: Optional[float] = None
 
 
+class TransformationAnalysisObject(AnalysisObject):
+    def __init__(self, fen: str, base_fen: str, transformation_index: int):
+        self.fen = fen
+        self.base_fen = base_fen
+        self.transformation_index = transformation_index
+        self.score: Optional[float] = None
+
+
 PLACEHOLDER_ANALYSIS_OBJECT = AnalysisObject(fen="")
 
 

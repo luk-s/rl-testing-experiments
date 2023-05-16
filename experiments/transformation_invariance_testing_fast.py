@@ -23,7 +23,7 @@ from rl_testing.engine_generators.distributed_queue_manager import (
     password,
     port,
 )
-from rl_testing.engine_generators.worker import AnalysisObject
+from rl_testing.engine_generators.worker import TransformationAnalysisObject
 from rl_testing.util.chess import apply_transformation, cp2q
 from rl_testing.util.chess import remove_pawns as remove_pawns_func
 from rl_testing.util.chess import (
@@ -46,14 +46,6 @@ transformation_dict = {
     "flip_vert": flip_vertical,
     "mirror": "mirror",
 }
-
-
-class TransformationAnalysisObject(AnalysisObject):
-    def __init__(self, fen: str, base_fen: str, transformation_index: int):
-        self.fen = fen
-        self.base_fen = base_fen
-        self.transformation_index = transformation_index
-        self.score: Optional[float] = None
 
 
 class ReceiverCache:
