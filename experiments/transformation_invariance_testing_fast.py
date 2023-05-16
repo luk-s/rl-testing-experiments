@@ -386,8 +386,6 @@ if __name__ == "__main__":
             result_file_path=result_file_path,
             remove_pawns=remove_pawns,
             num_positions=args.num_positions,
-            queue_max_size=args.queue_max_size,
-            num_engine_workers=args.num_engine_workers,
             sleep_after_get=0.1,
             logger=logger,
         )
