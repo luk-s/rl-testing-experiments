@@ -49,9 +49,9 @@ transformation_dict = {
 
 
 class ReceiverCache:
-    def __init__(self, queue: queue.Queue, num_transformations: int) -> None:
-        assert isinstance(queue, queue.Queue)
-        self.queue = queue
+    def __init__(self, consumer_queue: queue.Queue, num_transformations: int) -> None:
+        assert isinstance(consumer_queue, queue.Queue)
+        self.consumer_queue = consumer_queue
         self.num_transformations = num_transformations
 
         self.score_cache: Dict[str, List[Optional[float]]] = {}
@@ -60,7 +60,7 @@ class ReceiverCache:
         # Receive data from queue
         while True:
             try:
-                analysis_object: TransformationAnalysisObject = self.queue.get_nowait()
+                analysis_object: TransformationAnalysisObject = self.consumer_queue.get_nowait()
                 base_fen = analysis_object.base_fen
                 transform_index = analysis_object.transformation_index
                 score = analysis_object.score
@@ -87,7 +87,7 @@ class ReceiverCache:
             complete_data_tuples.append((base_fen, self.score_cache[base_fen]))
             del self.score_cache[base_fen]
 
-        self.queue.task_done()
+        self.consumer_queue.task_done()
 
         return complete_data_tuples
 
@@ -165,7 +165,7 @@ async def evaluate_candidates(
 
     # The order of the queues is important! The 'receive' function will return the data in the
     # same order as the queues are given to the initializer.
-    receiver_cache = ReceiverCache(queue=engine_queue, num_transformations=num_transforms)
+    receiver_cache = ReceiverCache(consumer_queue=engine_queue, num_transformations=num_transforms)
 
     with open(file_path, "a") as file:
         flush_every = 1000
