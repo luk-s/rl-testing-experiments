@@ -50,7 +50,7 @@ transformation_dict = {
 
 class ReceiverCache:
     def __init__(self, consumer_queue: queue.Queue, num_transformations: int) -> None:
-        assert isinstance(consumer_queue, queue.Queue)
+        # Print type of consumer_queue
         self.consumer_queue = consumer_queue
         self.num_transformations = num_transformations
 
@@ -87,8 +87,6 @@ class ReceiverCache:
             complete_data_tuples.append((base_fen, self.score_cache[base_fen]))
             del self.score_cache[base_fen]
 
-        self.consumer_queue.task_done()
-
         return complete_data_tuples
 
 
@@ -110,7 +108,6 @@ async def create_positions(
     # Create random chess positions if necessary
     board_index = 1
     while board_index <= num_positions:
-
         # Create a random chess position
         board_candidate = data_generator.next()
 
@@ -151,6 +148,7 @@ async def create_positions(
 async def evaluate_candidates(
     num_transforms: int,
     file_path: Union[str, Path],
+    num_positions: int = 1,
     sleep_after_get: float = 0.1,
     identifier_str: str = "",
 ) -> None:
@@ -169,7 +167,7 @@ async def evaluate_candidates(
 
     with open(file_path, "a") as file:
         flush_every = 1000
-        while True:
+        while board_counter <= num_positions:
             # Fetch the next board and the corresponding scores from the queues
             complete_data_tuples = await receiver_cache.receive_data()
 
@@ -208,7 +206,6 @@ async def transformation_invariance_testing(
     sleep_after_get: float = 0.1,
     logger: Optional[logging.Logger] = None,
 ) -> None:
-
     if logger is None:
         logger = logging.getLogger(__name__)
 
@@ -249,6 +246,7 @@ async def transformation_invariance_testing(
         evaluate_candidates(
             num_transforms=len(transformation_functions) + 1,
             file_path=result_file_path,
+            num_positions=num_positions,
             sleep_after_get=sleep_after_get,
             identifier_str="CANDIDATE_EVALUATION",
         )
@@ -265,14 +263,14 @@ async def transformation_invariance_testing(
         task.add_done_callback(handle_task_exception)
 
     # Wait for data generator task to finish
-    await asyncio.wait([data_generator_task])
+    await asyncio.wait([data_generator_task, candidate_evaluation_task])
 
     # Wait for data queues to become empty
     engine_queue_in.join()
     engine_queue_out.join()
 
     # Cancel all remaining tasks
-    candidate_evaluation_task.cancel()
+    # candidate_evaluation_task.cancel()
 
 
 if __name__ == "__main__":
