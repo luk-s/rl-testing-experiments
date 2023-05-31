@@ -11,7 +11,7 @@ EngineConfigs = Union["EngineConfig", "RemoteEngineConfig"]
 
 class EngineConfig(Config):
     CONFIG_FOLDER = Path("./configs/engine_configs")
-    DEFAULT_CONFIG_NAME = Path("default.ini")
+    DEFAULT_CONFIG_NAME = Path("default_local.ini")
     REQUIRED_ATTRIBUTES = [
         "engine_type",
         "engine_path",
