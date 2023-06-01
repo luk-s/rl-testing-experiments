@@ -13,9 +13,9 @@ import chess.engine
 import numpy as np
 from chess import flip_anti_diagonal, flip_diagonal, flip_horizontal, flip_vertical
 
-from rl_testing.config_parsers import get_data_generator_config, get_engine_config
+from rl_testing.config_parsers import get_data_generator_config
 from rl_testing.data_generators import BoardGenerator, get_data_generator
-from rl_testing.engine_generators import EngineGenerator, get_engine_generator
+
 from rl_testing.engine_generators.distributed_queue_manager import (
     QueueManager,
     address,
@@ -24,7 +24,7 @@ from rl_testing.engine_generators.distributed_queue_manager import (
     port,
 )
 from rl_testing.engine_generators.worker import TransformationAnalysisObject
-from rl_testing.util.chess import apply_transformation, cp2q
+from rl_testing.util.chess import apply_transformation
 from rl_testing.util.chess import remove_pawns as remove_pawns_func
 from rl_testing.util.chess import (
     rotate_90_clockwise,
@@ -49,7 +49,18 @@ transformation_dict = {
 
 
 class ReceiverCache:
+    """This class is used to cache the received data until all the data for a board has been
+    received.
+    """
+
     def __init__(self, consumer_queue: queue.Queue, num_transformations: int) -> None:
+        """Initializes the ReceiverCache object.
+
+        Args:
+            consumer_queue (queue.Queue): A queue from which the data is received.
+            num_transformations (int): The number of transformations that are applied to each
+                board.
+        """
         # Print type of consumer_queue
         self.consumer_queue = consumer_queue
         self.num_transformations = num_transformations
@@ -57,6 +68,13 @@ class ReceiverCache:
         self.score_cache: Dict[str, List[Optional[float]]] = {}
 
     async def receive_data(self) -> List[Iterable[Any]]:
+        """This function repeatedly fetches data from the queue until all the data for a single
+        board has been received.
+
+        Returns:
+            List[Iterable[Any]]: A list of tuples containing the board's fen and the scores for
+                the board and its transformations.
+        """
         # Receive data from queue
         while True:
             try:
@@ -98,14 +116,30 @@ async def create_positions(
     sleep_between_positions: float = 0.1,
     identifier_str: str = "",
 ) -> None:
+    """Create chess positions using the provided data generator, apply all the transformations
+    specified in the transformation_functions list and send the results to the output queue.
+
+    Args:
+        data_generator (BoardGenerator): A BoardGenerator object that is used to create the
+            chess positions.
+        transformation_functions (List[Callable[[chess.Bitboard], chess.Bitboard]]): A list of
+            functions that are used to transform the chess positions.
+        remove_pawns (bool, optional): Whether or not to remove the pawns from the generated chess
+            positions. Defaults to False.
+        num_positions (int, optional): The number of chess positions to create. Defaults to 1.
+        sleep_between_positions (float, optional): The number of seconds to wait between creating
+            two chess positions. Useful to pause this async function and allow other async
+            functions to run. Defaults to 0.1.
+        identifier_str (str, optional): A string that is used to identify this process.
+            Defaults to "".
+    """
     fen_cache = {}
 
     # Get the queues
     output_queue: queue.Queue
-    output_queue, _ = connect_to_manager()
+    output_queue, _, _ = connect_to_manager()
 
-    # This website might be helpful: https://www.chessprogramming.org/Flipping_Mirroring_and_Rotating # noqa: E501
-    # Create random chess positions if necessary
+    # Create the chess positions
     board_index = 1
     while board_index <= num_positions:
         # Create a random chess position
@@ -124,14 +158,15 @@ async def create_positions(
                 transformed_boards.append(
                     apply_transformation(board_candidate, transformation_function)
                 )
-
             fen = board_candidate.fen(en_passant="fen")
-
             logging.info(f"[{identifier_str}] Created base board {board_index + 1}: {fen}")
+
+            # Log the transformed boards
             for transformed_board in transformed_boards[1:]:
                 fen = transformed_board.fen(en_passant="fen")
                 logging.info(f"[{identifier_str}] Created transformed board: {fen}")
 
+            # Send the boards to the output queue
             for transform_index, transformed_board in enumerate(transformed_boards):
                 analysis_object = TransformationAnalysisObject(
                     fen=transformed_board.fen(en_passant="fen"),
@@ -152,17 +187,29 @@ async def evaluate_candidates(
     sleep_after_get: float = 0.1,
     identifier_str: str = "",
 ) -> None:
+    """This function receives the evaluated chess positions from the input queue and writes them
+    to a file.
+
+    Args:
+        num_transforms (int): The number of transformations that are applied to each board.
+        file_path (Union[str, Path]): The path to the file in which the results are stored.
+        num_positions (int, optional): The number of chess positions to evaluate. Defaults to 1.
+        sleep_after_get (float, optional): The number of seconds to wait after receiving a board
+            from the input queue. Useful to pause this async function and allow other async
+            functions to run. Defaults to 0.1.
+        identifier_str (str, optional): A string that is used to identify this process.
+            Defaults to "".
+    """
     # Get the queues
     engine_queue: queue.Queue
-    _, engine_queue = connect_to_manager()
+    _, engine_queue, _ = connect_to_manager()
 
     # Create a file to store the results
     file_path = Path(file_path)
     file_path.parent.mkdir(parents=True, exist_ok=True)
     board_counter = 1
 
-    # The order of the queues is important! The 'receive' function will return the data in the
-    # same order as the queues are given to the initializer.
+    # Initialize the receiver cache
     receiver_cache = ReceiverCache(consumer_queue=engine_queue, num_transformations=num_transforms)
 
     with open(file_path, "a") as file:
@@ -203,9 +250,29 @@ async def transformation_invariance_testing(
     result_file_path: Optional[Union[str, Path]] = None,
     remove_pawns: bool = False,
     num_positions: int = 1,
+    required_engine_config: Optional[str] = None,
     sleep_after_get: float = 0.1,
     logger: Optional[logging.Logger] = None,
 ) -> None:
+    """Main function which starts all the asynchronous tasks and manages the distributed queues.
+
+    Args:
+        data_generator (BoardGenerator): A BoardGenerator object that is used to create the
+            chess positions.
+        transformation_functions (List[Callable[[chess.Bitboard], chess.Bitboard]]): A list of
+            functions that are used to transform the chess positions.
+        result_file_path (Optional[Union[str, Path]], optional): The path to the file in which the
+            results are stored. Defaults to None.
+        remove_pawns (bool, optional): Whether or not to remove the pawns from the generated chess
+            positions. Defaults to False.
+        num_positions (int, optional): The number of chess positions to create. Defaults to 1.
+        required_engine_config (Optional[str], optional): The name of the engine configuration
+            which worker processes should use. Defaults to None.
+        sleep_after_get (float, optional): The number of seconds to wait after receiving a board
+            from the input queue. Useful to pause async functions and allow other async
+            functions to run. Defaults to 0.1.
+        logger (Optional[logging.Logger], optional): A logger object that is used to log messages.
+    """
     if logger is None:
         logger = logging.getLogger(__name__)
 
@@ -222,6 +289,8 @@ async def transformation_invariance_testing(
         return engine_queue_out
 
     # Initialize the input- and output queues
+    if required_engine_config is not None:
+        QueueManager.set_engine_config(engine_config=required_engine_config)
     QueueManager.register("input_queue", callable=get_input_queue)
     QueueManager.register("output_queue", callable=get_output_queue)
 
@@ -279,22 +348,12 @@ if __name__ == "__main__":
     ##################################
     #           CONFIG START         #
     ##################################
-    # NETWORKS:
-    # =========
-    # strong and recent: "network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42"
-    # from leela paper: "network_c8368caaccd43323cc513465fb92740ea6d10b50684639a425fca2b42fc1f7be"
-    # strong recommended: "network_600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2" # noqa: E501
-    # Weak local 1: "f21ee51844a7548c004a1689eacd8b4cd4c6150d6e03c732b211cf9963d076e1"
-    # Weak local 2: "fbd5e1c049d5a46c098f0f7f12e79e3fb82a7a6cd1c9d1d0894d0aae2865826f"
-
     # fmt: off
     parser.add_argument("--seed",                           type=int, default=42)  # noqa
     parser.add_argument("--engine_config_name",             type=str, default="local_400_nodes.ini")  # noqa
     parser.add_argument("--data_config_name",               type=str, default="database.ini")  # noqa
     parser.add_argument("--remove_pawns",                   action="store_true")  # noqa
     parser.add_argument("--num_positions",                  type=int, default=1_000_000)  # noqa
-    # parser.add_argument("--num_positions",                  type=int, default=100)  # noqa
-    # parser.add_argument("--network_path",                   type=str, default="network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42")  # noqa
     parser.add_argument("--transformations",                type=str, default=["rot90", "rot180", "rot270", "flip_diag", "flip_anti_diag", "flip_hor", "flip_vert"], nargs="+",  # noqa
                                                             choices=["rot90", "rot180", "rot270", "flip_diag", "flip_anti_diag", "flip_hor", "flip_vert", "mirror"])  # noqa
     parser.add_argument("--result_subdir",                  type=str, default="")  # noqa
@@ -344,7 +403,7 @@ if __name__ == "__main__":
     dt_string = now.strftime("%Y_%m_%d_%H:%M:%S")
 
     result_file_path = result_directory / Path(
-        f"results_ENGINE_{args.engine_config_name}_DATA_{data_config_name}_{dt_string}.txt"
+        f"results_ENGINE_{args.engine_config_name[:-4]}_DATA_{data_config_name}_{dt_string}.txt"
     )
 
     # Store the experiment configuration in the result file
@@ -376,6 +435,7 @@ if __name__ == "__main__":
             result_file_path=result_file_path,
             remove_pawns=remove_pawns,
             num_positions=args.num_positions,
+            required_engine_config=args.engine_config_name,
             sleep_after_get=0.1,
             logger=logger,
         )

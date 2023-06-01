@@ -23,6 +23,7 @@ class AnalysisObject:
     def __init__(self, fen: str):
         self.fen = fen
         self.score: Optional[float] = None
+        self.best_move: Optional[chess.Move] = None
 
 
 class TransformationAnalysisObject(AnalysisObject):
@@ -31,20 +32,66 @@ class TransformationAnalysisObject(AnalysisObject):
         self.base_fen = base_fen
         self.transformation_index = transformation_index
         self.score: Optional[float] = None
+        self.best_move: Optional[chess.Move] = None
 
 
-PLACEHOLDER_ANALYSIS_OBJECT = AnalysisObject(fen="")
+class RecommendedMoveAnalysisObject(AnalysisObject):
+    def __init__(
+        self,
+        fen: str,
+    ):
+        self.fen = fen
+        self.parent_fen: Optional[str] = None
+        self.best_move: Optional[chess.Move] = None
+        self.parent_best_move: Optional[chess.Move] = None
+        self.score: Optional[float] = None
+        self.parent_score: Optional[float] = None
+
+    def prepare_second_round(self) -> None:
+        # Copy the attributes to the parent
+        self.parent_fen = self.fen
+        self.parent_best_move = self.best_move
+        self.parent_score = self.score
+
+        # Get the fen of the board after applying the parent's best move
+        board = chess.Board(self.parent_fen)
+        board.push(self.parent_best_move)
+        new_fen = board.fen(en_passant="fen")
+
+        # Update the current attributes
+        self.fen = new_fen
+        self.best_move = None
+        self.score = None
+
+    def is_result_valid(self) -> bool:
+        return isinstance(self.score, float) and isinstance(self.best_move, chess.Move)
+
+    def is_complete(self) -> bool:
+        attributes = [
+            "fen",
+            "parent_fen",
+            "best_move",
+            "parent_best_move",
+            "score",
+            "parent_score",
+        ]
+        return all([getattr(self, attr) is not None for attr in attributes])
 
 
 async def analyze_position(
     search_limits: Dict[str, Any],
     engine_generator: EngineGenerator,
+    engine_config_name: str,
     network_name: Optional[str] = None,
     identifier_str: str = "",
 ) -> None:
-    consumer_queue, producer_queue = connect_to_manager()
-    # Authenticate the engine
-    # current_process().authkey = password.encode("utf-8")
+    consumer_queue, producer_queue, required_engine_config = connect_to_manager()
+
+    # Make sure that the worker runs the correct engine config
+    if required_engine_config is not None:
+        assert (
+            engine_config_name == required_engine_config
+        ), f"Engine config name mismatch: {engine_config_name} != {required_engine_config}"
 
     board_counter = 1
     # Required to ensure that the engine doesn't use cached results from
@@ -103,6 +150,9 @@ async def analyze_position(
             score_q = cp2q(score_cp)
             analysis_object.score = score_q
 
+            # Get the best move
+            analysis_object.best_move = info["pv"][0]
+
         finally:
             # Add the board to the receiver queue
             producer_queue.put(analysis_object)
@@ -138,6 +188,7 @@ async def main(
         analyze_position(
             search_limits=engine_config.search_limits,
             engine_generator=engine_generator,
+            engine_config_name=args.engine_config_name,
             network_name=args.network_name,
             identifier_str=f"ANALYSIS {process_name}",
         )
@@ -161,11 +212,7 @@ if __name__ == "__main__":
     # fmt: off
     parser.add_argument("--seed",                  type=int, default=42)  # noqa
     parser.add_argument("--engine_config_name",    type=str, default="local_400_nodes.ini")  # noqa
-    # parser.add_argument("--engine_config_name",    type=str, default="remote_400_nodes.ini")  # noqa
-    # parser.add_argument("--num_positions",         type=int, default=100)  # noqa
-    # parser.add_argument("--network_path",          type=str, default="network_d295bbe9cc2efa3591bbf0b525ded076d5ca0f9546f0505c88a759ace772ea42")  # noqa
     parser.add_argument("--network_name",          type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa
-    # parser.add_argument("--network_path",          type=str,  default="T785469-600469c425eaf7397138f5f9edc18f26dfaf9791f365f71ebc52a419ed24e9f2")  # noqa
     parser.add_argument("--queue_max_size",        type=int, default=100_000)  # noqa
     parser.add_argument("--result_subdir",         type=str, default="")  # noqa
     # fmt: on
