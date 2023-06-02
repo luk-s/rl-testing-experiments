@@ -102,7 +102,8 @@ class SimpleStatistics(Statistics):
             logging.info(f"{worst_individual = }, {worst_fitness = }")
             logging.info(f"{average_fitness = }")
             logging.info(
-                f"Number of unique individuals = {np.round(unique_individual_fraction * population.size).astype(int)}"
+                "Number of unique individuals ="
+                f" {np.round(unique_individual_fraction * population.size).astype(int)}"
             )
             logging.info(f"{best_individual.history = }")
 
@@ -244,9 +245,19 @@ class SimpleStatistics(Statistics):
             # Gather the parameter values of all runs
             parameter_values = [getattr(statistics[i], parameter_name) for i in range(num_runs)]
 
+            # Make sure that all time series have the same length
+            # Pad the time series with np.nan if necessary
+            time_series_lengths = [len(time_series) for time_series in parameter_values]
+            max_time_series_length = max(time_series_lengths)
+            for i in range(num_runs):
+                if time_series_lengths[i] < max_time_series_length:
+                    parameter_values[i].extend(
+                        [np.nan] * (max_time_series_length - time_series_lengths[i])
+                    )
+
             # Calculate the average and standard deviation of the parameter values
-            averages = list(np.mean(parameter_values, axis=0))
-            stds = list(np.std(parameter_values, axis=0))
+            averages = list(np.nanmean(parameter_values, axis=0))
+            stds = list(np.nanstd(parameter_values, axis=0))
 
             # Set the averaged parameter values
             setattr(averaged_statistics, parameter_name, averages)

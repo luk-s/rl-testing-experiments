@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 import chess.engine
 import numpy as np
 
-from experiments.evolutionary_algorithms.evolutionary_algorithm_configs import (
+from evolutionary_algorithm_configs import (
     SimpleEvolutionaryAlgorithmConfig,
 )
 from rl_testing.evolutionary_algorithms import (
@@ -45,7 +45,7 @@ from rl_testing.util.experiment import (
 )
 from rl_testing.util.util import get_random_state, log_time
 
-from rl_testing.evolutionary_algorithms.distributed_queue_manager import (
+from rl_testing.engine_generators.distributed_queue_manager import (
     QueueManager,
     address,
     port,
@@ -67,6 +67,8 @@ Time = float
 
 
 class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
+    """Evolutionary algorithm which allows for distributed oracle queries."""
+
     def __init__(
         self,
         evolutionary_algorithm_config: SimpleEvolutionaryAlgorithmConfig,
@@ -74,12 +76,23 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         logger: logging.Logger,
         result_file_path: Optional[Path] = None,
     ):
+        """Initialize the evolutionary algorithm.
+
+        Args:
+            evolutionary_algorithm_config (SimpleEvolutionaryAlgorithmConfig): The evolutionary
+                algorithm config.
+            experiment_config (Dict[str, Any]): The experiment config.
+            logger (logging.Logger): The logger.
+            result_file_path (Optional[Path], optional): The path to the file where the results
+                should be stored. Defaults to None.
+        """
         # Experiment configs
         self.experiment_config = experiment_config
         self.evolutionary_algorithm_config = evolutionary_algorithm_config
         self.logger = logger
 
         # Evolutionary algorithm configs
+        self.data_path = evolutionary_algorithm_config.data_path
         self.num_generations = evolutionary_algorithm_config.num_generations
         self.crossover_probability = evolutionary_algorithm_config.crossover_probability
         self.mutation_probability = evolutionary_algorithm_config.mutation_probability
@@ -96,6 +109,7 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         self.input_queue: queue.Queue = queue.Queue()
         self.output_queue: queue.Queue = queue.Queue()
 
+        # Prepare the queues for the distributed fitness evaluation
         def get_input_queue() -> queue.Queue:
             return self.input_queue
 
@@ -112,6 +126,12 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         self.net_manager.start()
 
     async def initialize(self, seed: int) -> None:
+        """Initialize the evolutionary algorithm by creating the random state, the multiprocessing
+        pool, the fitness function, the evolutionary operators and the population.
+
+        Args:
+            seed (int): The seed for the random state.
+        """
         # Create the random state
         self.random_state = get_random_state(seed)
 
@@ -138,7 +158,7 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
 
         # Create the population
         individuals = get_random_individuals(
-            "/data/chess-data/no_pawns_positions_large_synthetic.txt",
+            self.data_path,
             self.evolutionary_algorithm_config.population_size,
             self.random_state,
         )
@@ -156,11 +176,22 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
 
     @property
     def num_fitness_evaluations(self) -> int:
+        """Return the number of fitness evaluations.
+
+        Returns:
+            int: The number of fitness evaluations.
+        """
         if self.fitness is None:
             return self._num_fitness_evaluations
         return len(self.fitness.cache)
 
     async def run(self) -> SimpleStatistics:
+        """Runs the evolutionary algorithm until an early stopping criterion is reached or the
+        maximum number of fitness evaluations is reached.
+
+        Returns:
+            SimpleStatistics: The statistics of the evolutionary algorithm.
+        """
         start_time = time.time()
 
         # Create the statistics
@@ -240,6 +271,10 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         return statistics
 
     async def cleanup(self) -> None:
+        """Cleanup after evolutionary algorithm by closing the multiprocessing pool, saving the
+        fitness cache, updating the number of fitness evaluations used by the
+        evolutionary algorithm.
+        """
         # Cancel all running subprocesses which the fitness evaluator spawned
         self.fitness.cancel_tasks()
 
@@ -258,8 +293,19 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         del self.population
 
 
-async def main(experiment_config_dict: Dict[str, Any], logger: logging.Logger) -> None:
-    """Run the experiment."""
+async def main(
+    experiment_config_dict: Dict[str, Any], logger: logging.Logger
+) -> List[SimpleStatistics]:
+    """Repeatedly run the evolutionary algorithm until the maximum number of fitness evaluations
+    is reached.
+
+    Args:
+        experiment_config_dict (Dict[str, Any]): The experiment config.
+        logger (logging.Logger): The logger.
+
+    Returns:
+        List[SimpleStatistics]: The statistics of the evolutionary algorithm.
+    """
 
     # Store the start time
     start_time = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
@@ -279,6 +325,10 @@ async def main(experiment_config_dict: Dict[str, Any], logger: logging.Logger) -
 
     # Store all fens together with their evaluated fitness values in a result file
     result_file_path = RESULT_DIR / f"oracle_queries_{start_time}.txt"
+
+    # Create the result folder if it doesn't exist
+    result_file_path.parent.mkdir(parents=True, exist_ok=True)
+
     with open(result_file_path, "w") as result_file:
         # Store the general experiment config
         for key, value in experiment_config_dict.items():
@@ -342,7 +392,6 @@ if __name__ == "__main__":
     # parser.add_argument("--evolutionary_algorithm_config_name", type=str,  default="config_simple_population.yaml")  # noqa
     parser.add_argument("--evolutionary_algorithm_config_name", type=str,  default="config_simple_population_max_oracle_distributed.yaml")  # noqa
     # fmt: on
-
     ##################################
     #           CONFIG END           #
     ##################################

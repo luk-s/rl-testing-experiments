@@ -1,30 +1,23 @@
 import abc
-import argparse
 import asyncio
 import logging
 import os
-import queue
 from functools import lru_cache
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 
 import chess
 import chess.engine
 import numpy as np
 
-from rl_testing.config_parsers import get_engine_config
-from rl_testing.engine_generators import EngineGenerator, get_engine_generator
-from rl_testing.engine_generators.generators import EngineGenerator
+from rl_testing.engine_generators import EngineGenerator
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
 from rl_testing.util.cache import LRUCache
 from rl_testing.util.chess import cp2q, rotate_180_clockwise
 from rl_testing.util.engine import RelaxedUciProtocol, engine_analyse
-from rl_testing.util.experiment import get_experiment_params_dict
 from rl_testing.util.util import get_task_result_handler
-from rl_testing.evolutionary_algorithms.worker import AnalysisObject, PLACEHOLDER_ANALYSIS_OBJECT
-from rl_testing.evolutionary_algorithms.distributed_queue_manager import (
-    QueueManager,
+from rl_testing.engine_generators.worker import AnalysisObject
+from rl_testing.engine_generators.distributed_queue_manager import (
     connect_to_manager,
 )
 
@@ -672,7 +665,7 @@ class BoardTransformationFitness(Fitness):
 
         # Initialize all the variables
         self.result_path = result_path
-        self.input_queue, self.output_queue = connect_to_manager()
+        self.input_queue, self.output_queue, _ = connect_to_manager()
         self.result_queue = asyncio.Queue()
         self.cache: Dict[FEN, float] = LRUCache(maxsize=200_000)
 

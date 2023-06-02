@@ -11,6 +11,7 @@ from rl_testing.config_parsers.evolutionary_algorithm_config_parser import (
 
 class SimpleEvolutionaryAlgorithmConfig(EvolutionaryAlgorithmConfig):
     REQUIRED_ATTRIBUTES = [
+        "data_path",
         "num_runs_per_config",
         "num_workers",
         "num_generations",
@@ -33,6 +34,7 @@ class SimpleEvolutionaryAlgorithmConfig(EvolutionaryAlgorithmConfig):
         super().__init__(config, _initialize=False)
 
         # General attributes
+        self.data_path = None
         self.num_runs_per_config = None
         self.num_workers = None
         self.num_generations = None
@@ -87,9 +89,7 @@ class CellularEvolutionaryAlgorithmConfig(SimpleEvolutionaryAlgorithmConfig):
     ]
     OPTIONAL_ATTRIBUTES = []
 
-    def __init__(
-        self, config: Union[Dict[str, Dict[str, Any]], configparser.ConfigParser]
-    ) -> None:
+    def __init__(self, config: Union[Dict[str, Dict[str, Any]], configparser.ConfigParser]) -> None:
         super().__init__(config, _initialize=False)
 
         # General attributes

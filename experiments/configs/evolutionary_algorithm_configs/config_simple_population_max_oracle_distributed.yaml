@@ -1,5 +1,6 @@
 General:
   config_type: 
+  data_path: /data/chess-data/no_pawns_positions_large_synthetic.txt
   num_runs_per_config: 6
   num_workers: 8
   num_generations: 20
