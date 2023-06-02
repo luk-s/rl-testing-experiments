@@ -1,10 +1,9 @@
 import argparse
 import asyncio
 import logging
-import queue
 from multiprocessing import current_process
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 import chess
 import chess.engine
@@ -13,13 +12,16 @@ from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.engine_generators.distributed_queue_manager import (
     connect_to_manager,
-    password,
 )
 from rl_testing.util.chess import cp2q
 from rl_testing.util.util import get_task_result_handler
 
 
 class AnalysisObject:
+    """An object which contains the information required to analyze a position
+    and store the results of the analysis.
+    """
+
     def __init__(self, fen: str):
         self.fen = fen
         self.score: Optional[float] = None
@@ -27,6 +29,13 @@ class AnalysisObject:
 
 
 class TransformationAnalysisObject(AnalysisObject):
+    """An analysis object used for the board transformation experiment. Besides the standard
+    "fen", "score", and "best_move" attributes, this object also contains the "base_fen" and
+    "transformation_index" attributes which are used to match the (potentially transformed)
+    board with its original base board and to indicate the transformation that was applied to
+    the base board.
+    """
+
     def __init__(self, fen: str, base_fen: str, transformation_index: int):
         self.fen = fen
         self.base_fen = base_fen
@@ -36,6 +45,13 @@ class TransformationAnalysisObject(AnalysisObject):
 
 
 class RecommendedMoveAnalysisObject(AnalysisObject):
+    """An analysis object used for the recommended move experiment. Besides the standard
+    "fen" and "score" attributes, this object also contains the "parent_fen", "parent_score",
+    and "parent_best_move" attributes. All of the parent attributes are used to store the
+    results of the analysis of the parent board. The parent board is the original board
+    where we apply the recommended move to in order to obtain the child board.
+    """
+
     def __init__(
         self,
         fen: str,
@@ -48,6 +64,11 @@ class RecommendedMoveAnalysisObject(AnalysisObject):
         self.parent_score: Optional[float] = None
 
     def prepare_second_round(self) -> None:
+        """After the parent board has been analyzed, this method is used to copy all
+        stored attributes into the parent attributes in order to make space for the
+        results of the analysis of the child board. This method should be called after
+        the parent board has been analyzed.
+        """
         # Copy the attributes to the parent
         self.parent_fen = self.fen
         self.parent_best_move = self.best_move
@@ -64,9 +85,21 @@ class RecommendedMoveAnalysisObject(AnalysisObject):
         self.score = None
 
     def is_result_valid(self) -> bool:
+        """Check if the analysis results are valid. The results are valid if neither the
+        score nor the best move are None, or "invalid".
+
+        Returns:
+            bool: True if the results are valid, False otherwise.
+        """
         return isinstance(self.score, float) and isinstance(self.best_move, chess.Move)
 
     def is_complete(self) -> bool:
+        """Check if the analyses of both the parent- and the child board are complete.
+        The analysis is complete if all of the attributes have been filled.
+
+        Returns:
+            bool: True if the analysis is complete, False otherwise.
+        """
         attributes = [
             "fen",
             "parent_fen",
@@ -85,6 +118,22 @@ async def analyze_position(
     network_name: Optional[str] = None,
     identifier_str: str = "",
 ) -> None:
+    """A worker task which repeatedly fetches an analysis object from the queue, analyzes
+    the position stored in the analysis object, and stores the results of the analysis in
+    the analysis object. The analysis object is then added to the result queue.
+
+    Args:
+        search_limits (Dict[str, Any]): A dictionary containing the search limits for the
+            search engine.
+        engine_generator (EngineGenerator): An engine generator which is used to generate
+            the search engine.
+        engine_config_name (str): The name of the engine config which is used to generate
+            the search engine.
+        network_name (Optional[str], optional): The name of the config file of the neural
+            network weight file which is used by the search engine. Defaults to None.
+        identifier_str (str, optional): A string which is used to identify the worker in
+            the logs. Defaults to "".
+    """
     consumer_queue, producer_queue, required_engine_config = connect_to_manager()
 
     # Make sure that the worker runs the correct engine config
@@ -104,12 +153,8 @@ async def analyze_position(
     engine = await engine_generator.get_initialized_engine()
 
     while True:
-        # Fetch the next base board, the next transformed board, and the corresponding
-        # transformation index
-        print(f"[{identifier_str}] Before get")
-        print(f"[{identifier_str}] Size: ", consumer_queue.qsize())
+        # Fetch the next analysis object
         analysis_object: AnalysisObject = consumer_queue.get()
-        print("After get")
         current_board = chess.Board(analysis_object.fen)
 
         logging.info(
@@ -122,7 +167,6 @@ async def analyze_position(
             info = await engine.analyse(
                 current_board, chess.engine.Limit(**search_limits), game=analysis_counter
             )
-            print(f"[{identifier_str}] after analyze of board {board_counter}")
 
         except chess.engine.EngineTerminatedError:
             if engine_generator is None:
@@ -142,6 +186,7 @@ async def analyze_position(
 
             # Add an error to the receiver queue
             analysis_object.score = "invalid"
+            analysis_object.best_move = "invalid"
         else:
             # Get the score of the board
 
@@ -156,7 +201,6 @@ async def analyze_position(
         finally:
             # Add the board to the receiver queue
             producer_queue.put(analysis_object)
-            print(f"[{identifier_str}] Marking task {board_counter} as done")
             consumer_queue.task_done()
             board_counter += 1
 
@@ -164,7 +208,13 @@ async def analyze_position(
 async def main(
     args: argparse.Namespace,
     logger: logging.Logger,
-):
+) -> None:
+    """The main function used to spawn the worker task.
+
+    Args:
+        args (argparse.Namespace): The command line arguments used to configure the worker.
+        logger (logging.Logger): The logger used to log messages.
+    """
     # Create result directory
     config_folder_path = Path(__file__).absolute().parent.parent.parent / Path(
         "experiments/configs/engine_configs/"
@@ -193,7 +243,7 @@ async def main(
             identifier_str=f"ANALYSIS {process_name}",
         )
     )
-    # Add callbacks to all tasks
+    # Add callbacks to the analysis task
     handle_task_exception = get_task_result_handler(
         logger=logger, message="Task raised an exception"
     )
@@ -213,8 +263,6 @@ if __name__ == "__main__":
     parser.add_argument("--seed",                  type=int, default=42)  # noqa
     parser.add_argument("--engine_config_name",    type=str, default="local_400_nodes.ini")  # noqa
     parser.add_argument("--network_name",          type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa
-    parser.add_argument("--queue_max_size",        type=int, default=100_000)  # noqa
-    parser.add_argument("--result_subdir",         type=str, default="")  # noqa
     # fmt: on
     ##################################
     #           CONFIG END           #
