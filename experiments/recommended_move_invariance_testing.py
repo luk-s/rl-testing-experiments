@@ -186,7 +186,8 @@ async def evaluate_candidates(
                     file.flush()
                     os.fsync(file.fileno())
 
-            board_counter += 1
+                board_counter += 1
+
             consumer_queue.task_done()
 
 
