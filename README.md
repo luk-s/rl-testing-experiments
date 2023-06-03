@@ -1,5 +1,17 @@
 # rl-testing-experiments
 
+## Table of contents
+1. [Setup](#setup)
+    - [Creating virtual environment](#creating-virtual-environment)
+    - [Installing the package](#installing-the-package)
+    - [Setting up a Leela Chess Zero instance](#setting-up-a-leela-chess-zero-instance)
+    - [Downloading a Leela Chess Zero weight file](#downloading-a-leela-chess-zero-weight-file)
+    - [Configuration file for Leela Chess Zero instance](#configuration-file-for-leela-chess-zero-instance)
+    - [Configuration file for data](#configuration-file-for-data)
+2. [Reproducing the experiments](#reproducing-the-experiments)
+    - [Prerequisites](#prerequisites)
+    - [Running the experiments](#running-the-experiments)
+
 ## Setup
 ### Creating virtual environment
 This project was developed using Python 3.8. It is recommended to install this repository in a virtual environment.
