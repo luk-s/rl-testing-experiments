@@ -23,7 +23,7 @@ FILE_TRANSFORMATION_BOARD="experiments/results/final_data/board_transformation_4
 
 # Define the titles of the plots
 TITLE_FORCED_MOVES="Forced moves"
-TITLE_BEST_MOVES_MIDDLEGAMES="Recommended moves (middlegames)"
+TITLE_BEST_MOVES_MIDDLEGAMES="Recommended moves"
 TITLE_MIRROR_BOARD="Mirror board"
 TITLE_TRANSFORMATION_BOARD="Transform board"
 
