@@ -86,7 +86,7 @@ def differences_density_plot(
 
     if save_plot:
         plt.tight_layout()
-        plt.savefig(save_plot_path, dpi=300)
+        plt.savefig(save_plot_path, dpi=300, bbox_inches="tight")
 
     return dataframe
 

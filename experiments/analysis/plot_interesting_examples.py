@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import chess
 import chess.engine
+import chess.svg
 import pandas as pd
 from chess import flip_anti_diagonal, flip_diagonal, flip_horizontal, flip_vertical
 from chess.engine import Score
@@ -49,6 +50,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--flip_second_score", action="store_true", help="Whether the second Q-value should be flipped (multiplied by -1)", required=False, default=False)  # noqa
     parser.add_argument("--show_best_move_first", action="store_true", help="Whether the best move should be shown for the first position", required=False, default=False)  # noqa
     parser.add_argument("--show_best_move_second", action="store_true", help="Whether the best move should be shown for the second position", required=False, default=False)  # noqa
+    parser.add_argument("--large_fontsize", action="store_true", help="Whether the fontsize should be increased", required=False, default=False)  # noqa
     parser.add_argument("--save_plot", action="store_true", help="Save the resulting plots to a file", required=False, default=False)  # noqa
     parser.add_argument("--save_path_base", type=str, help="Base path to use for saving the plots", required=False, default=None)  # noqa
     parser.add_argument("--show_plot", action="store_true", help="Show the resulting plots", required=False, default=False)  # noqa
@@ -260,6 +262,7 @@ def create_two_board_plot(
     second_win_prob_flipped: float,
     best_move_first: Optional[chess.Move] = None,
     best_move_second: Optional[chess.Move] = None,
+    large_font_size: bool = False,
     show_plot: bool = True,
     save_plot: bool = False,
     save_path: str = "",
@@ -280,10 +283,6 @@ def create_two_board_plot(
     else:
         second_color = second_player_to_move
 
-    # Create the titles
-    title1 = f"Board 1: {first_player_to_move} to move"
-    title2 = f"Board 2: {second_player_to_move} to move"
-
     first_win_prob = str(round(100 * first_win_prob))
     second_win_prob = str(round(100 * second_win_prob))
 
@@ -291,30 +290,52 @@ def create_two_board_plot(
     first_len = len(str(first_win_prob))
     second_len = len(str(second_win_prob))
 
-    # Compute the correct amount of spaces to add
-    first_spaces = " " * (13 - first_len)
-    second_spaces = " " * (13 - second_len)
+    # Create the titles
+    if large_font_size:
+        first_len += 1 if first_len == 2 else 0
+        second_len += 1 if second_len == 2 else 0
+
+        title1 = f"{first_player_to_move} to move"
+        title2 = f"{second_player_to_move} to move"
+
+        # Compute the correct amount of spaces to add
+        win_prob_string = "Win prob:"
+        first_spaces = " " * (7 - first_len)
+        second_spaces = " " * (7 - second_len)
+
+    else:
+        title1 = f"Board 1: {first_player_to_move} to move"
+        title2 = f"Board 2: {second_player_to_move} to move"
+
+        # Compute the correct amount of spaces to add
+        win_prob_string = "Win probability:"
+        first_spaces = " " * (13 - first_len)
+        second_spaces = " " * (13 - second_len)
 
     # Create the x-axis labels
-    x_label1 = f"Win probability:{first_spaces}{first_win_prob}% for {first_color}"  # 16
-    if best_move_first:
-        first_line_length = len(x_label1)
-        move_san = first_board.san(best_move_first)
-        second_line = f"\nBest move:{first_spaces + ' ' * 7}{move_san}"  # 10
-        second_line_length = len(second_line)
-        x_label1 += second_line
-        if first_line_length > second_line_length:
-            x_label1 += " " * (first_line_length - second_line_length)
+    x_labels = []
+    for win_prob, space, color, best_move, board in zip(
+        [first_win_prob, second_win_prob],
+        [first_spaces, second_spaces],
+        [first_color, second_color],
+        [best_move_first, best_move_second],
+        [first_board, second_board],
+    ):
+        x_label = f"{win_prob_string}{space}{win_prob}% for {color}"
+        if best_move:
+            first_line_length = len(x_label)
+            move_san = board.san(best_move)
+            san_length = len(move_san)
+            second_line_space = 21 if san_length == 3 else 20
+            second_line = f"\nBest move:{' ' * (second_line_space - san_length)}{move_san}"
+            second_line_length = len(second_line)
+            x_label += second_line
+            if first_line_length > second_line_length:
+                x_label += " " * (first_line_length - second_line_length)
+        x_labels.append(x_label)
 
-    x_label2 = f"Win probability:{second_spaces}{second_win_prob}% for {second_color}"
-    if best_move_second:
-        first_line_length = len(x_label2)
-        move_san = second_board.san(best_move_second)
-        second_line = f"\nBest move:{second_spaces + ' ' * 7}{move_san}"
-        second_line_length = len(second_line)
-        x_label2 += second_line
-        if first_line_length > second_line_length:
-            x_label2 += " " * (first_line_length - second_line_length)
+    # Create the x-axis labels
+    x_label1, x_label2 = x_labels
 
     # Build the arrows of the best moves
     arrows1 = []
@@ -328,6 +349,11 @@ def create_two_board_plot(
             chess.svg.Arrow(best_move_second.from_square, best_move_second.to_square, color="green")
         ]
 
+    if large_font_size:
+        fontsize = 18
+    else:
+        fontsize = 14
+
     # Create the plots
     plot_two_boards(
         board1=first_board,
@@ -338,7 +364,7 @@ def create_two_board_plot(
         title2=title2,
         x_label1=x_label1,
         x_label2=x_label2,
-        fontsize=14,
+        fontsize=fontsize,
         plot_size=800,
         save=save_plot,
         show=show_plot,
@@ -416,7 +442,10 @@ def plot_interesting_examples(args: argparse.Namespace):
             second_best_moves,
         )
     ):
-        save_path = str(args.save_path_base) + f"_{index+1}.png"
+        if args.large_fontsize:
+            save_path = str(args.save_path_base) + f"_{index+1}_large.png"
+        else:
+            save_path = str(args.save_path_base) + f"_{index+1}.png"
         print(f"Plotting example {index+1}/{args.num_examples}")
         create_two_board_plot(
             first_fen=first_fen,
@@ -426,6 +455,7 @@ def plot_interesting_examples(args: argparse.Namespace):
             second_win_prob_flipped=args.flip_second_score,
             best_move_first=first_best_move if args.show_best_move_first else None,
             best_move_second=second_best_move if args.show_best_move_second else None,
+            large_font_size=args.large_fontsize,
             show_plot=args.show_plot,
             save_plot=args.save_plot,
             save_path=save_path,
