@@ -18,10 +18,10 @@ from rl_testing.data_generators import BoardGenerator, get_data_generator
 
 from rl_testing.engine_generators.distributed_queue_manager import (
     QueueManager,
-    address,
+    default_address,
     connect_to_manager,
-    password,
-    port,
+    default_password,
+    default_port,
 )
 from rl_testing.engine_generators.worker import TransformationAnalysisObject
 from rl_testing.util.chess import apply_transformation
@@ -294,7 +294,9 @@ async def transformation_invariance_testing(
     QueueManager.register("input_queue", callable=get_input_queue)
     QueueManager.register("output_queue", callable=get_output_queue)
 
-    net_manager = QueueManager(address=(address, port), authkey=password.encode("utf-8"))
+    net_manager = QueueManager(
+        address=(default_address, default_port), authkey=default_password.encode("utf-8")
+    )
 
     # Start the server
     net_manager.start()

@@ -47,9 +47,9 @@ from rl_testing.util.util import get_random_state, log_time
 
 from rl_testing.engine_generators.distributed_queue_manager import (
     QueueManager,
-    address,
-    port,
-    password,
+    default_address,
+    default_port,
+    default_password,
 )
 import queue
 
@@ -120,7 +120,9 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         QueueManager.register("input_queue", callable=get_input_queue)
         QueueManager.register("output_queue", callable=get_output_queue)
 
-        self.net_manager = QueueManager(address=(address, port), authkey=password.encode("utf-8"))
+        self.net_manager = QueueManager(
+            address=(default_address, default_port), authkey=default_password.encode("utf-8")
+        )
 
         # Start the server
         self.net_manager.start()

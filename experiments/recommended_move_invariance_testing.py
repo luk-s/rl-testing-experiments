@@ -18,10 +18,10 @@ from rl_testing.util.experiment import store_experiment_params
 from rl_testing.util.util import get_task_result_handler
 from rl_testing.engine_generators.distributed_queue_manager import (
     QueueManager,
-    address,
+    default_address,
     connect_to_manager,
-    password,
-    port,
+    default_password,
+    default_port,
 )
 from rl_testing.engine_generators.worker import (
     RecommendedMoveAnalysisObject,
@@ -165,6 +165,12 @@ async def evaluate_candidates(
 
                     # Add the board to the producer queue
                     producer_queue.put(analysis_object)
+                else:
+                    logging.info(
+                        f"[{identifier_str}] Skipping board because of invalid result: "
+                        + analysis_object.fen
+                    )
+                    board_counter += 1
 
             else:  # Case 2
                 # Extract the results
@@ -236,7 +242,9 @@ async def recommended_move_invariance_testing(
     QueueManager.register("input_queue", callable=get_input_queue)
     QueueManager.register("output_queue", callable=get_output_queue)
 
-    net_manager = QueueManager(address=(address, port), authkey=password.encode("utf-8"))
+    net_manager = QueueManager(
+        address=(default_address, default_port), authkey=default_password.encode("utf-8")
+    )
 
     # Start the server
     net_manager.start()
