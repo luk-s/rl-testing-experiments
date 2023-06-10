@@ -14,6 +14,7 @@ CREATE_TRANSFORM_BOARD="True"
 # Some general options
 SAVE_PLOT="True"
 SHOW_PLOT="False"
+LARGE_FONT="True"
 LC0_CONFIG="remote_400_nodes.ini"
 NETWORK_NAME="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207"
 
@@ -59,7 +60,13 @@ else
     SHOW_PLOT_STRING=""
 fi
 
-COMMON_ARGS="$COMMON_ARGS $SAVE_PLOT_STRING $SHOW_PLOT_STRING"
+if [ $LARGE_FONT == "True" ]; then
+    LARGE_FONT_STRING="--large_font"
+else
+    LARGE_FONT_STRING=""
+fi
+
+COMMON_ARGS="$COMMON_ARGS $SAVE_PLOT_STRING $SHOW_PLOT_STRING $LARGE_FONT_STRING"
 
 ## Plot the interesting examples
 if [ $CREATE_FORCED_MOVES == "True" ]; then
