@@ -2,15 +2,17 @@ import asyncio
 import logging
 from getpass import getpass
 from pathlib import Path
-from typing import Any, Dict, Tuple, TypeVar
+from typing import Any, Dict, Tuple, TypeVar, Union
 
 import asyncssh
 from asyncssh import SSHSubprocessProtocol, SSHSubprocessTransport
 from chess.engine import UciProtocol
 
 from rl_testing.config_parsers.engine_config_parser import (
-    EngineConfig,
-    RemoteEngineConfig,
+    LeelaEngineConfig,
+    LeelaRemoteEngineConfig,
+    StockfishEngineConfig,
+    StockfishRemoteEngineConfig,
 )
 from rl_testing.engine_generators.relaxed_uci_protocol import (
     RelaxedUciProtocol,
@@ -21,7 +23,7 @@ TUciProtocol = TypeVar("TUciProtocol", bound="UciProtocol")
 
 
 class EngineGenerator:
-    def __init__(self, config: EngineConfig) -> None:
+    def __init__(self, config: Union[LeelaEngineConfig, StockfishEngineConfig]) -> None:
         self.engine_path = config.engine_path
         self.network_base_path = config.network_base_path
         self.engine_config = config.engine_config
@@ -96,7 +98,7 @@ class RemoteEngineGenerator(EngineGenerator):
     GLOBAL_CONNECTION = None
     GLOBAL_SSH_LOCK = None
 
-    def __init__(self, config: RemoteEngineConfig) -> None:
+    def __init__(self, config: Union[LeelaRemoteEngineConfig, StockfishRemoteEngineConfig]) -> None:
         super().__init__(config)
         self.remote_host = config.remote_host
         self.remote_user = config.remote_user
@@ -111,8 +113,7 @@ class RemoteEngineGenerator(EngineGenerator):
                 # Read in the password from the user
                 if self.password_required:
                     remote_password = getpass(
-                        prompt="Please specify the SSH password for "
-                        f"the user {self.remote_user}:\n"
+                        prompt=f"Please specify the SSH password for the user {self.remote_user}:\n"
                     )
                 # Start connection
                 RemoteEngineGenerator.GLOBAL_CONNECTION = await asyncssh.connect(

@@ -7,12 +7,14 @@ from rl_testing.config_parsers.data_generator_config_parser import (
     RandomEndgameGeneratorConfig,
 )
 from rl_testing.config_parsers.engine_config_parser import (
-    EngineConfig,
-    RemoteEngineConfig,
+    LeelaEngineConfig,
+    LeelaRemoteEngineConfig,
+    StockfishEngineConfig,
+    StockfishRemoteEngineConfig,
 )
 
 
-def get_engine_config(config_name: str, config_folder_path: str) -> EngineConfig:
+def get_engine_config(config_name: str, config_folder_path: str) -> LeelaEngineConfig:
     # Create the config parser
     engine_type = get_attribute_from_config("engine_type", config_name, config_folder_path)
 
@@ -21,12 +23,16 @@ def get_engine_config(config_name: str, config_folder_path: str) -> EngineConfig
         raise ValueError(
             "The engine config requires a field 'engine_type' in the section 'General'"
         )
-    engine_config_class: EngineConfig
+    engine_config_class: LeelaEngineConfig
 
-    if engine_type == "local_engine":
-        engine_config_class = EngineConfig
-    elif engine_type == "remote_engine":
-        engine_config_class = RemoteEngineConfig
+    if engine_type == "leela_local_engine":
+        engine_config_class = LeelaEngineConfig
+    elif engine_type == "leela_remote_engine":
+        engine_config_class = LeelaRemoteEngineConfig
+    elif engine_type == "stockfish_local_engine":
+        engine_config_class = StockfishEngineConfig
+    elif engine_type == "stockfish_remote_engine":
+        engine_config_class = StockfishRemoteEngineConfig
     else:
         raise ValueError(f"Engine type {engine_type} not supported!")
 
