@@ -73,12 +73,21 @@ class DatabaseBoardGenerator(BoardGenerator):
         if self.file_iterator is None:
             self.setup_position()
 
+        board_to_return = self.current_board.copy()
+        self.moves_read += 1
+
         moves = list(self.current_game.mainline_moves())
+
+        # Read the next move if possible
+        if self.moves_read + 2 * self.get_positions_after_move <= len(
+            list(self.current_game.mainline_moves())
+        ):
+            self.current_board.push(moves[self.moves_read + 2 * self.get_positions_after_move])
 
         # If all moves of this game have been read, load a new game
         # Because some games are empty, repeat this process until you
         # find a game which is not empty
-        while self.moves_read + 2 * self.get_positions_after_move >= len(moves):
+        while self.moves_read + 2 * self.get_positions_after_move > len(moves):
             self.games_read += 1
             self.moves_read = 0
             self.current_game = chess.pgn.read_game(self.file_iterator)
@@ -93,12 +102,8 @@ class DatabaseBoardGenerator(BoardGenerator):
         ):
             self.current_board.push(move=moves[move_idx])
 
-        # Read the next move
-        self.current_board.push(moves[self.moves_read + 2 * self.get_positions_after_move])
-        self.moves_read += 1
-
         # Return the new position
-        return self.current_board.copy()
+        return board_to_return
 
 
 if __name__ == "__main__":
