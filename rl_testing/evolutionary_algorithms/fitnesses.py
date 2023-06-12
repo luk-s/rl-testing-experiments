@@ -226,6 +226,7 @@ class DifferentialTestingFitness(Fitness):
         search_limits: Dict[str, Any],
         sleep_after_get: float = 0.0,
         network_name: Optional[str] = None,
+        mate_score_cp: int = 12780,
         identifier_str: str = "",
     ) -> None:
         """Runs an infinite loop that fetches boards from the input queue, analyzes them using an engine running either locally
@@ -286,7 +287,7 @@ class DifferentialTestingFitness(Fitness):
                 )
 
             else:
-                score_cp = info["score"].relative.score(mate_score=12780)
+                score_cp = info["score"].relative.score(mate_score=mate_score_cp)
 
                 # Check if the computed score is valid
                 if engine_generator is not None and not engine_generator.cp_score_valid(score_cp):
@@ -333,6 +334,8 @@ class DifferentialTestingFitness(Fitness):
         search_limits2: Dict[str, Any],
         network_name1: Optional[str] = None,
         network_name2: Optional[str] = None,
+        mate_score_cp1: int = 12780,
+        mate_score_cp2: int = 12780,
         num_engines1: int = 1,
         num_engines2: int = 1,
         result_path: Optional[str] = None,
@@ -360,6 +363,8 @@ class DifferentialTestingFitness(Fitness):
         self.search_limits2 = search_limits2
         self.network_name1 = network_name1
         self.network_name2 = network_name2
+        self.mate_score_cp1 = mate_score_cp1
+        self.mate_score_cp2 = mate_score_cp2
         self.num_engines1 = num_engines1
         self.num_engines2 = num_engines2
         self.result_path = result_path
@@ -387,6 +392,7 @@ class DifferentialTestingFitness(Fitness):
             output_queue,
             engine_generator,
             network_name,
+            mate_score_cp,
             search_limits,
         ) in zip(
             [1, 2],
@@ -395,6 +401,7 @@ class DifferentialTestingFitness(Fitness):
             [self.output_queue1, self.output_queue2],
             [self.engine_generator1, self.engine_generator2],
             [self.network_name1, self.network_name2],
+            [self.mate_score_cp1, self.mate_score_cp2],
             [self.search_limits1, self.search_limits2],
         ):
             for engine_index in range(num_engines_to_create):
@@ -405,6 +412,7 @@ class DifferentialTestingFitness(Fitness):
                             output_queue=output_queue,
                             engine_generator=engine_generator,
                             network_name=network_name,
+                            mate_score_cp=mate_score_cp,
                             search_limits=search_limits,
                             sleep_after_get=0.1,
                             identifier_str=f"GROUP {group_index}, ENGINE {engine_index+1}",

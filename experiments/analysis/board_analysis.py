@@ -6,7 +6,7 @@ import chess
 import netwulf as nw
 from chess.engine import Score
 
-from rl_testing.config_parsers import get_engine_config
+from rl_testing.config_parsers import get_engine_config, LeelaEngineConfig
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.mcts.tree_parser import (
     TreeInfo,
@@ -17,6 +17,7 @@ from rl_testing.util.chess import cp2q
 
 
 async def analyze_with_engine(
+    engine_config: LeelaEngineConfig,
     engine_generator: EngineGenerator,
     positions: List[Union[chess.Board, str]],
     network_name: Optional[str] = None,
@@ -49,7 +50,7 @@ async def analyze_with_engine(
         info = await engine.analyse(board, chess.engine.Limit(**search_limits))
 
         # Extract the score
-        cp_score = info["score"].relative.score(mate_score=12780)
+        cp_score = info["score"].relative.score(mate_score=engine_config.mate_score_cp)
         if score_type == "cp":
             engine_scores.append(cp_score)
         elif score_type == "q":
@@ -106,6 +107,7 @@ if __name__ == "__main__":
 
     scores, trees = asyncio.run(
         analyze_with_engine(
+            engine_config=engine_config,
             engine_generator=engine_generator,
             positions=fens,
             network_name=network_name,
