@@ -16,14 +16,14 @@ from chess import flip_anti_diagonal, flip_diagonal, flip_horizontal, flip_verti
 from rl_testing.config_parsers import get_data_generator_config
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 
-from rl_testing.engine_generators.distributed_queue_manager import (
+from rl_testing.distributed.distributed_queue_manager import (
     QueueManager,
     default_address,
     connect_to_manager,
     default_password,
     default_port,
 )
-from rl_testing.engine_generators.worker import TransformationAnalysisObject
+from rl_testing.distributed.worker import TransformationAnalysisObject
 from rl_testing.util.chess import apply_transformation
 from rl_testing.util.chess import remove_pawns as remove_pawns_func
 from rl_testing.util.chess import (

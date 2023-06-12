@@ -16,14 +16,14 @@ from rl_testing.config_parsers import get_data_generator_config
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 from rl_testing.util.experiment import store_experiment_params
 from rl_testing.util.util import get_task_result_handler
-from rl_testing.engine_generators.distributed_queue_manager import (
+from rl_testing.distributed.distributed_queue_manager import (
     QueueManager,
     default_address,
     connect_to_manager,
     default_password,
     default_port,
 )
-from rl_testing.engine_generators.worker import (
+from rl_testing.distributed.worker import (
     RecommendedMoveAnalysisObject,
 )
 

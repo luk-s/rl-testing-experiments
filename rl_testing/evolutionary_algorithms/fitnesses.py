@@ -16,8 +16,8 @@ from rl_testing.util.cache import LRUCache
 from rl_testing.util.chess import cp2q, rotate_180_clockwise
 from rl_testing.util.engine import RelaxedUciProtocol, engine_analyse
 from rl_testing.util.util import get_task_result_handler
-from rl_testing.engine_generators.worker import AnalysisObject
-from rl_testing.engine_generators.distributed_queue_manager import (
+from rl_testing.distributed.worker import AnalysisObject
+from rl_testing.distributed.distributed_queue_manager import (
     connect_to_manager,
 )
 

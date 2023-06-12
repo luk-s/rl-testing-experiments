@@ -45,7 +45,7 @@ from rl_testing.util.experiment import (
 )
 from rl_testing.util.util import get_random_state, log_time
 
-from rl_testing.engine_generators.distributed_queue_manager import (
+from rl_testing.distributed.distributed_queue_manager import (
     QueueManager,
     default_address,
     default_port,
