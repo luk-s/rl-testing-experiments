@@ -10,7 +10,7 @@ import chess.engine
 
 from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
-from rl_testing.engine_generators.distributed_queue_manager import (
+from rl_testing.distributed.distributed_queue_manager import (
     connect_to_manager,
 )
 from rl_testing.util.chess import cp2q
@@ -91,7 +91,9 @@ class RecommendedMoveAnalysisObject(AnalysisObject):
         Returns:
             bool: True if the results are valid, False otherwise.
         """
-        return isinstance(self.score, float) and isinstance(self.best_move, chess.Move)
+        return (isinstance(self.score, int) or isinstance(self.score, float)) and isinstance(
+            self.best_move, chess.Move
+        )
 
     def is_complete(self) -> bool:
         """Check if the analyses of both the parent- and the child board are complete.
@@ -116,6 +118,8 @@ async def analyze_position(
     engine_generator: EngineGenerator,
     engine_config_name: str,
     network_name: Optional[str] = None,
+    convert_cp2q: bool = True,
+    mate_score_cp: int = 12780,
     identifier_str: str = "",
 ) -> None:
     """A worker task which repeatedly fetches an analysis object from the queue, analyzes
@@ -131,16 +135,18 @@ async def analyze_position(
             the search engine.
         network_name (Optional[str], optional): The name of the config file of the neural
             network weight file which is used by the search engine. Defaults to None.
+        convert_cp2q (bool, optional): A boolean indicating whether the score should be
+            converted from centipawns to Q-values. Defaults to True.
         identifier_str (str, optional): A string which is used to identify the worker in
             the logs. Defaults to "".
     """
-    consumer_queue, producer_queue, required_engine_config = connect_to_manager()
+    consumer_queue, producer_queue, required_engine_config_name = connect_to_manager()
 
     # Make sure that the worker runs the correct engine config
-    if required_engine_config is not None:
+    if required_engine_config_name is not None:
         assert (
-            engine_config_name == required_engine_config
-        ), f"Engine config name mismatch: {engine_config_name} != {required_engine_config}"
+            engine_config_name == required_engine_config_name
+        ), f"Engine config name mismatch: {engine_config_name} != {required_engine_config_name}"
 
     board_counter = 1
     # Required to ensure that the engine doesn't use cached results from
@@ -191,9 +197,12 @@ async def analyze_position(
             # Get the score of the board
 
             # Get the score of the most promising child board
-            score_cp = info["score"].relative.score(mate_score=12780)
-            score_q = cp2q(score_cp)
-            analysis_object.score = score_q
+            score_cp = info["score"].relative.score(mate_score=mate_score_cp)
+            if convert_cp2q:
+                score_q = cp2q(score_cp)
+                analysis_object.score = score_q
+            else:
+                analysis_object.score = score_cp
 
             # Get the best move
             analysis_object.best_move = info["pv"][0]
@@ -224,10 +233,7 @@ async def main(
     engine_config = get_engine_config(
         config_name=args.engine_config_name, config_folder_path=config_folder_path
     )
-    assert (
-        "verbosemovestats" in engine_config.engine_config
-        and engine_config.engine_config["verbosemovestats"]
-    ), "VerboseMoveStats must be enabled in the engine config"
+
     engine_generator = get_engine_generator(engine_config)
 
     # Get the current process name
@@ -240,6 +246,8 @@ async def main(
             engine_generator=engine_generator,
             engine_config_name=args.engine_config_name,
             network_name=args.network_name,
+            convert_cp2q=engine_config.convert_cp2q,
+            mate_score_cp=engine_config.mate_score_cp,
             identifier_str=f"ANALYSIS {process_name}",
         )
     )
