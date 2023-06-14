@@ -8,18 +8,7 @@ default_password = "password"
 
 
 class QueueManager(SyncManager):
-    required_engine_config_name: Optional[str] = None
-
-    def requires_engine_config(self) -> bool:
-        return self.required_engine_config_name is not None
-
-    @property
-    def engine_config_name(self) -> Optional[str]:
-        return QueueManager.required_engine_config_name
-
-    @staticmethod
-    def set_engine_config(engine_config: str) -> None:
-        QueueManager.required_engine_config_name = engine_config
+    pass
 
 
 def connect_to_manager(
@@ -27,6 +16,11 @@ def connect_to_manager(
 ) -> Tuple[queue.Queue, queue.Queue, Optional[str]]:
     QueueManager.register("input_queue")
     QueueManager.register("output_queue")
+    QueueManager.register("required_engine_config_name")
     manager = QueueManager(address=(address, port), authkey=password.encode("utf-8"))
     manager.connect()
-    return manager.input_queue(), manager.output_queue(), manager.engine_config_name
+    return (
+        manager.input_queue(),
+        manager.output_queue(),
+        manager.required_engine_config_name()._getvalue(),
+    )

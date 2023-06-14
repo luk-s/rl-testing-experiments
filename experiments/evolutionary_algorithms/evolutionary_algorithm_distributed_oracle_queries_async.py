@@ -54,14 +54,12 @@ from rl_testing.distributed.distributed_queue_manager import (
 import queue
 
 RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm")
-CONFIG_FOLDER = Path(__file__).parent.parent
+CONFIG_FOLDER = Path(__file__).parent.parent / "configs"
 WANDB_CONFIG_FILE = CONFIG_FOLDER / Path(
     "configs/evolutionary_algorithm_configs/config_ea_differential_testing.yaml"
 )
-ENGINE_CONFIG_FOLDER = CONFIG_FOLDER / Path("configs/engine_configs")
-EVOLUTIONARY_ALGORITHM_CONFIG_FOLDER = CONFIG_FOLDER / Path(
-    "configs/evolutionary_algorithm_configs"
-)
+ENGINE_CONFIG_FOLDER = CONFIG_FOLDER / Path("engine_configs")
+EVOLUTIONARY_ALGORITHM_CONFIG_FOLDER = CONFIG_FOLDER / Path("evolutionary_algorithm_configs")
 DEBUG = True
 Time = float
 
@@ -116,9 +114,15 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         def get_output_queue() -> queue.Queue:
             return self.output_queue
 
+        def get_required_engine_config_name() -> Optional[str]:
+            return None
+
         # Initialize the input- and output queues
         QueueManager.register("input_queue", callable=get_input_queue)
         QueueManager.register("output_queue", callable=get_output_queue)
+        QueueManager.register(
+            "required_engine_config_name", callable=get_required_engine_config_name
+        )
 
         self.net_manager = QueueManager(
             address=(default_address, default_port), authkey=default_password.encode("utf-8")

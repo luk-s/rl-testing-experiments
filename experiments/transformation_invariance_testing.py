@@ -288,9 +288,11 @@ async def transformation_invariance_testing(
     def get_output_queue() -> queue.Queue:
         return engine_queue_out
 
+    def get_required_engine_config_name() -> Optional[str]:
+        return required_engine_config
+
     # Initialize the input- and output queues
-    if required_engine_config is not None:
-        QueueManager.set_engine_config(engine_config=required_engine_config)
+    QueueManager.register("required_engine_config_name", callable=get_required_engine_config_name)
     QueueManager.register("input_queue", callable=get_input_queue)
     QueueManager.register("output_queue", callable=get_output_queue)
 
