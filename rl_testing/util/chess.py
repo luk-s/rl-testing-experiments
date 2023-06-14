@@ -16,7 +16,7 @@ AGGRESSIVE_VALIDATION = True
 
 
 def q2cp(q_value: float) -> float:
-    return chess.engine.Cp(round(90 * np.tan(1.5620688421 * q_value)))
+    return chess.engine.Cp(round(90 * np.tan(1.5637541897 * q_value)))
 
 
 def cp2q(cp_value: float) -> float:
