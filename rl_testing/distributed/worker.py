@@ -7,14 +7,29 @@ from typing import Any, Dict, Optional
 
 import chess
 import chess.engine
-
+from rl_testing.engine_generators.relaxed_uci_protocol import RelaxedUciProtocol
 from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.distributed.distributed_queue_manager import (
     connect_to_manager,
+    default_address,
+    default_port,
+    default_password,
 )
 from rl_testing.util.chess import cp2q
 from rl_testing.util.util import get_task_result_handler
+
+
+class PlayObject:
+    """An object which contains the information required to play a game
+    and store the results of the game.
+    """
+
+    def __init__(self, board: chess.Board, new_game: bool = False, ponder: bool = False):
+        self.board = board
+        self.new_game = new_game
+        self.ponder = ponder
+        self.best_move: Optional[chess.Move] = None
 
 
 class AnalysisObject:
@@ -120,6 +135,9 @@ async def analyze_position(
     network_name: Optional[str] = None,
     convert_cp2q: bool = True,
     mate_score_cp: int = 12780,
+    address: str = default_address,
+    port: int = default_port,
+    password: str = default_password,
     identifier_str: str = "",
 ) -> None:
     """A worker task which repeatedly fetches an analysis object from the queue, analyzes
@@ -137,10 +155,19 @@ async def analyze_position(
             network weight file which is used by the search engine. Defaults to None.
         convert_cp2q (bool, optional): A boolean indicating whether the score should be
             converted from centipawns to Q-values. Defaults to True.
+        mate_score_cp (int, optional): The Centipawn score which is used to indicate a
+            mate. Defaults to 12780.
+        address (str, optional): The address of the distributed queue. Defaults to
+            default_address.
+        port (int, optional): The port of the distributed queue. Defaults to default_port.
+        password (str, optional): The password of the distributed queue. Defaults to
+            default_password.
         identifier_str (str, optional): A string which is used to identify the worker in
             the logs. Defaults to "".
     """
-    consumer_queue, producer_queue, required_engine_config_name = connect_to_manager()
+    consumer_queue, producer_queue, required_engine_config_name = connect_to_manager(
+        address=address, port=port, password=password
+    )
 
     # Make sure that the worker runs the correct engine config
     if required_engine_config_name is not None:
@@ -156,7 +183,7 @@ async def analyze_position(
     # Initialize the engine
     if network_name is not None:
         engine_generator.set_network(network_name=network_name)
-    engine = await engine_generator.get_initialized_engine()
+    engine: RelaxedUciProtocol = await engine_generator.get_initialized_engine()
 
     while True:
         # Fetch the next analysis object
@@ -214,6 +241,101 @@ async def analyze_position(
             board_counter += 1
 
 
+async def play_position(
+    search_limits: Dict[str, Any],
+    engine_generator: EngineGenerator,
+    engine_config_name: str,
+    network_name: Optional[str] = None,
+    address: str = default_address,
+    port: int = default_port,
+    password: str = default_password,
+    identifier_str: str = "",
+) -> None:
+    """A worker task which repeatedly fetches a play object from the queue, analyzes
+    the position stored in the play object, and stores the best move in the play object.
+    The play object is then added to the result queue.
+
+    Args:
+        search_limits (Dict[str, Any]): A dictionary containing the search limits for the
+            search engine.
+        engine_generator (EngineGenerator): An engine generator which is used to generate
+            the search engine.
+        engine_config_name (str): The name of the engine config which is used to generate
+            the search engine.
+        network_name (Optional[str], optional): The name of the config file of the neural
+            network weight file which is used by the search engine. Defaults to None.
+        address (str, optional): The address of the distributed queue. Defaults to
+            default_address.
+        port (int, optional): The port of the distributed queue. Defaults to default_port.
+        password (str, optional): The password of the distributed queue. Defaults to
+            default_password.
+        identifier_str (str, optional): A string which is used to identify the worker in
+            the logs. Defaults to "".
+    """
+    consumer_queue, producer_queue, required_engine_config_name = connect_to_manager(
+        address=address, port=port, password=password
+    )
+
+    # Make sure that the worker runs the correct engine config
+    if required_engine_config_name is not None:
+        assert (
+            engine_config_name == required_engine_config_name
+        ), f"Engine config name mismatch: {engine_config_name} != {required_engine_config_name}"
+
+    board_counter = 1
+
+    # Initialize the engine
+    if network_name is not None:
+        engine_generator.set_network(network_name=network_name)
+    engine: RelaxedUciProtocol = await engine_generator.get_initialized_engine()
+
+    while True:
+        # Fetch the next analysis object
+        play_object: PlayObject = consumer_queue.get()
+        current_board = play_object.board
+
+        logging.info(
+            f"[{identifier_str}] Playing board {board_counter}: "
+            + current_board.fen(en_passant="fen")
+        )
+        try:
+            # Analyze the board
+            result = await engine.play(
+                board=current_board,
+                limit=chess.engine.Limit(**search_limits),
+                game=hash(current_board.fen(en_passant="fen")) if play_object.new_game else None,
+                ponder=play_object.ponder,
+            )
+
+        except chess.engine.EngineTerminatedError:
+            if engine_generator is None:
+                logging.info("Can't restart engine due to missing generator")
+                raise
+
+            # Try to kill the failed engine
+            logging.info(f"[{identifier_str}] Trying to kill engine")
+            engine_generator.kill_engine(engine=engine)
+
+            # Try to restart the engine
+            logging.info("Trying to restart engine")
+
+            if network_name is not None:
+                engine_generator.set_network(network_name=network_name)
+            engine = await engine_generator.get_initialized_engine()
+
+            # Add an error to the receiver queue
+            play_object.best_move = "invalid"
+        else:
+            # Get the best move
+            play_object.best_move = result.move
+
+        finally:
+            # Add the board to the receiver queue
+            producer_queue.put(play_object)
+            consumer_queue.task_done()
+            board_counter += 1
+
+
 async def main(
     args: argparse.Namespace,
     logger: logging.Logger,
@@ -240,17 +362,37 @@ async def main(
     process_name = current_process().name
 
     # Start the tasks
-    analysis_task = asyncio.create_task(
-        analyze_position(
-            search_limits=engine_config.search_limits,
-            engine_generator=engine_generator,
-            engine_config_name=args.engine_config_name,
-            network_name=args.network_name,
-            convert_cp2q=engine_config.convert_cp2q,
-            mate_score_cp=engine_config.mate_score_cp,
-            identifier_str=f"ANALYSIS {process_name}",
+    if args.mode == "analyze":
+        analysis_task = asyncio.create_task(
+            analyze_position(
+                search_limits=engine_config.search_limits,
+                engine_generator=engine_generator,
+                engine_config_name=args.engine_config_name,
+                network_name=args.network_name,
+                convert_cp2q=engine_config.convert_cp2q,
+                mate_score_cp=engine_config.mate_score_cp,
+                address=args.address,
+                port=args.port,
+                password=args.password,
+                identifier_str=f"ANALYSIS {process_name}",
+            )
         )
-    )
+    elif args.mode == "play":
+        analysis_task = asyncio.create_task(
+            play_position(
+                search_limits=engine_config.search_limits,
+                engine_generator=engine_generator,
+                engine_config_name=args.engine_config_name,
+                network_name=args.network_name,
+                address=args.address,
+                port=args.port,
+                password=args.password,
+                identifier_str=f"PLAY {process_name}",
+            )
+        )
+    else:
+        raise ValueError(f"Unknown mode: {args.mode}")
+
     # Add callbacks to the analysis task
     handle_task_exception = get_task_result_handler(
         logger=logger, message="Task raised an exception"
@@ -268,9 +410,12 @@ if __name__ == "__main__":
     #           CONFIG START         #
     ##################################
     # fmt: off
-    parser.add_argument("--seed",                  type=int, default=42)  # noqa
+    parser.add_argument("--mode",                  type=str, default="analyze", choices=["analyze", "play"]) # noqa
     parser.add_argument("--engine_config_name",    type=str, default="local_400_nodes.ini")  # noqa
-    parser.add_argument("--network_name",          type=str,  default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa
+    parser.add_argument("--network_name",          type=str, default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa
+    parser.add_argument("--address",               type=str, default=default_address) # noqa
+    parser.add_argument("--port",                  type=int, default=default_port) # noqa
+    parser.add_argument("--password",              type=str, default=default_password) # noqa
     # fmt: on
     ##################################
     #           CONFIG END           #
