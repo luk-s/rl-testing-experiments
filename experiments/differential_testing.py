@@ -6,7 +6,7 @@ import queue
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import chess
 import chess.engine

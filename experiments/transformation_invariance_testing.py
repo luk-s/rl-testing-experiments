@@ -17,12 +17,12 @@ from rl_testing.config_parsers import get_data_generator_config
 from rl_testing.data_generators import BoardGenerator, get_data_generator
 
 from rl_testing.distributed.distributed_queue_manager import (
-    QueueManager,
     default_address,
     connect_to_manager,
     default_password,
     default_port,
 )
+from rl_testing.distributed.queue_utils import EmptySocketAddress, SocketAddress, build_manager
 from rl_testing.distributed.worker import TransformationAnalysisObject
 from rl_testing.util.chess import apply_transformation
 from rl_testing.util.chess import remove_pawns as remove_pawns_func
@@ -83,9 +83,9 @@ class ReceiverCache:
                 transform_index = analysis_object.transformation_index
                 score = analysis_object.score
             except queue.Empty:
-                await asyncio.sleep(delay=0.5)
+                await asyncio.sleep(delay=0.01)
             else:
-                await asyncio.sleep(delay=0.1)
+                await asyncio.sleep(delay=0.01)
                 break
 
         # The boards might not arrive in the correct order due to the asynchronous nature of
@@ -112,8 +112,9 @@ async def create_positions(
     data_generator: BoardGenerator,
     transformation_functions: List[Callable[[chess.Bitboard], chess.Bitboard]],
     remove_pawns: bool = False,
+    socket_address: SocketAddress = EmptySocketAddress,
     num_positions: int = 1,
-    sleep_between_positions: float = 0.1,
+    sleep_between_positions: float = 0.01,
     identifier_str: str = "",
 ) -> None:
     """Create chess positions using the provided data generator, apply all the transformations
@@ -126,6 +127,8 @@ async def create_positions(
             functions that are used to transform the chess positions.
         remove_pawns (bool, optional): Whether or not to remove the pawns from the generated chess
             positions. Defaults to False.
+        socket_address (SocketAddress, optional): An object that contains address information
+            about the queue. Defaults to EmptySocketAddress.
         num_positions (int, optional): The number of chess positions to create. Defaults to 1.
         sleep_between_positions (float, optional): The number of seconds to wait between creating
             two chess positions. Useful to pause this async function and allow other async
@@ -137,7 +140,7 @@ async def create_positions(
 
     # Get the queues
     output_queue: queue.Queue
-    output_queue, _, _ = connect_to_manager()
+    output_queue, _, _ = connect_to_manager(**socket_address.to_dict())
 
     # Create the chess positions
     board_index = 1
@@ -183,6 +186,7 @@ async def create_positions(
 async def evaluate_candidates(
     num_transforms: int,
     file_path: Union[str, Path],
+    socket_address: SocketAddress = EmptySocketAddress,
     num_positions: int = 1,
     sleep_after_get: float = 0.1,
     identifier_str: str = "",
@@ -193,6 +197,8 @@ async def evaluate_candidates(
     Args:
         num_transforms (int): The number of transformations that are applied to each board.
         file_path (Union[str, Path]): The path to the file in which the results are stored.
+        socket_address (SocketAddress, optional): An object that contains address information
+            about the queue. Defaults to EmptySocketAddress.
         num_positions (int, optional): The number of chess positions to evaluate. Defaults to 1.
         sleep_after_get (float, optional): The number of seconds to wait after receiving a board
             from the input queue. Useful to pause this async function and allow other async
@@ -202,7 +208,7 @@ async def evaluate_candidates(
     """
     # Get the queues
     engine_queue: queue.Queue
-    _, engine_queue, _ = connect_to_manager()
+    _, engine_queue, _ = connect_to_manager(**socket_address.to_dict())
 
     # Create a file to store the results
     file_path = Path(file_path)
@@ -247,6 +253,7 @@ async def transformation_invariance_testing(
     data_generator: BoardGenerator,
     transformation_functions: List[Callable[[chess.Bitboard], chess.Bitboard]],
     *,
+    socket_address: SocketAddress = EmptySocketAddress,
     result_file_path: Optional[Union[str, Path]] = None,
     remove_pawns: bool = False,
     num_positions: int = 1,
@@ -261,6 +268,8 @@ async def transformation_invariance_testing(
             chess positions.
         transformation_functions (List[Callable[[chess.Bitboard], chess.Bitboard]]): A list of
             functions that are used to transform the chess positions.
+        socket_address (SocketAddress, optional): An object that contains address information
+            about the queue. Defaults to EmptySocketAddress.
         result_file_path (Optional[Union[str, Path]], optional): The path to the file in which the
             results are stored. Defaults to None.
         remove_pawns (bool, optional): Whether or not to remove the pawns from the generated chess
@@ -278,29 +287,12 @@ async def transformation_invariance_testing(
 
     assert result_file_path is not None, "Result file path must be specified"
 
-    # Set up the distributed queues
-    engine_queue_in: queue.Queue = queue.Queue()
-    engine_queue_out: queue.Queue = queue.Queue()
-
-    def get_input_queue() -> queue.Queue:
-        return engine_queue_in
-
-    def get_output_queue() -> queue.Queue:
-        return engine_queue_out
-
-    def get_required_engine_config_name() -> Optional[str]:
-        return required_engine_config
-
-    # Initialize the input- and output queues
-    QueueManager.register("required_engine_config_name", callable=get_required_engine_config_name)
-    QueueManager.register("input_queue", callable=get_input_queue)
-    QueueManager.register("output_queue", callable=get_output_queue)
-
-    net_manager = QueueManager(
-        address=(default_address, default_port), authkey=default_password.encode("utf-8")
+    # Set up the distributed queue
+    net_manager = build_manager(
+        **socket_address.to_dict(),
+        required_engine_config=required_engine_config,
     )
 
-    # Start the server
     net_manager.start()
 
     # Create all data processing tasks
@@ -309,6 +301,7 @@ async def transformation_invariance_testing(
             data_generator=data_generator,
             transformation_functions=transformation_functions,
             remove_pawns=remove_pawns,
+            socket_address=socket_address,
             num_positions=num_positions,
             sleep_between_positions=sleep_after_get,
             identifier_str="BOARD_GENERATOR",
@@ -319,6 +312,7 @@ async def transformation_invariance_testing(
         evaluate_candidates(
             num_transforms=len(transformation_functions) + 1,
             file_path=result_file_path,
+            socket_address=socket_address,
             num_positions=num_positions,
             sleep_after_get=sleep_after_get,
             identifier_str="CANDIDATE_EVALUATION",
@@ -338,13 +332,6 @@ async def transformation_invariance_testing(
     # Wait for data generator task to finish
     await asyncio.wait([data_generator_task, candidate_evaluation_task])
 
-    # Wait for data queues to become empty
-    engine_queue_in.join()
-    engine_queue_out.join()
-
-    # Cancel all remaining tasks
-    # candidate_evaluation_task.cancel()
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -356,6 +343,9 @@ if __name__ == "__main__":
     parser.add_argument("--seed",                           type=int, default=42)  # noqa
     parser.add_argument("--engine_config_name",             type=str, default="local_400_nodes.ini")  # noqa
     parser.add_argument("--data_config_name",               type=str, default="database.ini")  # noqa
+    parser.add_argument("--address",                        type=str, default=default_address)  # noqa
+    parser.add_argument("--port",                           type=int, default=default_port)  # noqa
+    parser.add_argument("--password",                       type=str, default=default_password)  # noqa
     parser.add_argument("--remove_pawns",                   action="store_true")  # noqa
     parser.add_argument("--num_positions",                  type=int, default=1_000_000)  # noqa
     parser.add_argument("--transformations",                type=str, default=["rot90", "rot180", "rot270", "flip_diag", "flip_anti_diag", "flip_hor", "flip_vert"], nargs="+",  # noqa
@@ -428,6 +418,9 @@ if __name__ == "__main__":
     if remove_pawns is None:
         remove_pawns = False
 
+    # Build the address socket
+    socket_address = SocketAddress(address=args.address, port=args.port, password=args.password)
+
     # Run the differential testing
     start_time = time.perf_counter()
 
@@ -436,6 +429,7 @@ if __name__ == "__main__":
         transformation_invariance_testing(
             data_generator=data_generator,
             transformation_functions=transformation_functions,
+            socket_address=socket_address,
             result_file_path=result_file_path,
             remove_pawns=remove_pawns,
             num_positions=args.num_positions,
