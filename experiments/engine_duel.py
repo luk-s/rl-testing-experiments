@@ -6,7 +6,7 @@ from rl_testing.distributed.distributed_queue_manager import (
     default_port,
     default_password,
 )
-from rl_testing.distributed.queue_utils import QueueInterface
+from rl_testing.distributed.queue_utils import QueueInterface, SocketAddress, EmptySocketAddress
 from rl_testing.distributed.worker import PlayObject
 from rl_testing.data_generators import get_data_generator
 from rl_testing.config_parsers import get_data_generator_config
@@ -14,14 +14,6 @@ from rl_testing.config_parsers import get_data_generator_config
 import chess.pgn
 from datetime import datetime
 import logging
-
-# How an example run could look like:
-# python engine_duel.py --port1 50000 --port2 50001 --data_config_name openings_move8_1.ini --required_engine_config_name1 leela_local_400_nodes.ini --required_engine_config_name2 stockfish_local_30000.ini
-# ...
-# python worker.py --port 50000 --engine_config_name leela_local_400_nodes.ini
-# ...
-# python worker.py --port 50001 --engine_config_name stockfish_local_30000.ini
-# ...
 
 RESULT_DIR = Path(__file__).parent / Path("results/engine_duel")
 CONFIG_FOLDER_PATH = Path(__file__).parent.absolute() / Path("configs/data_generator_configs/")
@@ -116,25 +108,23 @@ def engine_duel(
     data_generator_config_name: str,
     num_openings: int,
     required_config_name1: Optional[str] = None,
-    address1: str = default_address,
-    port1: str = default_port,
-    password1: str = default_password,
     required_config_name2: Optional[str] = None,
-    address2: str = default_address,
-    port2: str = default_port,
-    password2: str = default_password,
+    socket_address1: SocketAddress = EmptySocketAddress,
+    socket_address2: SocketAddress = EmptySocketAddress,
 ) -> None:
     """Starts an engine duel between two engines.
 
     Args:
         data_generator (BoardGenerator): The data generator to use.
         num_openings (int): The number of openings to play.
-        address1 (str, optional): The address of the first engine. Defaults to default_address.
-        port1 (str, optional): The port of the first engine. Defaults to default_port.
-        password1 (str, optional): The password of the first engine. Defaults to default_password.
-        address2 (str, optional): The address of the second engine. Defaults to default_address.
-        port2 (str, optional): The port of the second engine. Defaults to default_port.
-        password2 (str, optional): The password of the second engine. Defaults to default_password.
+        required_config_name1 (Optional[str], optional): The name of the engine config
+            required by the first engine. Defaults to None.
+        required_config_name2 (Optional[str], optional): The name of the engine config
+            required by the second engine. Defaults to None.
+        socket_address1 (SocketAddress, optional): An object that contains address information
+            about the first queue. Defaults to EmptySocketAddress.
+        socket_address2 (SocketAddress, optional): An object that contains address information
+            about the second queue. Defaults to EmptySocketAddress.
     """
     # Build the result file path
     RESULT_DIR.mkdir(parents=True, exist_ok=True)
@@ -152,16 +142,12 @@ def engine_duel(
 
     # Set up the distributed queues
     engine1 = QueueInterface(
-        address=address1,
-        port=port1,
-        password=password1,
+        **socket_address1.to_dict(),
         required_engine_config=required_config_name1,
     )
 
     engine2 = QueueInterface(
-        address=address2,
-        port=port2,
-        password=password2,
+        **socket_address2.to_dict(),
         required_engine_config=required_config_name2,
     )
 
@@ -223,16 +209,15 @@ if __name__ == "__main__":
     )
     logger = logging.getLogger()
 
+    socket_address1 = SocketAddress(args.address1, args.port1, args.password1)
+    socket_address2 = SocketAddress(args.address2, args.port2, args.password2)
+
     # Start the engine duel
     engine_duel(
         data_generator_config_name=args.data_config_name,
         num_openings=args.num_openings,
         required_config_name1=args.required_config_name1,
-        address1=args.address1,
-        port1=args.port1,
-        password1=args.password1,
         required_config_name2=args.required_config_name2,
-        address2=args.address2,
-        port2=args.port2,
-        password2=args.password2,
+        socket_address1=socket_address1,
+        socket_address2=socket_address2,
     )

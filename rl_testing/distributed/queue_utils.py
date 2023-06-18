@@ -6,7 +6,7 @@ from rl_testing.distributed.distributed_queue_manager import (
     default_port,
     default_password,
 )
-from typing import Optional
+from typing import Any, Dict, Optional
 import os
 from datetime import datetime
 from pathlib import Path
@@ -157,6 +157,25 @@ class QueueInterface:
 
     def receive(self) -> object:
         return self.output_queue.get()
+
+
+class SocketAddress:
+    def __init__(
+        self,
+        address: Optional[str] = None,
+        port: Optional[int] = None,
+        password: Optional[str] = None,
+    ) -> None:
+        self.address: Optional[str] = address
+        self.port: Optional[int] = port
+        self.password: Optional[str] = password
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {k: v for k, v in self.__dict__.items() if v is not None}
+
+
+# Create a singleton instance of the SocketAddress class
+EmptySocketAddress = SocketAddress()
 
 
 if __name__ == "__main__":
