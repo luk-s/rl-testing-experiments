@@ -172,7 +172,7 @@ def plot_board(
         save_path = Path(save_path)
         save_path.absolute().parent.mkdir(parents=True, exist_ok=True)
         plt.tight_layout()
-        plt.savefig(save_path, dpi=400)
+        plt.savefig(save_path, dpi=400, bbox_inches="tight")
 
     if show:
         plt.show()
