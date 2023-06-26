@@ -9,6 +9,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 import chess
 import chess.engine
 import numpy as np
+from rl_testing.distributed.queue_utils import EmptySocketAddress, SocketAddress, build_manager
 
 from rl_testing.engine_generators import EngineGenerator
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
@@ -19,6 +20,13 @@ from rl_testing.util.util import get_task_result_handler
 from rl_testing.distributed.worker import AnalysisObject
 from rl_testing.distributed.distributed_queue_manager import (
     connect_to_manager,
+)
+
+from rl_testing.distributed.distributed_queue_manager import (
+    QueueManager,
+    default_address,
+    default_port,
+    default_password,
 )
 
 FEN = str
@@ -208,336 +216,6 @@ class HashFitness(Fitness):
         return hash(individual)
 
 
-class DifferentialTestingFitness(Fitness):
-    @staticmethod
-    async def setup_engine(
-        engine_generator: EngineGenerator, network_name: Optional[str]
-    ) -> RelaxedUciProtocol:
-        if network_name is not None:
-            engine_generator.set_network(network_name)
-
-        return await engine_generator.get_initialized_engine()
-
-    @staticmethod
-    async def analyze_positions(
-        input_queue: asyncio.Queue,
-        output_queue: asyncio.Queue,
-        engine_generator: EngineGenerator,
-        search_limits: Dict[str, Any],
-        sleep_after_get: float = 0.0,
-        network_name: Optional[str] = None,
-        mate_score_cp: int = 12780,
-        identifier_str: str = "",
-    ) -> None:
-        """Runs an infinite loop that fetches boards from the input queue, analyzes them using an engine running either locally
-        or remotely, and puts the results in the output queue.
-
-        Args:
-            input_queue (asyncio.Queue[chess.Board]): The queue from which to fetch boards.
-            output_queue (asyncio.Queue[Union[Tuple[FEN, chess.Move, float], Tuple[FEN, str, str]]]): The queue to which to put the results.
-            engine_generator (EngineGenerator): The generator to create the engines.
-            search_limits (Dict[str, Any]): The search limits which the engine uses for the analysis.
-            sleep_after_get (float, optional): How long to sleep after fetching a board from the input queue. Defaults to 0.0.
-            network_name (Optional[str], optional): The name of the network to use. Defaults to None.
-            identifier_str (str, optional): A string to identify this particular engine. Defaults to "".
-        """
-        invalid_placeholder = ["invalid", "invalid"]
-        nan_placeholder = ["nan", "nan"]
-
-        # Setup the engine
-        engine = await DifferentialTestingFitness.setup_engine(engine_generator, network_name)
-
-        # Required to ensure that the engine doesn't use cached results from
-        # previous analyses
-        analysis_counter = 0
-
-        while True:
-            # Fetch the next board from the queue
-            board_index, board = await input_queue.get()
-            fen = board.fen()
-            await asyncio.sleep(delay=sleep_after_get)
-
-            if (board_index + 1) % 10 == 0:
-                logging.info(f"[{identifier_str}] Analyzing board {board_index + 1}: {fen}")
-
-            # Needs to be in a try-except because the engine might crash unexpectedly
-            try:
-                analysis_counter += 1
-                info = await engine_analyse(
-                    engine,
-                    chess.Board(fen),
-                    chess.engine.Limit(**search_limits),
-                    game=analysis_counter,
-                    intermediate_info=False,
-                )
-
-            except chess.engine.EngineTerminatedError:
-                # Mark the current board as failed
-                await output_queue.put((fen, *invalid_placeholder))
-
-                # Try to kill the failed engine
-                logging.info(f"[{identifier_str}] Trying to kill engine")
-                engine_generator.kill_engine(engine=engine)
-
-                # Try to restart the engine
-                logging.info(f"[{identifier_str}] Trying to restart engine")
-
-                engine = await DifferentialTestingFitness.setup_engine(
-                    engine_generator, network_name
-                )
-
-            else:
-                score_cp = info["score"].relative.score(mate_score=mate_score_cp)
-
-                # Check if the computed score is valid
-                if engine_generator is not None and not engine_generator.cp_score_valid(score_cp):
-                    await output_queue.put((fen, *nan_placeholder))
-
-                # Check if the proposed best move is valid
-                elif engine.invalid_best_move:
-                    await output_queue.put((fen, *invalid_placeholder))
-                else:
-                    best_move = info["pv"][0]
-                    await output_queue.put((fen, best_move, cp2q(score_cp)))
-            finally:
-                input_queue.task_done()
-
-    @staticmethod
-    async def write_output(
-        input_queue: asyncio.Queue,
-        result_file_path: str,
-        identifier_str: str = "",
-    ) -> None:
-        buffer_limit = 1000
-        with open(result_file_path, "r+") as result_file:
-            buffer_size = 0
-            config_str = result_file.read()
-
-            result_file.write("fen,fitness\n")
-            while True:
-                buffer_size += 1
-                fen, fitness = await input_queue.get()
-                result_file.write(f"{fen},{fitness}\n")
-                if buffer_size > 0 and buffer_size % buffer_limit == 0:
-                    logging.info(f"[{identifier_str}] Write {buffer_limit} results to file")
-                    result_file.flush()
-                    os.fsync(result_file.fileno())
-                    buffer_size = 0
-
-                input_queue.task_done()
-
-    def __init__(
-        self,
-        engine_generator1: EngineGenerator,
-        engine_generator2: EngineGenerator,
-        search_limits1: Dict[str, Any],
-        search_limits2: Dict[str, Any],
-        network_name1: Optional[str] = None,
-        network_name2: Optional[str] = None,
-        mate_score_cp1: int = 12780,
-        mate_score_cp2: int = 12780,
-        num_engines1: int = 1,
-        num_engines2: int = 1,
-        result_path: Optional[str] = None,
-        logger: Optional[logging.Logger] = None,
-    ) -> None:
-        """Initializes the DifferentialTestingFitness class.
-
-        Args:
-            engine_generator1 (EngineGenerator): A generator for the first engine.
-            engine_generator2 (EngineGenerator): A generator for the second engine.
-            search_limits1 (Dict[str, Any]): A dictionary of search limits for the first engine.
-            search_limits2 (Dict[str, Any]): A dictionary of search limits for the second engine.
-            network_name1 (Optional[str], optional): An optional name for the network used by the first engine. Defaults to None.
-            network_name2 (Optional[str], optional): An optional name for the network used by the second engine. Defaults to None.
-            num_engines1 (int, optional): How many instances of the first engine to use. Defaults to 1.
-            num_engines2 (int, optional): How many instances of the second engine to use. Defaults to 1.
-        """
-        # Create a logger if it doesn't exist
-        self.logger = logger or logging.getLogger(__name__)
-
-        # Initialize all the variables
-        self.engine_generator1 = engine_generator1
-        self.engine_generator2 = engine_generator2
-        self.search_limits1 = search_limits1
-        self.search_limits2 = search_limits2
-        self.network_name1 = network_name1
-        self.network_name2 = network_name2
-        self.mate_score_cp1 = mate_score_cp1
-        self.mate_score_cp2 = mate_score_cp2
-        self.num_engines1 = num_engines1
-        self.num_engines2 = num_engines2
-        self.result_path = result_path
-        self.input_queue1 = asyncio.Queue()
-        self.input_queue2 = asyncio.Queue()
-        self.output_queue1 = asyncio.Queue()
-        self.output_queue2 = asyncio.Queue()
-        self.result_queue = asyncio.Queue()
-        self.cache: Dict[FEN, float] = LRUCache(maxsize=200_000)
-
-        self.engine_tasks: List[asyncio.Task] = []
-        self.result_task = None
-
-        # Log how many times a position has been truly evaluated (not cached)
-        self.num_evaluations = 0
-
-    async def create_tasks(self) -> None:
-        handle_task_exception = get_task_result_handler(
-            logger=self.logger, message="Task raised an exception"
-        )
-        for (
-            group_index,
-            num_engines_to_create,
-            input_queue,
-            output_queue,
-            engine_generator,
-            network_name,
-            mate_score_cp,
-            search_limits,
-        ) in zip(
-            [1, 2],
-            [self.num_engines1, self.num_engines2],
-            [self.input_queue1, self.input_queue2],
-            [self.output_queue1, self.output_queue2],
-            [self.engine_generator1, self.engine_generator2],
-            [self.network_name1, self.network_name2],
-            [self.mate_score_cp1, self.mate_score_cp2],
-            [self.search_limits1, self.search_limits2],
-        ):
-            for engine_index in range(num_engines_to_create):
-                self.engine_tasks.append(
-                    asyncio.create_task(
-                        DifferentialTestingFitness.analyze_positions(
-                            input_queue=input_queue,
-                            output_queue=output_queue,
-                            engine_generator=engine_generator,
-                            network_name=network_name,
-                            mate_score_cp=mate_score_cp,
-                            search_limits=search_limits,
-                            sleep_after_get=0.1,
-                            identifier_str=f"GROUP {group_index}, ENGINE {engine_index+1}",
-                        )
-                    )
-                )
-                # Add a callback to handle exceptions
-                self.engine_tasks[-1].add_done_callback(handle_task_exception)
-
-        # Create the task for writing the results to file
-        if self.result_path is not None:
-            self.result_task = asyncio.create_task(
-                DifferentialTestingFitness.write_output(
-                    input_queue=self.result_queue,
-                    result_file_path=self.result_path,
-                    identifier_str="RESULT WRITER",
-                )
-            )
-
-            self.result_task.add_done_callback(handle_task_exception)
-
-    def cancel_tasks(self) -> None:
-        """Cancels all the tasks."""
-        # First kill all running engine processes
-        self.engine_generator1.kill_all_engines()
-        self.engine_generator2.kill_all_engines()
-
-        # Then cancel all the tasks
-        for task in self.engine_tasks:
-            task.cancel()
-
-        if self.result_task is not None:
-            self.result_task.cancel()
-
-    @property
-    def use_async(self) -> bool:
-        return True
-
-    @property
-    def is_bigger_better(self) -> bool:
-        return True
-
-    def best_individual(self, individuals: List[Individual]) -> Individual:
-        return self._find_individual(individuals, np.argmax)
-
-    def worst_individual(self, individuals: List[Individual]) -> Individual:
-        return self._find_individual(individuals, np.argmin)
-
-    async def evaluate_async(self, individuals: List[BoardIndividual]) -> List[float]:
-        """Evaluates the given individuals asynchronously.
-
-        Args:
-            individuals: The individuals to evaluate.
-
-        Returns:
-            The fitness values of the individuals.
-        """
-        # A dictionary to store fens which are currently being processed together with their positions in the results list
-        fens_in_progress: Dict[FEN, List[int]] = {}
-
-        # Prepare the result list and fill it with a negative value. This fitness function only
-        # produces positive values, so this is a good way to mark invalid individuals.
-        results: List[float] = [-1.0] * len(individuals)
-
-        # Iterate over the individuals and either compute their fitness or fetch the fitness from the cache
-        for index, individual in enumerate(individuals):
-            fen: FEN = individual.fen()
-            if fen in self.cache:
-                results[index] = self.cache[fen]
-            elif fen not in fens_in_progress:
-                fens_in_progress[fen] = [index]
-                await self.input_queue1.put((index, individual))
-                await self.input_queue2.put((index, individual))
-                self.num_evaluations += 1
-            else:
-                fens_in_progress[fen].append(index)
-
-        # Wait until all boards have been processed
-        await self.input_queue1.join()
-        await self.input_queue2.join()
-
-        # An output dictionary to match the results of the two output queues
-        output_dict: Dict[FEN, float] = {}
-
-        # Extract all results from the first output queue
-        while not self.output_queue1.empty():
-            fen, _, score = await self.output_queue1.get()
-            output_dict[fen] = score
-            self.output_queue1.task_done()
-
-        # Extract all results from the second output queue and compute the score difference
-        while not self.output_queue2.empty():
-            fen, _, score = await self.output_queue2.get()
-
-            # Both results are valid
-            if (output_dict[fen] != "invalid" and score != "invalid") and (
-                output_dict[fen] != "nan" and score != "nan"
-            ):
-                fitness = abs(output_dict[fen] - score)
-
-                # Add the fitness value to all individuals with the same fen
-                for index in fens_in_progress[fen]:
-                    results[index] = fitness
-
-                # Add the fitness value to the cache
-                self.cache[fen] = fitness
-            elif output_dict[fen] == "invalid" or score == "invalid":
-                # Cache the invalid value anyway to prevent future re-computations (and crashes) of the same board
-                self.cache[fen] = -1.0
-            elif output_dict[fen] == "nan" or score == "nan":
-                self.cache[fen] = -2.0
-
-            # No matter the outcome, write the result to the result file
-            if self.result_path is not None:
-                await self.result_queue.put((fen, self.cache[fen]))
-
-            self.output_queue2.task_done()
-
-        # Wait until all results have been written to file
-        if self.result_path is not None:
-            await self.result_queue.join()
-
-        return results
-
-
 def less_pieces_fitness(individual: chess.Board) -> float:
     """A fitness function which rewards individuals with less pieces on the board.
     The fitness is normalized to lie in the interval [0, 0.5] where a higher value means a better fitness.
@@ -551,85 +229,6 @@ def less_pieces_fitness(individual: chess.Board) -> float:
     # The minimum number of possible pieces is 2 (two kings)
     # The maximum number of possible pieces is 32 (16 white and 16 black pieces)
     return (1.0 - (len(individual.piece_map()) - 2) / 30.0) / 2
-
-
-class CrashTestingFitness(DifferentialTestingFitness):
-    async def evaluate_async(self, individuals: List[BoardIndividual]) -> List[float]:
-        """Evaluates the given individuals asynchronously.
-
-        Args:
-            individuals: The individuals to evaluate.
-
-        Returns:
-            The fitness values of the individuals.
-        """
-        # A dictionary to store fens which are currently being processed together with their positions in the results list
-        fens_in_progress: Dict[FEN, List[int]] = {}
-
-        # Prepare the result list and fill it with a negative value. This fitness function only
-        # produces positive values, so this is a good way to mark invalid individuals.
-        results: List[float] = [-1.0] * len(individuals)
-
-        # Iterate over the individuals and either compute their fitness or fetch the fitness from the cache
-        for index, individual in enumerate(individuals):
-            fen: FEN = individual.fen()
-            if fen in self.cache:
-                results[index] = self.cache[fen]
-            elif fen not in fens_in_progress:
-                fens_in_progress[fen] = [index]
-                await self.input_queue1.put((index, individual))
-                await self.input_queue2.put((index, individual))
-                self.num_evaluations += 1
-            else:
-                fens_in_progress[fen].append(index)
-
-        # Wait until all boards have been processed
-        await self.input_queue1.join()
-        await self.input_queue2.join()
-
-        # An output dictionary to match the results of the two output queues
-        output_dict: Dict[FEN, float] = {}
-
-        # Extract all results from the first output queue
-        while not self.output_queue1.empty():
-            fen, _, score = await self.output_queue1.get()
-            output_dict[fen] = score
-            self.output_queue1.task_done()
-
-        # Extract all results from the second output queue and compute the score difference
-        while not self.output_queue2.empty():
-            fen, _, score = await self.output_queue2.get()
-            board = chess.Board(fen)
-
-            # Both results are valid
-            if (output_dict[fen] != "invalid" and score != "invalid") and (
-                output_dict[fen] != "nan" and score != "nan"
-            ):
-                fitness = abs(output_dict[fen] - score) + less_pieces_fitness(board)
-            elif output_dict[fen] == "invalid" or score == "invalid":
-                # Cache the invalid value anyway to prevent future re-computations (and crashes) of the same board
-                fitness = 2.0 + less_pieces_fitness(board)
-            elif output_dict[fen] == "nan" or score == "nan":
-                fitness = 2.0 + less_pieces_fitness(board)
-
-            # Add the fitness value to all individuals with the same fen
-            for index in fens_in_progress[fen]:
-                results[index] = fitness
-
-            # Add the fitness value to the cache
-            self.cache[fen] = fitness
-
-            # No matter the outcome, write the result to the result file
-            if self.result_path is not None:
-                await self.result_queue.put((fen, self.cache[fen]))
-
-            self.output_queue2.task_done()
-
-        # Wait until all results have been written to file
-        if self.result_path is not None:
-            await self.result_queue.join()
-
-        return results
 
 
 class BoardTransformationFitness(Fitness):
@@ -660,12 +259,22 @@ class BoardTransformationFitness(Fitness):
     def __init__(
         self,
         result_path: Optional[str] = None,
+        address: str = default_address,
+        port: int = default_port,
+        password: str = default_password,
+        required_engine_config_name: Optional[str] = None,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         """Initializes the BoardTransformationFitness class.
 
         Args:
-            result_path (Optional[str], optional): The path to the file where the results should be written. Defaults to None.
+            result_path (Optional[str], optional): The path to the file where the results
+                should be written. Defaults to None.
+            address (str, optional): The address of the engine queues. Defaults to default_address.
+            port (int, optional): The port of the engine queues. Defaults to default_port.
+            password (str, optional): The password of the engine queues. Defaults to
+                default_password.
+            required_engine_config_name (Optional[str], optional): The name of the engine config
             logger (Optional[logging.Logger], optional): A logger to use. Defaults to None.
         """
         # Create a logger if it doesn't exist
@@ -673,7 +282,16 @@ class BoardTransformationFitness(Fitness):
 
         # Initialize all the variables
         self.result_path = result_path
-        self.input_queue, self.output_queue, _ = connect_to_manager()
+        socket_address = SocketAddress(address=address, port=port, password=password)
+
+        # Prepare the queues for the distributed fitness evaluation
+        net_manager = build_manager(
+            **socket_address.to_dict(),
+            required_engine_config=required_engine_config_name,
+        )
+        net_manager.start()
+
+        self.input_queue, self.output_queue = net_manager.input_queue(), net_manager.output_queue()
         self.result_queue = asyncio.Queue()
         self.cache: Dict[FEN, float] = LRUCache(maxsize=200_000)
 
@@ -728,7 +346,8 @@ class BoardTransformationFitness(Fitness):
         Returns:
             The fitness values of the individuals.
         """
-        # A dictionary to store fens which are currently being processed together with their positions in the results list
+        # A dictionary to store fens which are currently being processed together with their
+        # positions in the results list
         fens_in_progress: Set[FEN] = set()
 
         # Prepare the result list and fill it with a negative value. This fitness function only
@@ -741,7 +360,8 @@ class BoardTransformationFitness(Fitness):
 
         print(f"Before processing: {len(individuals)})")
 
-        # Iterate over the individuals and either compute their fitness or fetch the fitness from the cache
+        # Iterate over the individuals and either compute their fitness or fetch the fitness
+        # from the cache
         for index, individual in enumerate(individuals):
             fen1: FEN = individual.fen()
             fen2: FEN = chess.Board(fen1).transform(rotate_180_clockwise).fen()
@@ -783,6 +403,241 @@ class BoardTransformationFitness(Fitness):
             # No matter the outcome, write the result to the result file
             if self.result_path is not None:
                 await self.result_queue.put((fen1, self.cache[fen1], fen2, self.cache[fen2]))
+
+        # Wait until all results have been written to file
+        if self.result_path is not None:
+            await self.result_queue.join()
+
+        return results
+
+
+class DifferentialTestingFitness(Fitness):
+    @staticmethod
+    async def write_output(
+        input_queue: asyncio.Queue,
+        result_file_path: str,
+        identifier_str: str = "",
+    ) -> None:
+        buffer_limit = 1000
+        with open(result_file_path, "r+") as result_file:
+            buffer_size = 0
+            _ = result_file.read()
+
+            result_file.write("fen,fitness\n")
+            while True:
+                buffer_size += 1
+                fen, fitness = await input_queue.get()
+                result_file.write(f"{fen},{fitness}\n")
+                if buffer_size > 0 and buffer_size % buffer_limit == 0:
+                    logging.info(f"[{identifier_str}] Write {buffer_limit} results to file")
+                    result_file.flush()
+                    os.fsync(result_file.fileno())
+                    buffer_size = 0
+
+                input_queue.task_done()
+
+    def __init__(
+        self,
+        result_path: Optional[str] = None,
+        address1: str = default_address,
+        port1: int = default_port,
+        password1: str = default_password,
+        address2: str = default_address,
+        port2: int = default_port,
+        password2: str = default_password,
+        required_engine_config_name1: Optional[str] = None,
+        required_engine_config_name2: Optional[str] = None,
+        reward_crashes: bool = False,
+        reward_fewer_pieces: bool = False,
+        logger: Optional[logging.Logger] = None,
+    ) -> None:
+        """Initializes the DifferentialTestingFitness class.
+
+        Args:
+            result_path (Optional[str], optional): The path to the file where the results should be
+                written. Defaults to None.
+            address1 (str, optional): The address of the first pair of engine queues.
+                Defaults to default_address.
+            port1 (int, optional): The port of the first pair of engine queues.
+                Defaults to default_port.
+            password1 (str, optional): The password of the first pair of engine queues.
+                Defaults to default_password.
+            address2 (str, optional): The address of the second pair of engine queues.
+                Defaults to default_address.
+            port2 (int, optional): The port of the second pair of engine queues.
+                Defaults to default_port.
+            password2 (str, optional): The password of the second pair of engine queues.
+                Defaults to default_password.
+            reward_crashes (bool, optional): Whether to actively optimize for crashes.
+                Defaults to False.
+            reward_fewer_pieces (bool, optional): Whether to actively optimize for fewer pieces
+                on the board. Defaults to False.
+            logger (Optional[logging.Logger], optional): A logger to use. Defaults to None.
+        """
+        # Create a logger if it doesn't exist
+        self.logger = logger or logging.getLogger(__name__)
+
+        # Initialize all the variables
+        self.result_path = result_path
+        socket_address1 = SocketAddress(address=address1, port=port1, password=password1)
+        socket_address2 = SocketAddress(address=address2, port=port2, password=password2)
+        # Prepare the queues for the distributed fitness evaluation
+        net_manager1 = build_manager(
+            **socket_address1.to_dict(),
+            required_engine_config=required_engine_config_name1,
+        )
+        net_manager1.start()
+
+        # Prepare the queues for the distributed fitness evaluation
+        net_manager2 = build_manager(
+            **socket_address2.to_dict(),
+            required_engine_config=required_engine_config_name2,
+        )
+        net_manager2.start()
+        self.input_queue1, self.output_queue1 = (
+            net_manager1.input_queue(),
+            net_manager1.output_queue(),
+        )
+        self.input_queue2, self.output_queue2 = (
+            net_manager2.input_queue(),
+            net_manager2.output_queue(),
+        )
+
+        self.result_queue = asyncio.Queue()
+        self.cache: Dict[FEN, float] = LRUCache(maxsize=200_000)
+        self.reward_crashes = reward_crashes
+        self.reward_fewer_pieces = reward_fewer_pieces
+
+        self.result_task = None
+
+        # Log how many times a position has been truly evaluated (not cached)
+        self.num_evaluations = 0
+
+    async def create_tasks(self) -> None:
+        handle_task_exception = get_task_result_handler(
+            logger=self.logger, message="Task raised an exception"
+        )
+
+        # Create the task for writing the results to file
+        if self.result_path is not None:
+            self.result_task = asyncio.create_task(
+                DifferentialTestingFitness.write_output(
+                    input_queue=self.result_queue,
+                    result_file_path=self.result_path,
+                    identifier_str="RESULT WRITER",
+                )
+            )
+
+            self.result_task.add_done_callback(handle_task_exception)
+
+    async def cancel_tasks(self) -> None:
+        """Cancels all the tasks."""
+
+        if self.result_task is not None:
+            await self.result_task.join()
+            self.result_task.cancel()
+
+    @property
+    def use_async(self) -> bool:
+        return True
+
+    @property
+    def is_bigger_better(self) -> bool:
+        return True
+
+    def best_individual(self, individuals: List[Individual]) -> Individual:
+        return self._find_individual(individuals, np.argmax)
+
+    def worst_individual(self, individuals: List[Individual]) -> Individual:
+        return self._find_individual(individuals, np.argmin)
+
+    async def evaluate_async(self, individuals: List[BoardIndividual]) -> List[float]:
+        """Evaluates the given individuals asynchronously.
+
+        Args:
+            individuals: The individuals to evaluate.
+
+        Returns:
+            The fitness values of the individuals.
+        """
+        # A dictionary to store fens which are currently being processed together with
+        # their positions in the results list
+        fens_in_progress: Dict[FEN, List[int]] = {}
+
+        # Prepare the result list and fill it with a negative value. This fitness function only
+        # produces positive values, so this is a good way to mark invalid individuals.
+        results: List[float] = [-1.0] * len(individuals)
+
+        # Iterate over the individuals and either compute their fitness or fetch the fitness
+        # from the cache
+        for index, individual in enumerate(individuals):
+            fen: FEN = individual.fen()
+            if fen in self.cache:
+                results[index] = self.cache[fen]
+            elif fen not in fens_in_progress:
+                fens_in_progress[fen] = [index]
+                self.input_queue1.put(AnalysisObject(fen=fen))
+                self.input_queue2.put(AnalysisObject(fen=fen))
+                self.num_evaluations += 1
+            else:
+                fens_in_progress[fen].append(index)
+
+        # Wait until all boards have been processed
+        self.input_queue1.join()
+        self.input_queue2.join()
+
+        # An output dictionary to match the results of the two output queues
+        output_dict: Dict[FEN, float] = {}
+
+        # Extract all results from the first output queue
+        while not self.output_queue1.empty():
+            analysis_object: AnalysisObject = self.output_queue1.get()
+            output_dict[analysis_object.fen] = analysis_object.score
+            self.output_queue1.task_done()
+
+        # Extract all results from the second output queue and compute the score difference
+        while not self.output_queue2.empty():
+            analysis_object: AnalysisObject = self.output_queue2.get()
+            fen, score = analysis_object.fen, analysis_object.score
+
+            # Both results are valid
+            if (output_dict[fen] != "invalid" and score != "invalid") and (
+                output_dict[fen] != "nan" and score != "nan"
+            ):
+                fitness = abs(output_dict[fen] - score)
+
+            elif output_dict[fen] == "invalid" or score == "invalid":
+                # Cache the invalid value anyway to prevent future re-computations
+                # (and crashes) of the same board
+                if self.reward_crashes:
+                    fitness = 2.0
+                else:
+                    fitness = -1.0
+            elif output_dict[fen] == "nan" or score == "nan":
+                if self.reward_crashes:
+                    fitness = 2.0
+                else:
+                    fitness = -2.0
+
+            # Compute the fitness for having fewer pieces on the board
+            board = chess.Board(fen)
+            if self.reward_fewer_pieces:
+                less_pieces_score = less_pieces_fitness(board)
+            else:
+                less_pieces_score = 0.0
+
+            # Add the fitness value to all individuals with the same fen
+            for index in fens_in_progress[fen]:
+                results[index] = fitness + less_pieces_score
+
+            # Add the fitness value to the cache
+            self.cache[fen] = fitness + less_pieces_score
+
+            # No matter the outcome, write the result to the result file
+            if self.result_path is not None:
+                await self.result_queue.put((fen, self.cache[fen]))
+
+            self.output_queue2.task_done()
 
         # Wait until all results have been written to file
         if self.result_path is not None:

@@ -20,15 +20,6 @@ from rl_testing.evolutionary_algorithms import (
 )
 from rl_testing.evolutionary_algorithms.algorithms import AsyncEvolutionaryAlgorithm
 from rl_testing.evolutionary_algorithms.crossovers import Crossover
-from rl_testing.evolutionary_algorithms.fitnesses import (
-    BoardSimilarityFitness,
-    DifferentialTestingFitness,
-    BoardTransformationFitness,
-    EditDistanceFitness,
-    Fitness,
-    HashFitness,
-    PieceNumberFitness,
-)
 from rl_testing.evolutionary_algorithms.mutations import Mutator
 from rl_testing.evolutionary_algorithms.populations import SimplePopulation
 from rl_testing.evolutionary_algorithms.selections import (
@@ -40,28 +31,35 @@ from rl_testing.util.evolutionary_algorithm import (
     get_random_individuals,
     should_decrease_probability,
 )
+import importlib
 from rl_testing.util.experiment import (
     get_experiment_params_dict,
 )
 from rl_testing.util.util import get_random_state, log_time
-
-from rl_testing.distributed.distributed_queue_manager import (
-    QueueManager,
-    default_address,
-    default_port,
-    default_password,
-)
-import queue
+from rl_testing.evolutionary_algorithms.fitnesses import Fitness
+from typing import Type
 
 RESULT_DIR = Path(__file__).parent.parent / Path("results/evolutionary_algorithm")
 CONFIG_FOLDER = Path(__file__).parent.parent / "configs"
 WANDB_CONFIG_FILE = CONFIG_FOLDER / Path(
     "configs/evolutionary_algorithm_configs/config_ea_differential_testing.yaml"
 )
+
 ENGINE_CONFIG_FOLDER = CONFIG_FOLDER / Path("engine_configs")
 EVOLUTIONARY_ALGORITHM_CONFIG_FOLDER = CONFIG_FOLDER / Path("evolutionary_algorithm_configs")
 DEBUG = True
 Time = float
+FitnessFunctionClass = Type[Fitness]
+
+
+def load_fitness_function_class(fitness_function_name: str) -> FitnessFunctionClass:
+    module_name = "rl_testing.evolutionary_algorithms.fitnesses"
+    module = importlib.import_module(module_name)
+    fitness_function_class = getattr(module, fitness_function_name, None)
+    if fitness_function_class is None:
+        raise ValueError(f"Invalid fitness function name: {fitness_function_name}")
+
+    return fitness_function_class
 
 
 class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
@@ -97,39 +95,16 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         self.early_stopping = evolutionary_algorithm_config.early_stopping
         self.early_stopping_value = evolutionary_algorithm_config.early_stopping_value
         self.probability_decay = evolutionary_algorithm_config.probability_decay
+        self.fitness_function_class = load_fitness_function_class(
+            evolutionary_algorithm_config.fitness_function
+        )
 
         # Fitness function configs
         self.max_num_fitness_evaluations = evolutionary_algorithm_config.max_num_fitness_evaluations
         self._num_fitness_evaluations = 0
-        self.fitness: Optional[BoardTransformationFitness] = None
+        self.fitness: Optional[Fitness] = None
         self.fitness_cache: Optional[LRUCache] = None
         self.result_file_path = result_file_path
-        self.input_queue: queue.Queue = queue.Queue()
-        self.output_queue: queue.Queue = queue.Queue()
-
-        # Prepare the queues for the distributed fitness evaluation
-        def get_input_queue() -> queue.Queue:
-            return self.input_queue
-
-        def get_output_queue() -> queue.Queue:
-            return self.output_queue
-
-        def get_required_engine_config_name() -> Optional[str]:
-            return None
-
-        # Initialize the input- and output queues
-        QueueManager.register("input_queue", callable=get_input_queue)
-        QueueManager.register("output_queue", callable=get_output_queue)
-        QueueManager.register(
-            "required_engine_config_name", callable=get_required_engine_config_name
-        )
-
-        self.net_manager = QueueManager(
-            address=(default_address, default_port), authkey=default_password.encode("utf-8")
-        )
-
-        # Start the server
-        self.net_manager.start()
 
     async def initialize(self, seed: int) -> None:
         """Initialize the evolutionary algorithm by creating the random state, the multiprocessing
@@ -145,10 +120,8 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         self.pool = multiprocessing.Pool(processes=self.evolutionary_algorithm_config.num_workers)
 
         # Create the fitness function
-        self.fitness = BoardTransformationFitness(
-            **self.experiment_config["fitness_config"],
-            # input_queue=self.input_queue,
-            # output_queue=self.output_queue,
+        self.fitness = self.fitness_function_class(
+            **self.evolutionary_algorithm_config.fitness_function_args,
             result_path=self.result_file_path,
             logger=self.logger,
         )
@@ -282,7 +255,7 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         evolutionary algorithm.
         """
         # Cancel all running subprocesses which the fitness evaluator spawned
-        self.fitness.cancel_tasks()
+        await self.fitness.cancel_tasks()
 
         self.pool.close()
 
@@ -394,7 +367,7 @@ if __name__ == "__main__":
     ##################################
     # fmt: off
     # Engine parameters
-    parser.add_argument("--seed",                type=int,  default=42)  # noqa
+    parser.add_argument("--seed",                               type=int,  default=42)  # noqa
     # parser.add_argument("--evolutionary_algorithm_config_name", type=str,  default="config_simple_population.yaml")  # noqa
     parser.add_argument("--evolutionary_algorithm_config_name", type=str,  default="config_simple_population_max_oracle_distributed.yaml")  # noqa
     # fmt: on
@@ -417,9 +390,6 @@ if __name__ == "__main__":
     experiment_config_dict = get_experiment_params_dict(namespace=args, source_file_path=__file__)
 
     np.random.seed(args.seed)
-
-    # Build the configs for the fitness function
-    experiment_config_dict["fitness_config"] = {}
 
     # Log the experiment config
     experiment_config_str = "{\n"

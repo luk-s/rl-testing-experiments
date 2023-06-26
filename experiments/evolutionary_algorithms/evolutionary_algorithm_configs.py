@@ -21,6 +21,8 @@ class SimpleEvolutionaryAlgorithmConfig(EvolutionaryAlgorithmConfig):
         "early_stopping_value",
         "mutation_probability",
         "crossover_probability",
+        "fitness_function_args",
+        "fitness_function",
     ]
     OPTIONAL_ATTRIBUTES = [
         "max_num_fitness_evaluations",
@@ -45,6 +47,8 @@ class SimpleEvolutionaryAlgorithmConfig(EvolutionaryAlgorithmConfig):
         self.mutation_probability = None
         self.crossover_probability = None
         self.max_num_fitness_evaluations = None
+        self.fitness_function_args: Dict[str, Any] = {}
+        self.fitness_function = None
 
         if _initialize:
             self.set_parameters(config=config)
@@ -61,6 +65,8 @@ class SimpleEvolutionaryAlgorithmConfig(EvolutionaryAlgorithmConfig):
             or name in SimpleEvolutionaryAlgorithmConfig.OPTIONAL_ATTRIBUTES
         ):
             setattr(self, name, value)
+        elif section == "FitnessFunction":
+            self.fitness_function_args[name] = value
         else:
             super().set_parameter(section, name, value)
 
