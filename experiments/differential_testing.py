@@ -277,11 +277,14 @@ async def differential_testing(
         **socket_address1.to_dict(),
         required_engine_config=required_engine_config1,
     )
+    net_manager1.start()
+
+    # NOTE: It is of utmost importance that the first manager is started
+    # before the second one is built!!!
     net_manager2 = build_manager(
         **socket_address2.to_dict(),
         required_engine_config=required_engine_config2,
     )
-    net_manager1.start()
     net_manager2.start()
 
     # Create all data processing tasks
