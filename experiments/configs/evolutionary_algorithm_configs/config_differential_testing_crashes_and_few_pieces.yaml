@@ -1,0 +1,35 @@
+General:
+  config_type: 
+  data_path: /data/chess-data/all_middlegame_positions.txt
+  num_runs_per_config: 6
+  num_workers: 8
+  num_generations: 20
+  population_size: 1000
+  probability_decay: False
+  early_stopping: True
+  early_stopping_value: 1.8
+  mutation_probability : 1
+  crossover_probability : 1
+  max_num_fitness_evaluations: 100000
+  fitness_function: DifferentialTestingFitness
+
+FitnessFunction:
+  port1: 50000
+  port2: 50001
+  required_engine_config_name1: leela_local_400_nodes_T80.ini
+  required_engine_config_name2: leela_local_285_nodes_T78.ini
+  reward_crashes: True
+  reward_fewer_pieces: True
+
+Mutator:
+  mutation_strategy : one_random
+  minimum_probability : 0.01
+
+Crossover:
+  crossover_strategy : one_random
+  minimum_probability : 0.01
+
+Selector:
+  selection_strategy: all
+
+Operators: !include operator_configs/importance_weights_differential_testing.yaml
