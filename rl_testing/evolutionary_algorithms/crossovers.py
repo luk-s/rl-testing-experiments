@@ -619,20 +619,20 @@ class CrossoverFunction:
             )
 
             # Ensure that the number of pieces is 8
-            if len(board_candidate1.piece_map()) != 8:
-                print(f"Original board1: {board1.fen()}")
-                print(f"Original board2: {board2.fen()}")
-                print(f"Board1: {board_candidate1.fen()}")
-                print(f"Board2: {board_candidate2.fen()}")
-                print(f"Crossover function: {self.function.__name__}")
-                raise ValueError(f"Board1 has {len(board_candidate1.piece_map())} pieces.")
-            if len(board_candidate2.piece_map()) != 8:
-                print(f"Original board1: {board1.fen()}")
-                print(f"Original board2: {board2.fen()}")
-                print(f"Board1: {board_candidate1.fen()}")
-                print(f"Board2: {board_candidate2.fen()}")
-                print(f"Crossover function: {self.function.__name__}")
-                raise ValueError(f"Board1 has {len(board_candidate2.piece_map())} pieces.")
+            # if len(board_candidate1.piece_map()) != 8:
+            #     print(f"Original board1: {board1.fen()}")
+            #     print(f"Original board2: {board2.fen()}")
+            #     print(f"Board1: {board_candidate1.fen()}")
+            #     print(f"Board2: {board_candidate2.fen()}")
+            #     print(f"Crossover function: {self.function.__name__}")
+            #     raise ValueError(f"Board1 has {len(board_candidate1.piece_map())} pieces.")
+            # if len(board_candidate2.piece_map()) != 8:
+            #     print(f"Original board1: {board1.fen()}")
+            #     print(f"Original board2: {board2.fen()}")
+            #     print(f"Board1: {board_candidate1.fen()}")
+            #     print(f"Board2: {board_candidate2.fen()}")
+            #     print(f"Crossover function: {self.function.__name__}")
+            #     raise ValueError(f"Board1 has {len(board_candidate2.piece_map())} pieces.")
 
             # Check if the board is valid
             if is_really_valid(board_candidate1) and is_really_valid(board_candidate2):

@@ -767,11 +767,11 @@ class MutationFunction:
                 **new_kwargs,
             )
 
-            if len(board_candidate.piece_map()) != 8:
-                print(f"Original board1: {board.fen()}")
-                print(f"Board1: {board_candidate.fen()}")
-                print(f"Mutation function: {self.function.__name__}")
-                raise ValueError(f"Board1 has {len(board_candidate.piece_map())} pieces.")
+            # if len(board_candidate.piece_map()) != 8:
+            #    print(f"Original board1: {board.fen()}")
+            #    print(f"Board1: {board_candidate.fen()}")
+            #    print(f"Mutation function: {self.function.__name__}")
+            #    raise ValueError(f"Board1 has {len(board_candidate.piece_map())} pieces.")
 
             # Check if the board is valid
             if is_really_valid(board_candidate) and (
