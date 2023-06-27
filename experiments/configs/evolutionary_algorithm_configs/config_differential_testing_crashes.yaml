@@ -7,7 +7,7 @@ General:
   population_size: 1000
   probability_decay: False
   early_stopping: True
-  early_stopping_value: 1.8
+  early_stopping_value: 2.0
   mutation_probability : 1
   crossover_probability : 1
   max_num_fitness_evaluations: 100000
