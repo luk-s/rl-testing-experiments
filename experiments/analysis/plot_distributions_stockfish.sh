@@ -11,7 +11,7 @@ CREATE_MIRROR_BOARD="True"
 CREATE_TRANSFORMATION_BOARD="True"
 
 # Some general options
-SAVE_RESULT_CSV="False"
+SAVE_RESULT_CSV="True"
 SAVE_PLOT="True"
 SHOW_PLOT="False"
 
@@ -33,7 +33,7 @@ COMMON_ARGS="--x_limit_min 0 --x_limit_max 2"
 
 # Arguments for parent-child-type experiments
 # Optionally add this parameter --q_vals_to_flip child_score if you're using data directly coming from experiments
-PARENT_CHILD_EXPERIMENT_ARGS="--column_name1 score1 --column_name2 score2"
+PARENT_CHILD_EXPERIMENT_ARGS="--column_name1 parent_score --column_name2 child_score --q_vals_to_flip child_score"
 
 # Arguments for mirror-type experiments
 MIRROR_EXPERIMENT_ARGS="--column_name1 original --column_name2 mirror"
