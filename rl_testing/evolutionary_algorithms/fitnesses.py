@@ -71,6 +71,10 @@ class Fitness(metaclass=abc.ABCMeta):
     async def evaluate_async(self, individuals: List[Individual]) -> List[float]:
         raise NotImplementedError
 
+    @property
+    def network_state(self) -> Dict[str, Any]:
+        raise NotImplementedError
+
     def _find_individual(self, individuals: List[Individual], direction: Callable) -> Individual:
         # Make sure that all individuals have a fitness value and compute it if not.
         for individual in individuals:
@@ -241,9 +245,10 @@ class BoardTransformationFitness(Fitness):
         buffer_limit = 1000
         with open(result_file_path, "r+") as result_file:
             buffer_size = 0
-            _ = result_file.read()
+            current_results = result_file.read()
 
-            result_file.write("fen1,fitness1,fen2,fitness2\n")
+            if "fen1,fitness1,fen2,fitness2" not in current_results:
+                result_file.write("fen1,fitness1,fen2,fitness2\n")
             while True:
                 buffer_size += 1
                 fen1, fitness1, fen2, fitness2 = await input_queue.get()
@@ -263,6 +268,7 @@ class BoardTransformationFitness(Fitness):
         port: int = default_port,
         password: str = default_password,
         required_engine_config_name: Optional[str] = None,
+        network_state: Optional[Dict[str, Any]] = None,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         """Initializes the BoardTransformationFitness class.
@@ -275,6 +281,9 @@ class BoardTransformationFitness(Fitness):
             password (str, optional): The password of the engine queues. Defaults to
                 default_password.
             required_engine_config_name (Optional[str], optional): The name of the engine config
+                to use. Defaults to None.
+            network_state (Optional[Dict[str, Any]], optional): The network state to use.
+                Defaults to None.
             logger (Optional[logging.Logger], optional): A logger to use. Defaults to None.
         """
         # Create a logger if it doesn't exist
@@ -285,13 +294,21 @@ class BoardTransformationFitness(Fitness):
         socket_address = SocketAddress(address=address, port=port, password=password)
 
         # Prepare the queues for the distributed fitness evaluation
-        net_manager = build_manager(
-            **socket_address.to_dict(),
-            required_engine_config=required_engine_config_name,
-        )
-        net_manager.start()
+        # If an existing network state is given, use it to initialize the engine
+        if network_state is not None:
+            self.net_manager = network_state["net_manager"]
+        # Otherwise, create new network managers
+        else:
+            self.net_manager = build_manager(
+                **socket_address.to_dict(),
+                required_engine_config=required_engine_config_name,
+            )
+            self.net_manager.start()
 
-        self.input_queue, self.output_queue = net_manager.input_queue(), net_manager.output_queue()
+        self.input_queue, self.output_queue = (
+            self.net_manager.input_queue(),
+            self.net_manager.output_queue(),
+        )
         self.result_queue = asyncio.Queue()
         self.cache: Dict[FEN, float] = LRUCache(maxsize=200_000)
 
@@ -299,6 +316,12 @@ class BoardTransformationFitness(Fitness):
 
         # Log how many times a position has been truly evaluated (not cached)
         self.num_evaluations = 0
+
+    @property
+    def network_state(self) -> Dict[str, Any]:
+        return {
+            "net_manager": self.net_manager,
+        }
 
     async def create_tasks(self) -> None:
         handle_task_exception = get_task_result_handler(
@@ -421,9 +444,10 @@ class DifferentialTestingFitness(Fitness):
         buffer_limit = 1000
         with open(result_file_path, "r+") as result_file:
             buffer_size = 0
-            _ = result_file.read()
+            current_results = result_file.read()
 
-            result_file.write("fen,fitness\n")
+            if "fen,fitness" not in current_results:
+                result_file.write("fen,fitness\n")
             while True:
                 buffer_size += 1
                 fen, fitness = await input_queue.get()
@@ -447,6 +471,7 @@ class DifferentialTestingFitness(Fitness):
         password2: str = default_password,
         required_engine_config_name1: Optional[str] = None,
         required_engine_config_name2: Optional[str] = None,
+        network_state: Optional[Dict[str, Any]] = None,
         reward_crashes: bool = False,
         reward_fewer_pieces: bool = False,
         logger: Optional[logging.Logger] = None,
@@ -468,6 +493,12 @@ class DifferentialTestingFitness(Fitness):
                 Defaults to default_port.
             password2 (str, optional): The password of the second pair of engine queues.
                 Defaults to default_password.
+            required_engine_config_name1 (Optional[str], optional): The name of the first
+                engine config. Defaults to None.
+            required_engine_config_name2 (Optional[str], optional): The name of the second
+                engine config. Defaults to None.
+            network_state (Optional[Dict[str, Any]], optional): The network state to use.
+                Defaults to None.
             reward_crashes (bool, optional): Whether to actively optimize for crashes.
                 Defaults to False.
             reward_fewer_pieces (bool, optional): Whether to actively optimize for fewer pieces
@@ -481,26 +512,35 @@ class DifferentialTestingFitness(Fitness):
         self.result_path = result_path
         socket_address1 = SocketAddress(address=address1, port=port1, password=password1)
         socket_address2 = SocketAddress(address=address2, port=port2, password=password2)
-        # Prepare the queues for the distributed fitness evaluation
-        net_manager1 = build_manager(
-            **socket_address1.to_dict(),
-            required_engine_config=required_engine_config_name1,
-        )
-        net_manager1.start()
 
-        # Prepare the queues for the distributed fitness evaluation
-        net_manager2 = build_manager(
-            **socket_address2.to_dict(),
-            required_engine_config=required_engine_config_name2,
-        )
-        net_manager2.start()
+        # If an existing network state is given, use it to initialize the engine
+        if network_state is not None:
+            self.net_manager1 = network_state["net_manager1"]
+            self.net_manager2 = network_state["net_manager2"]
+
+        # Otherwise, create new network managers
+        else:
+            # Prepare the queues for the distributed fitness evaluation
+            self.net_manager1 = build_manager(
+                **socket_address1.to_dict(),
+                required_engine_config=required_engine_config_name1,
+            )
+            self.net_manager1.start()
+
+            # Prepare the queues for the distributed fitness evaluation
+            self.net_manager2 = build_manager(
+                **socket_address2.to_dict(),
+                required_engine_config=required_engine_config_name2,
+            )
+            self.net_manager2.start()
+
         self.input_queue1, self.output_queue1 = (
-            net_manager1.input_queue(),
-            net_manager1.output_queue(),
+            self.net_manager1.input_queue(),
+            self.net_manager1.output_queue(),
         )
         self.input_queue2, self.output_queue2 = (
-            net_manager2.input_queue(),
-            net_manager2.output_queue(),
+            self.net_manager2.input_queue(),
+            self.net_manager2.output_queue(),
         )
 
         self.result_queue = asyncio.Queue()
@@ -512,6 +552,13 @@ class DifferentialTestingFitness(Fitness):
 
         # Log how many times a position has been truly evaluated (not cached)
         self.num_evaluations = 0
+
+    @property
+    def network_state(self) -> Dict[str, Any]:
+        return {
+            "net_manager1": self.net_manager1,
+            "net_manager2": self.net_manager2,
+        }
 
     async def create_tasks(self) -> None:
         handle_task_exception = get_task_result_handler(
@@ -530,11 +577,10 @@ class DifferentialTestingFitness(Fitness):
 
             self.result_task.add_done_callback(handle_task_exception)
 
-    async def cancel_tasks(self) -> None:
+    def cancel_tasks(self) -> None:
         """Cancels all the tasks."""
 
         if self.result_task is not None:
-            await self.result_task.join()
             self.result_task.cancel()
 
     @property

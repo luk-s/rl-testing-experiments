@@ -95,16 +95,17 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         self.early_stopping = evolutionary_algorithm_config.early_stopping
         self.early_stopping_value = evolutionary_algorithm_config.early_stopping_value
         self.probability_decay = evolutionary_algorithm_config.probability_decay
+
+        # Fitness function configs
         self.fitness_function_class = load_fitness_function_class(
             evolutionary_algorithm_config.fitness_function
         )
-
-        # Fitness function configs
         self.max_num_fitness_evaluations = evolutionary_algorithm_config.max_num_fitness_evaluations
         self._num_fitness_evaluations = 0
         self.fitness: Optional[Fitness] = None
         self.fitness_cache: Optional[LRUCache] = None
         self.result_file_path = result_file_path
+        self.fitness_function_network_state = None
 
     async def initialize(self, seed: int) -> None:
         """Initialize the evolutionary algorithm by creating the random state, the multiprocessing
@@ -122,6 +123,7 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         # Create the fitness function
         self.fitness = self.fitness_function_class(
             **self.evolutionary_algorithm_config.fitness_function_args,
+            network_state=self.fitness_function_network_state,
             result_path=self.result_file_path,
             logger=self.logger,
         )
@@ -254,8 +256,11 @@ class DistributedOracleQueryEvolutionaryAlgorithm(AsyncEvolutionaryAlgorithm):
         fitness cache, updating the number of fitness evaluations used by the
         evolutionary algorithm.
         """
+        # Save the fitness function network state
+        self.fitness_function_network_state = self.fitness.network_state
+
         # Cancel all running subprocesses which the fitness evaluator spawned
-        await self.fitness.cancel_tasks()
+        self.fitness.cancel_tasks()
 
         self.pool.close()
 
