@@ -15,7 +15,7 @@ General:
 
 FitnessFunction:
   port: 50000
-  required_engine_config_name: leela_local_400_nodes_T80.ini
+  required_engine_config_name: leela_local_1600_nodes_T80.ini
 
 Mutator:
   mutation_strategy : one_random
