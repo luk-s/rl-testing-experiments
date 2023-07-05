@@ -1,7 +1,7 @@
 import datetime
 import io
 from pathlib import Path
-from typing import Callable, List, Union
+from typing import Callable, List, Tuple, Union
 
 import chess
 import chess.engine
@@ -13,6 +13,86 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 AGGRESSIVE_VALIDATION = True
+
+
+VALUE_MATE_IN_MAX_PLY = 31754
+NormalizeToPawnValue = 361
+VALUE_MATE = 32000
+
+NORMALIZED_SCORE_MAX = VALUE_MATE_IN_MAX_PLY * 100 / NormalizeToPawnValue
+
+
+def extract_ply(fen: str) -> int:
+    _, turn, _, _, _, fullmove = fen.split(" ")
+    blacksturn = turn == "b"
+    return (int(fullmove) - 1) * 2 + blacksturn
+
+
+def win_rate(score: float, ply: int) -> int:
+    """This is a reimplementation of the Stockfish win rate function in C++. The original
+    version can be found here: https://github.com/official-stockfish/Stockfish/blob/master/src/uci.cpp#L202
+    (Stockfish release 15.1)
+
+    Args:
+        score (float): The Stockfish score in centipawns.
+        ply (int): The number of plies.
+
+    Returns:
+        int: The win rate in per mille units rounded to the nearest value.
+    """
+
+    # The model only captures up to 240 plies, so limit the input and then rescale
+    m = min(240, ply) / 64.0
+
+    # The coefficients of a third-order polynomial fit is based on the fishtest data
+    # for two parameters that need to transform eval to the argument of a logistic
+    # function.
+    as_list = [-0.58270499, 2.68512549, 15.24638015, 344.49745382]
+    bs_list = [-2.65734562, 15.96509799, -20.69040836, 73.61029937]
+
+    # Enforce that NormalizeToPawnValue corresponds to a 50% win rate at ply 64
+    assert NormalizeToPawnValue == int(as_list[0] + as_list[1] + as_list[2] + as_list[3])
+
+    a = (((as_list[0] * m + as_list[1]) * m + as_list[2]) * m) + as_list[3]
+    b = (((bs_list[0] * m + bs_list[1]) * m + bs_list[2]) * m) + bs_list[3]
+
+    # Transform the eval to centipawns with limited range
+    x = np.clip(score, -4000.0, 4000.0)
+
+    # Return the win rate in per mille units rounded to the nearest value
+    return int(0.5 + 1000 / (1 + np.exp((a - x) / b)))
+
+
+def stockfish_cp_to_wdl(score: int, ply: int) -> Tuple[int, int, int]:
+    """
+    Converts a Stockfish score from centipawns to WDL.
+
+    Args:
+        score (float): The Stockfish score in centipawns.
+        ply (int): The number of plies.
+
+    Returns:
+        Tuple[int, int, int]: The WDL score.
+    """
+    # Undoing the Stockfish normalization
+    if abs(score) <= NORMALIZED_SCORE_MAX:
+        score = (score * NormalizeToPawnValue) / 100
+
+    wdl_w = win_rate(score, ply)
+    wdl_l = win_rate(-score, ply)
+    wdl_d = 1000 - wdl_w - wdl_l
+
+    return wdl_w, wdl_d, wdl_l
+
+
+def stockfish_cp_to_leela_q(score: int, ply: int) -> float:
+    win, draw, loss = stockfish_cp_to_wdl(score, ply)
+
+    # Normalize to 0-1
+    win, draw, loss = win / 1000, draw / 1000, loss / 1000
+
+    # Convert to Leela Q
+    return win - loss
 
 
 def q2cp(q_value: float) -> float:
