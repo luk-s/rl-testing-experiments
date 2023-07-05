@@ -5,29 +5,34 @@ import os
 from functools import lru_cache
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-
 import chess
 import chess.engine
 import numpy as np
-from rl_testing.distributed.queue_utils import EmptySocketAddress, SocketAddress, build_manager
-
-from rl_testing.engine_generators import EngineGenerator
-from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
-from rl_testing.util.cache import LRUCache
-from rl_testing.util.chess import cp2q, rotate_180_clockwise
-from rl_testing.util.engine import RelaxedUciProtocol, engine_analyse
-from rl_testing.util.util import get_task_result_handler
-from rl_testing.distributed.worker import AnalysisObject
-from rl_testing.distributed.distributed_queue_manager import (
-    connect_to_manager,
-)
 
 from rl_testing.distributed.distributed_queue_manager import (
     QueueManager,
+    connect_to_manager,
     default_address,
-    default_port,
     default_password,
+    default_port,
 )
+from rl_testing.distributed.queue_utils import (
+    EmptySocketAddress,
+    SocketAddress,
+    build_manager,
+)
+from rl_testing.distributed.worker import AnalysisObject
+from rl_testing.engine_generators import EngineGenerator
+from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
+from rl_testing.util.cache import LRUCache
+from rl_testing.util.chess import (
+    cp2q,
+    extract_ply,
+    rotate_180_clockwise,
+    stockfish_cp_to_leela_q,
+)
+from rl_testing.util.engine import RelaxedUciProtocol, engine_analyse
+from rl_testing.util.util import get_task_result_handler
 
 FEN = str
 
@@ -269,6 +274,7 @@ class BoardTransformationFitness(Fitness):
         password: str = default_password,
         required_engine_config_name: Optional[str] = None,
         network_state: Optional[Dict[str, Any]] = None,
+        convert_stockfish_cp_to_leela_q: bool = False,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         """Initializes the BoardTransformationFitness class.
@@ -284,6 +290,8 @@ class BoardTransformationFitness(Fitness):
                 to use. Defaults to None.
             network_state (Optional[Dict[str, Any]], optional): The network state to use.
                 Defaults to None.
+            convert_stockfish_cp_to_leela_q (bool, optional): Whether to convert the scores
+                from Stockfish to Leela scores. Defaults to False.
             logger (Optional[logging.Logger], optional): A logger to use. Defaults to None.
         """
         # Create a logger if it doesn't exist
@@ -316,6 +324,9 @@ class BoardTransformationFitness(Fitness):
 
         # Log how many times a position has been truly evaluated (not cached)
         self.num_evaluations = 0
+
+        # Whether to convert the scores from Stockfish to Leela scores
+        self.convert_stockfish_cp_to_leela_q = convert_stockfish_cp_to_leela_q
 
     @property
     def network_state(self) -> Dict[str, Any]:
@@ -404,7 +415,11 @@ class BoardTransformationFitness(Fitness):
         # Extract all results from the first output queue
         while not self.output_queue.empty():
             analysis_object: AnalysisObject = self.output_queue.get()
-            output_dict[analysis_object.fen] = analysis_object.score
+            score = analysis_object.score
+            if self.convert_stockfish_cp_to_leela_q:
+                ply = extract_ply(analysis_object.fen)
+                score = stockfish_cp_to_leela_q(score=score, ply=ply)
+            output_dict[analysis_object.fen] = score
             self.output_queue.task_done()
 
         # Extract all results from the second output queue and compute the score difference
