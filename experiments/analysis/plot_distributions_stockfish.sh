@@ -6,7 +6,7 @@
 
 # Select which plots should be created
 CREATE_FORCED_MOVES="True"
-CREATE_BEST_MOVES_MIDDLEGAMES="True"
+CREATE_BEST_MOVES_MIDDLEGAMES="False"
 CREATE_MIRROR_BOARD="True"
 CREATE_TRANSFORMATION_BOARD="True"
 
@@ -16,10 +16,17 @@ SAVE_PLOT="True"
 SHOW_PLOT="False"
 
 # Define the names of the result files
-FILE_FORCED_MOVES="experiments/results/final_data2/results_ENGINE_stockfish_local_81000_nodes_DATA_fens_forced_move_2023_06_18_19:11:19_q_scores.csv"
-FILE_BEST_MOVES_MIDDLEGAMES="experiments/results/final_data2/results_ENGINE_stockfish_local_81000_nodes_DATA_fens_recommended_move_2023_06_18_19:13:25_q_scores.csv"
-FILE_MIRROR_BOARD="experiments/results/final_data2/results_ENGINE_stockfish_local_81000_nodes_DATA_fens_board_mirroring_2023_06_18_19:17:47_q_scores.csv"
-FILE_TRANSFORMATION_BOARD="experiments/results/final_data2/results_ENGINE_stockfish_local_81000_nodes_DATA_fens_board_transformations_2023_06_18_19:21:45_q_scores.csv"
+# Stockfish NNUE files
+# FILE_FORCED_MOVES="experiments/results/final_data2/results_ENGINE_stockfish_local_81000_nodes_DATA_fens_forced_move_2023_06_18_19:11:19_q_scores.csv"
+# FILE_BEST_MOVES_MIDDLEGAMES="experiments/results/final_data2/results_ENGINE_stockfish_local_81000_nodes_DATA_fens_recommended_move_2023_06_18_19:13:25_q_scores.csv"
+# FILE_MIRROR_BOARD="experiments/results/final_data2/results_ENGINE_stockfish_local_81000_nodes_DATA_fens_board_mirroring_2023_06_18_19:17:47_q_scores.csv"
+# FILE_TRANSFORMATION_BOARD="experiments/results/final_data2/results_ENGINE_stockfish_local_81000_nodes_DATA_fens_board_transformations_2023_06_18_19:21:45_q_scores.csv"
+
+# Classic Stockfish files
+FILE_FORCED_MOVES="experiments/results/final_data4/results_ENGINE_stockfish_classic_local_1400000_nodes_DATA_fens_forced_move_2023_06_26_18:59:29_q_scores.csv"
+FILE_BEST_MOVES_MIDDLEGAMES="experiments/results/final_data4/"
+FILE_MIRROR_BOARD="experiments/results/final_data4/results_ENGINE_stockfish_classic_local_1400000_nodes_DATA_fens_board_mirroring_2023_06_26_18:59:42_q_scores.csv"
+FILE_TRANSFORMATION_BOARD="experiments/results/final_data4/results_ENGINE_stockfish_classic_local_1400000_nodes_DATA_fens_board_transformations_2023_06_26_18:59:52_q_scores.csv"
 
 # Define the titles of the plots
 TITLE_FORCED_MOVES="Forced moves"
