@@ -15,6 +15,7 @@ setuptools.setup(
         "networkx==2.8.8",
         "numpy==1.23.4",
         "pandas==1.5.1",
+        "pygraphviz==1.11",
         "python-chess==1.999",
         "scipy==1.9.3",
         "wandb==0.13.10",

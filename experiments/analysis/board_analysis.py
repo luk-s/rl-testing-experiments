@@ -6,7 +6,7 @@ import chess
 import netwulf as nw
 from chess.engine import Score
 
-from rl_testing.config_parsers import get_engine_config, LeelaEngineConfig
+from rl_testing.config_parsers import LeelaEngineConfig, get_engine_config
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
 from rl_testing.mcts.tree_parser import (
     TreeInfo,
@@ -72,8 +72,15 @@ if __name__ == "__main__":
     ################
     fens = [
         # "1r6/pN4K1/3R4/n1R2qp1/PpPp2qB/6p1/p1kPpp2/bB5r b - - 46 117"
+        # Leela blunders Checkmate
         "r5k1/r5Pp/8/1q2p3/4Q3/1p6/p2R4/K5R1 b - - 2 39",
         "4r1k1/r5Pp/8/1q2p3/4Q3/1p6/p2R4/K5R1 w - - 3 40",
+        # Strongest recommended move violation
+        # "r6b/ppq2p1P/3rpk1B/3b4/2nP2P1/2P4R/PPQ2P2/1K1R1B2 w - - 3 29",
+        # "r6b/ppq2p1P/3rpk2/3b4/2nP1BP1/2P4R/PPQ2P2/1K1R1B2 b - - 4 29",
+        # Strongest forced move violation
+        # "r1b3r1/4kR2/p1pNp3/q1P1b2B/4p3/6P1/P6P/2Q3K1 b - - 1 30",
+        # "r1bk2r1/5R2/p1pNp3/q1P1b2B/4p3/6P1/P6P/2Q3K1 w - - 2 31",
     ]
 
     network_name = (
@@ -88,7 +95,7 @@ if __name__ == "__main__":
     # search_limit = {"depth": 40}
     # engine_config_name = "remote_debug_500_nodes.ini"
     # engine_config_name = "remote_400_nodes.ini"
-    engine_config_name = "remote_debug_400_nodes.ini"
+    engine_config_name = "leela_remote_debug_400_nodes.ini"
     search_limit = {"nodes": 400}
     ################
     #  CONFIG END  #
@@ -126,5 +133,5 @@ if __name__ == "__main__":
             print(f"Number of nodes: {len(graph.nodes)}")
             print(f"Number of edges: {len(graph.edges)}")
             # stylized_network, config = nw.visualize(graph)
-            plot_networkx_tree(tree, only_basic_info=True)
+            plot_networkx_tree(tree, only_basic_info=True, save=True, save_path=f"tree_{index}.png")
         index += 1

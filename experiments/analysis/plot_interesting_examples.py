@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--result_path", type=str, help="Path to result file which stores the results that should be analyzed", required=True)  # noqa
     parser.add_argument("--score_type1", type=str, help="Whether the score of the root node should be extracted or the score of the best move for each first position", required=False, choices=["node", "best_move"], default="best_move")  # noqa
-    parser.add_argument("--score_type2", type=str, help="Whether the score of the root node should be extracted or the score of the best move for each second position", required=False, choices=["node", "best_move"], default="node")  # noqa
+    parser.add_argument("--score_type2", type=str, help="Whether the score of the root node should be extracted or the score of the best move for each second position", required=False, choices=["node", "best_move"], default="best_move")  # noqa
     parser.add_argument("--build_fens_from_transformations", action="store_true", help="Whether the fens should be built from transformations", required=False, default=False)  # noqa
     parser.add_argument("--num_examples", type=int, help="Number of examples to plot", required=False, default=10)  # noqa
     parser.add_argument("--engine_config_name", type=str, help="Name of the engine config to use", required=True)  # noqa

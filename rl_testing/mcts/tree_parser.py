@@ -1,9 +1,15 @@
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import chess
+
+# import pydot
 import networkx as nx
 import numpy as np
 from matplotlib import pyplot as plt
+from networkx.drawing.nx_agraph import graphviz_layout
+
+# from networkx.drawing.nx_pydot import graphviz_layout
+
 
 # from chess.engine import AnalysisResult
 if TYPE_CHECKING:
@@ -74,7 +80,7 @@ class TreeParser:
 
         # Compute the depth of each node
         num_per_depth = []
-        self.tree.root_node.assign_depth(0, num_per_depth)
+        self.tree.root_node.assign_depth(0, num_per_depth, order_edges=True)
 
         # Store the node cache
         self.tree.node_cache = self.node_cache
@@ -337,7 +343,10 @@ class OneNodeParser(TreeParser):
         attribute_dict = self.parse_data_line(line)
 
         for attribute in attribute_dict:
-            setattr(self.node, attribute, attribute_dict[attribute])
+            try:
+                setattr(self.node, attribute, attribute_dict[attribute])
+            except:
+                print("I'm here!")
 
         self.node.check_required_attributes()
         self.end_node()
@@ -430,6 +439,12 @@ class NodeInfo(Info):
     def orphan_edges(self) -> List["NodeInfo"]:
         return [edge for edge in self.child_edges if edge.end_node is None]
 
+    @property
+    def is_leaf_node(self) -> bool:
+        assert self.num_visits is not None, "Number of visits is not set!"
+        in_flight_visits = 0 if self.in_flight_visits is None else self.in_flight_visits
+        return self.num_visits + in_flight_visits == 1
+
     def set_fen(self, fen: str) -> None:
         # Check if the fen string is valid.
         temp_board = chess.Board(fen)
@@ -437,6 +452,26 @@ class NodeInfo(Info):
             self.fen = fen
         else:
             raise ValueError(f"Fen string {fen} is not valid.")
+
+    def get_score(self) -> float:
+        """Returns the true q-value of this position, which is the q-value of the
+        best move.
+
+        Returns:
+            float: The true q-value of this position.
+        """
+        if self.is_leaf_node:
+            return self.v_value
+        else:
+            # Return the q-value of the edge with the most visits
+            visits = [edge.num_visits + edge.in_flight_visits for edge in self.child_edges]
+
+            # If there are no visits, raise an error
+            if sum(visits) == 0:
+                raise ValueError("No visits!")
+
+            # Otherwise return the q-value of the edge with the most visits
+            return self.child_edges[np.argmax(visits)].q_value
 
     def connect_child_node(self, child_node: "NodeInfo") -> None:
         board = chess.Board(self.fen)
@@ -452,7 +487,7 @@ class NodeInfo(Info):
 
         raise ValueError(f"Can't find edge to connect {child_node.fen} to {self.fen}.")
 
-    def assign_depth(self, depth: int, num_per_depth: List[int]):
+    def assign_depth(self, depth: int, num_per_depth: List[int], order_edges: bool = False):
         # Assign your own depth
         self.depth = depth
 
@@ -463,9 +498,14 @@ class NodeInfo(Info):
         num_per_depth[depth] += 1
 
         # Assign the depths of the child nodes
+        if order_edges:
+            # Order all edges by their move name
+            self.child_edges.sort(key=lambda edge: edge.move_name())
         for edge in self.child_edges:
             if edge.end_node is not None:
-                edge.end_node.assign_depth(max(depth + 1, edge.end_node.depth), num_per_depth)
+                edge.end_node.assign_depth(
+                    max(depth + 1, edge.end_node.depth), num_per_depth, order_edges
+                )
 
 
 class EdgeInfo(Info):
@@ -503,6 +543,16 @@ class EdgeInfo(Info):
         else:
             raise TypeError(f"Move must be a string or chess.Move, not {type(move)}")
 
+    def move_name(self) -> str:
+        board = chess.Board(self.start_node.fen)
+        try:
+            move_name = board.san(self.move)
+        except:
+            print("I'm here!")
+            move_name = "???"
+
+        return move_name
+
     def set_start_node(self, node: NodeInfo) -> None:
         self.start_node = node
         node.child_edges.append(self)
@@ -527,7 +577,7 @@ def convert_tree_to_networkx(tree: TreeInfo, only_basic_info: bool = False) -> n
             print("This should not happen!")
 
         # Compute the color of the new node
-        node_value_current_player = node.v_value if node.depth % 2 == 0 else -node.v_value
+        node_value_current_player = node.get_score() if node.depth % 2 == 0 else -node.get_score()
         if node_value_current_player <= 0:
             color = red + (white - red) * (1 + node_value_current_player)
         else:
@@ -546,6 +596,7 @@ def convert_tree_to_networkx(tree: TreeInfo, only_basic_info: bool = False) -> n
         )
     for index in tree.node_cache:
         node = tree.node_cache[index]
+
         for edge in node.child_edges:
             if edge.end_node is not None:
                 if only_basic_info:
@@ -555,17 +606,32 @@ def convert_tree_to_networkx(tree: TreeInfo, only_basic_info: bool = False) -> n
                         edge.start_node.visit_index,
                         edge.end_node.visit_index,
                         size=edge.q_value,
+                        move_name=edge.move_name(),
                     )
                 else:
                     assert edge.start_node in graph
                     assert edge.end_node in graph
-                    graph.add_edge(edge.start_node, edge.end_node, size=edge.q_value)
+                    graph.add_edge(
+                        edge.start_node,
+                        edge.end_node,
+                        size=edge.q_value,
+                        move_name=edge.move_name(),
+                    )
 
     return graph
 
 
-def plot_networkx_tree(tree: TreeInfo, only_basic_info: bool = False) -> None:
+def plot_networkx_tree(
+    tree: TreeInfo,
+    only_basic_info: bool = False,
+    save: bool = False,
+    save_path: Optional[str] = None,
+) -> None:
     graph = convert_tree_to_networkx(tree, only_basic_info)
+
+    node_labels = nx.get_node_attributes(graph, "visit_index")
+    edge_labels = nx.get_edge_attributes(graph, "move_name")
+
     pos = nx.get_node_attributes(graph, "pos")
 
     # Flip the y axis
@@ -573,16 +639,30 @@ def plot_networkx_tree(tree: TreeInfo, only_basic_info: bool = False) -> None:
         pos[key] = (pos[key][0], -pos[key][1])
     colors = nx.get_node_attributes(graph, "color").values()
     sizes = 1  # [graph[u][v]["size"] * 5 for u, v in graph.edges]
+    # plt.figure(0, figsize=(11.693, 8.268))
+    plt.figure(0, figsize=(17, 10))
+    pos = graphviz_layout(graph, prog="dot", args="")  # args="-Gnodesep=10"
+
+    # pos = {key: (pos[key][0] * 2, pos[key][1]) for key in pos}
     nx.draw(
         graph,
         pos,
         node_color=colors,
         # Make the node border black
         edgecolors="black",
-        with_labels=False,
+        with_labels=True,
+        font_size=4,
         node_size=100,
         width=sizes,
         arrowsize=10,
     )
 
-    plt.show()
+    # Draw edge labels
+    nx.draw_networkx_edge_labels(graph, pos, edge_labels=edge_labels, font_size=5, label_pos=0.4)
+
+    # plt.show()
+    if save:
+        if save_path is None:
+            raise ValueError("save_path must be set when save is True.")
+        plt.savefig(save_path, dpi=500, bbox_inches="tight")
+        plt.close()
