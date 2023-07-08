@@ -5,23 +5,23 @@
 ##################################
 
 # Select which plots should be created
-CREATE_FORCED_MOVES="False" #"True"
-CREATE_BEST_MOVES_MIDDLEGAMES="False" #"True"
-CREATE_MIRROR_BOARD="False" #"True"
-CREATE_TRANSFORMATION_BOARD="False" #"True"
+CREATE_FORCED_MOVES="True"
+CREATE_BEST_MOVES_MIDDLEGAMES="True"
+CREATE_MIRROR_BOARD="True"
+CREATE_TRANSFORMATION_BOARD="True"
 CREATE_DIFFERENTIAL_TESTING="True"
 
 # Some general options
-SAVE_RESULT_CSV="True" # "False"
-SAVE_PLOT="False" #"True"
-SHOW_PLOT="True" #"False"
+SAVE_RESULT_CSV="False"
+SAVE_PLOT="True"
+SHOW_PLOT="False"
 
 # Define the names of the result files
-FILE_FORCED_MOVES="experiments/results/final_data/forced_move_400_nodes_400k_forced_move_positions.csv"
-FILE_BEST_MOVES_MIDDLEGAMES="experiments/results/final_data/recommended_move_400_nodes_400k_middlegame_positions.csv"
-FILE_MIRROR_BOARD="experiments/results/final_data/mirror_position_400_nodes_400k_middlegame_positions.csv"
-FILE_TRANSFORMATION_BOARD="experiments/results/final_data/board_transformation_400_nodes_200k_no_pawns_synthetic_positions.csv"
-FILE_DIFFERENTIAL_TESTING="experiments/results/final_data2/differential_testing_leela_400_nodes_T80_vs_leela_285_nodes_T78.txt"
+FILE_FORCED_MOVES="experiments/results/final_data/leela_chess_zero_results/forced_move_400_nodes_400k_forced_move_positions.csv"
+FILE_BEST_MOVES_MIDDLEGAMES="experiments/results/final_data/leela_chess_zero_results/recommended_move_400_nodes_400k_middlegame_positions.csv"
+FILE_MIRROR_BOARD="experiments/results/final_data/leela_chess_zero_results/mirror_position_400_nodes_400k_middlegame_positions.csv"
+FILE_TRANSFORMATION_BOARD="experiments/results/final_data/leela_chess_zero_results/board_transformation_400_nodes_200k_no_pawns_synthetic_positions.csv"
+FILE_DIFFERENTIAL_TESTING="experiments/results/final_data/leela_chess_zero_results/differential_testing_leela_400_nodes_T80_vs_leela_285_nodes_T78.txt"
 
 # Define the titles of the plots
 TITLE_FORCED_MOVES="Forced moves"

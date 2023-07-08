@@ -8,7 +8,7 @@ import chess
 import numpy as np
 
 from rl_testing.evolutionary_algorithms.individuals import BoardIndividual, Individual
-from rl_testing.util.chess import is_really_valid, has_undefended_attacked_pieces
+from rl_testing.util.chess import has_undefended_attacked_pieces, is_really_valid
 from rl_testing.util.util import get_random_state
 
 

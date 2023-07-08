@@ -6,7 +6,7 @@
 
 # Select which plots should be created
 CREATE_FORCED_MOVES="True"
-CREATE_BEST_MOVES_MIDDLEGAMES="False"
+CREATE_BEST_MOVES_MIDDLEGAMES="True"
 CREATE_MIRROR_BOARD="True"
 CREATE_TRANSFORMATION_BOARD="True"
 
@@ -17,16 +17,16 @@ SHOW_PLOT="False"
 
 # Define the names of the result files
 # Stockfish NNUE files
-# FILE_FORCED_MOVES="experiments/results/final_data2/results_ENGINE_stockfish_local_81000_nodes_DATA_fens_forced_move_2023_06_18_19:11:19_q_scores.csv"
-# FILE_BEST_MOVES_MIDDLEGAMES="experiments/results/final_data2/results_ENGINE_stockfish_local_81000_nodes_DATA_fens_recommended_move_2023_06_18_19:13:25_q_scores.csv"
-# FILE_MIRROR_BOARD="experiments/results/final_data2/results_ENGINE_stockfish_local_81000_nodes_DATA_fens_board_mirroring_2023_06_18_19:17:47_q_scores.csv"
-# FILE_TRANSFORMATION_BOARD="experiments/results/final_data2/results_ENGINE_stockfish_local_81000_nodes_DATA_fens_board_transformations_2023_06_18_19:21:45_q_scores.csv"
+# FILE_FORCED_MOVES="experiments/results/final_data/stockfish_nnue_results/stockfish_nnue_forced_move_81000_nodes_400k_forced_move_positions_q_scores.csv"
+# FILE_BEST_MOVES_MIDDLEGAMES="experiments/results/final_data/stockfish_nnue_results/stockfish_nnue_recommended_move_81000_nodes_400k_middlegame_positions_q_scores.csv"
+# FILE_MIRROR_BOARD="experiments/results/final_data/stockfish_nnue_results/stockfish_nnue_mirror_position_81000_nodes_400k_middlegame_positions_q_scores.csv"
+# FILE_TRANSFORMATION_BOARD="experiments/results/final_data/stockfish_nnue_results/stockfish_nnue_board_transformation_81000_nodes_200k_no_pawns_synthetic_positions_q_scores.csv"
 
 # Classic Stockfish files
-FILE_FORCED_MOVES="experiments/results/final_data4/results_ENGINE_stockfish_classic_local_1400000_nodes_DATA_fens_forced_move_2023_06_26_18:59:29_q_scores.csv"
-FILE_BEST_MOVES_MIDDLEGAMES="experiments/results/final_data4/"
-FILE_MIRROR_BOARD="experiments/results/final_data4/results_ENGINE_stockfish_classic_local_1400000_nodes_DATA_fens_board_mirroring_2023_06_26_18:59:42_q_scores.csv"
-FILE_TRANSFORMATION_BOARD="experiments/results/final_data4/results_ENGINE_stockfish_classic_local_1400000_nodes_DATA_fens_board_transformations_2023_06_26_18:59:52_q_scores.csv"
+FILE_FORCED_MOVES="experiments/results/final_data/stockfish_classic_results/stockfish_classic_forced_move_1400000_nodes_200k_forced_move_positions_q_scores.csv"
+FILE_BEST_MOVES_MIDDLEGAMES="experiments/results/final_data/stockfish_classic_results/stockfish_classic_recommended_move_1400000_nodes_200k_middlegame_positions_q_scores.csv"
+FILE_MIRROR_BOARD="experiments/results/final_data/stockfish_classic_results/stockfish_classic_mirror_position_1400000_nodes_200k_middlegame_positions_q_scores.csv"
+FILE_TRANSFORMATION_BOARD="experiments/results/final_data/stockfish_classic_results/stockfish_classic_board_transformation_1400000_nodes_200k_no_pawns_synthetic_positions_q_scores.csv"
 
 # Define the titles of the plots
 TITLE_FORCED_MOVES="Forced moves"
@@ -40,7 +40,7 @@ COMMON_ARGS="--x_limit_min 0 --x_limit_max 2"
 
 # Arguments for parent-child-type experiments
 # Optionally add this parameter --q_vals_to_flip child_score if you're using data directly coming from experiments
-PARENT_CHILD_EXPERIMENT_ARGS="--column_name1 parent_score --column_name2 child_score --q_vals_to_flip child_score"
+PARENT_CHILD_EXPERIMENT_ARGS="--column_name1 score1 --column_name2 score2 --q_vals_to_flip score2"
 
 # Arguments for mirror-type experiments
 MIRROR_EXPERIMENT_ARGS="--column_name1 original --column_name2 mirror"
