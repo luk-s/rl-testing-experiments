@@ -7,7 +7,7 @@ import chess
 import chess.engine
 import pandas as pd
 from chess import flip_anti_diagonal, flip_diagonal, flip_horizontal, flip_vertical
-from chess.engine import Score
+from chess.engine import PovWdl, Score
 
 from rl_testing.config_parsers import get_engine_config
 from rl_testing.engine_generators import EngineGenerator, get_engine_generator
@@ -37,18 +37,17 @@ def parse_args() -> argparse.Namespace:
     # fmt: off
     parser = argparse.ArgumentParser()
     parser.add_argument("--result_path", type=str, help="Path to result file which stores the results that should be analyzed", required=True)  # noqa
-    parser.add_argument("--score_type1", type=str, help="Whether the score of the root node should be extracted or the score of the best move for each first position", required=False, choices=["node", "best_move"], default="best_move")  # noqa
-    parser.add_argument("--score_type2", type=str, help="Whether the score of the root node should be extracted or the score of the best move for each second position", required=False, choices=["node", "best_move"], default="best_move")  # noqa
     parser.add_argument("--build_fens_from_transformations", action="store_true", help="Whether the fens should be built from transformations", required=False, default=False)  # noqa
     parser.add_argument("--num_examples", type=int, help="Number of examples to plot", required=False, default=10)  # noqa
     parser.add_argument("--engine_config_name", type=str, help="Name of the engine config to use", required=True)  # noqa
-    parser.add_argument("--network_name", type=str, default="T807785-b124efddc27559564d6464ba3d213a8279b7bd35b1cbfcf9c842ae8053721207")  # noqa
-    parser.add_argument("--fen_column1", type=str, help="Name of the column storing the first fen value", required=False, default="parent_fen")  # noqa
-    parser.add_argument("--fen_column2", type=str, help="Name of the column storing the second fen value", required=False, default="child_fen")  # noqa
+    parser.add_argument("--network_name", type=str, default=None)  # noqa
+    parser.add_argument("--fen_column1", type=str, help="Name of the column storing the first fen value", required=False, default="fen1")  # noqa
+    parser.add_argument("--fen_column2", type=str, help="Name of the column storing the second fen value", required=False, default="fen2")  # noqa
     parser.add_argument("--score_column1", type=str, help="Name of the column storing the first score value. Only required if the fens are built from transformations.", required=False, default=None)  # noqa
     parser.add_argument("--flip_second_score", action="store_true", help="Whether the second Q-value should be flipped (multiplied by -1)", required=False, default=False)  # noqa
     parser.add_argument("--show_best_move_first", action="store_true", help="Whether the best move should be shown for the first position", required=False, default=False)  # noqa
     parser.add_argument("--show_best_move_second", action="store_true", help="Whether the best move should be shown for the second position", required=False, default=False)  # noqa
+    parser.add_argument("--large_fontsize", action="store_true", help="Whether the fontsize should be increased", required=False, default=False)  # noqa
     parser.add_argument("--save_plot", action="store_true", help="Save the resulting plots to a file", required=False, default=False)  # noqa
     parser.add_argument("--save_path_base", type=str, help="Base path to use for saving the plots", required=False, default=None)  # noqa
     parser.add_argument("--show_plot", action="store_true", help="Show the resulting plots", required=False, default=False)  # noqa
@@ -154,10 +153,16 @@ async def analyze_with_engine(
     network_name: Optional[str] = None,
     search_limits: Optional[Dict[str, Any]] = None,
     score_type: str = "cp",
-) -> Tuple[List[Score], List[TreeInfo]]:
+) -> Tuple[List[Score], List[chess.Move], List[PovWdl]]:
     valid_score_types = ["cp", "q"]
     engine_scores = []
-    verbose_stats = []
+    wdl_scores: List[PovWdl] = []
+    best_moves: List[chess.Move] = []
+
+    # Make sure that the score type is valid
+    assert (
+        score_type in valid_score_types
+    ), f"Invalid score type: {score_type}. Choose one from {valid_score_types}"
 
     # Set search limits
     if search_limits is None:
@@ -167,6 +172,9 @@ async def analyze_with_engine(
     if network_name is not None:
         engine_generator.set_network(network_name)
     engine = await engine_generator.get_initialized_engine()
+
+    # Set to option to show the wdl score
+    await engine.configure({"UCI_ShowWDL": True})
 
     for board_index, board in enumerate(positions):
         # Make sure that 'board' has type 'chess.Board'
@@ -178,29 +186,34 @@ async def analyze_with_engine(
 
         # Analyze the position
         print(f"Analyzing board {board_index+1}/{len(positions)}: {fen}")
-        info = await engine.analyse(board, chess.engine.Limit(**search_limits))
+        info = await engine.analyse(board, chess.engine.Limit(**search_limits), game=board_index)
+
+        # Extract the WDL score
+        wdl_score: PovWdl = info["wdl"]
+        wdl_scores.append(wdl_score)
 
         # Extract the score
         cp_score = info["score"].relative.score(mate_score=12780)
         if score_type == "cp":
             engine_scores.append(cp_score)
         elif score_type == "q":
-            engine_scores.append(cp2q(cp_score))
+            win, loss = wdl_score.relative.winning_chance(), wdl_score.relative.losing_chance()
+            engine_scores.append(win - loss)
         else:
             raise ValueError(
                 f"Invalid score type: {score_type}. Choose one from {valid_score_types}"
             )
 
-        if "root_and_child_scores" in info:
-            verbose_stats.append(info["root_and_child_scores"])
+        # Extract the best move
+        best_moves.append(info["pv"][0])
 
-    return engine_scores, verbose_stats
+    return engine_scores, best_moves, wdl_scores
 
 
 def analyze_positions(
     fens: List[str],
     args: argparse.Namespace,
-) -> List[NodeInfo]:
+) -> Tuple[List[chess.Move], List[PovWdl]]:
     asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
 
     # Setup engine generator
@@ -212,7 +225,7 @@ def analyze_positions(
     search_limit = engine_config.search_limits
     engine_generator = get_engine_generator(engine_config)
 
-    _, verbose_stats = asyncio.run(
+    _, best_moves, wdl_scores = asyncio.run(
         analyze_with_engine(
             engine_generator=engine_generator,
             positions=fens,
@@ -221,35 +234,7 @@ def analyze_positions(
         )
     )
 
-    return verbose_stats
-
-
-def extract_win_prob_and_best_move_from_verbose_stat(
-    verbose_stat: NodeInfo, mode: str, flip_q_value: bool = False
-) -> Tuple[float, chess.Move]:
-    valid_modes = ["node", "best_move"]
-    assert mode in valid_modes, f"Invalid mode: {mode}. Choose one from {valid_modes}"
-
-    # Get the best move
-    best_edge = max(verbose_stat.child_edges, key=lambda s: s.num_visits + s.in_flight_visits)
-    best_move = best_edge.move
-
-    # Extract the win probability
-    if mode == "node":
-        q_value = verbose_stat.q_value
-        d_value = verbose_stat.draw_value
-    elif mode == "best_move":
-        q_value = best_edge.q_value
-        d_value = best_edge.draw_value
-
-    print(f"fen: {verbose_stat.fen}, q_value: {q_value}, d_value: {d_value}")
-
-    if flip_q_value:
-        q_value *= -1
-
-    win_prob = 0.5 * (q_value + 1 - d_value)
-
-    return win_prob, best_move
+    return best_moves, wdl_scores
 
 
 def create_two_board_plot(
@@ -260,6 +245,7 @@ def create_two_board_plot(
     second_win_prob_flipped: float,
     best_move_first: Optional[chess.Move] = None,
     best_move_second: Optional[chess.Move] = None,
+    large_font_size: bool = False,
     show_plot: bool = True,
     save_plot: bool = False,
     save_path: str = "",
@@ -280,10 +266,6 @@ def create_two_board_plot(
     else:
         second_color = second_player_to_move
 
-    # Create the titles
-    title1 = f"Board 1: {first_player_to_move} to move"
-    title2 = f"Board 2: {second_player_to_move} to move"
-
     first_win_prob = str(round(100 * first_win_prob))
     second_win_prob = str(round(100 * second_win_prob))
 
@@ -291,30 +273,52 @@ def create_two_board_plot(
     first_len = len(str(first_win_prob))
     second_len = len(str(second_win_prob))
 
-    # Compute the correct amount of spaces to add
-    first_spaces = " " * (13 - first_len)
-    second_spaces = " " * (13 - second_len)
+    # Create the titles
+    if large_font_size:
+        first_len += 1 if first_len == 2 else 0
+        second_len += 1 if second_len == 2 else 0
+
+        title1 = f"{first_player_to_move} to move"
+        title2 = f"{second_player_to_move} to move"
+
+        # Compute the correct amount of spaces to add
+        win_prob_string = "Win prob:"
+        first_spaces = " " * (7 - first_len)
+        second_spaces = " " * (7 - second_len)
+
+    else:
+        title1 = f"Board 1: {first_player_to_move} to move"
+        title2 = f"Board 2: {second_player_to_move} to move"
+
+        # Compute the correct amount of spaces to add
+        win_prob_string = "Win probability:"
+        first_spaces = " " * (13 - first_len)
+        second_spaces = " " * (13 - second_len)
 
     # Create the x-axis labels
-    x_label1 = f"Win probability:{first_spaces}{first_win_prob}% for {first_color}"  # 16
-    if best_move_first:
-        first_line_length = len(x_label1)
-        move_san = first_board.san(best_move_first)
-        second_line = f"\nBest move:{first_spaces + ' ' * 7}{move_san}"  # 10
-        second_line_length = len(second_line)
-        x_label1 += second_line
-        if first_line_length > second_line_length:
-            x_label1 += " " * (first_line_length - second_line_length)
+    x_labels = []
+    for win_prob, space, color, best_move, board in zip(
+        [first_win_prob, second_win_prob],
+        [first_spaces, second_spaces],
+        [first_color, second_color],
+        [best_move_first, best_move_second],
+        [first_board, second_board],
+    ):
+        x_label = f"{win_prob_string}{space}{win_prob}% for {color}"
+        if best_move:
+            first_line_length = len(x_label)
+            move_san = board.san(best_move)
+            san_length = len(move_san)
+            second_line_space = 21 if san_length == 3 else 20
+            second_line = f"\nBest move:{' ' * (second_line_space - san_length)}{move_san}"
+            second_line_length = len(second_line)
+            x_label += second_line
+            if first_line_length > second_line_length:
+                x_label += " " * (first_line_length - second_line_length)
+        x_labels.append(x_label)
 
-    x_label2 = f"Win probability:{second_spaces}{second_win_prob}% for {second_color}"
-    if best_move_second:
-        first_line_length = len(x_label2)
-        move_san = second_board.san(best_move_second)
-        second_line = f"\nBest move:{second_spaces + ' ' * 7}{move_san}"
-        second_line_length = len(second_line)
-        x_label2 += second_line
-        if first_line_length > second_line_length:
-            x_label2 += " " * (first_line_length - second_line_length)
+    # Create the x-axis labels
+    x_label1, x_label2 = x_labels
 
     # Build the arrows of the best moves
     arrows1 = []
@@ -328,6 +332,11 @@ def create_two_board_plot(
             chess.svg.Arrow(best_move_second.from_square, best_move_second.to_square, color="green")
         ]
 
+    if large_font_size:
+        fontsize = 18
+    else:
+        fontsize = 14
+
     # Create the plots
     plot_two_boards(
         board1=first_board,
@@ -338,7 +347,7 @@ def create_two_board_plot(
         title2=title2,
         x_label1=x_label1,
         x_label2=x_label2,
-        fontsize=14,
+        fontsize=fontsize,
         plot_size=800,
         save=save_plot,
         show=show_plot,
@@ -371,32 +380,27 @@ def plot_interesting_examples(args: argparse.Namespace):
 
     # Analyze the positions
     all_fens = first_fens + second_fens
-    all_stats = analyze_positions(all_fens, args)
-    first_stats, second_stats = (
-        all_stats[: args.num_examples],
-        all_stats[args.num_examples :],
+    all_best_moves, all_wdls = analyze_positions(all_fens, args)
+
+    # Split the results
+    first_wdls, second_wdls = (
+        all_wdls[: args.num_examples],
+        all_wdls[args.num_examples :],
+    )
+    first_best_moves, second_best_moves = (
+        all_best_moves[: args.num_examples],
+        all_best_moves[args.num_examples :],
     )
 
     # Extract the win probabilities
-    print("First Scores:")
-    first_win_probs_and_best_moves = []
-    for index, stat in enumerate(first_stats):
-        stat.set_fen(first_fens[index])
-        first_win_probs_and_best_moves.append(
-            extract_win_prob_and_best_move_from_verbose_stat(stat, args.score_type1)
-        )
-
-    print("Second Scores:")
-    second_win_probs_and_best_moves = []
-    for index, stat in enumerate(second_stats):
-        stat.set_fen(second_fens[index])
-        second_win_probs_and_best_moves.append(
-            extract_win_prob_and_best_move_from_verbose_stat(
-                stat, args.score_type2, args.flip_second_score
-            )
-        )
-    first_win_probs, first_best_moves = zip(*first_win_probs_and_best_moves)
-    second_win_probs, second_best_moves = zip(*second_win_probs_and_best_moves)
+    if args.flip_second_score:
+        first_colors = [povwdl.turn for povwdl in first_wdls]
+    else:
+        first_colors = [povwdl.turn for povwdl in second_wdls]
+    first_win_probs = [wdl.relative.winning_chance() for wdl in first_wdls]
+    second_win_probs = [
+        second_wdls[i].pov(first_colors[i]).winning_chance() for i in range(len(second_wdls))
+    ]
 
     # Create the plots
     for index, (
@@ -426,6 +430,7 @@ def plot_interesting_examples(args: argparse.Namespace):
             second_win_prob_flipped=args.flip_second_score,
             best_move_first=first_best_move if args.show_best_move_first else None,
             best_move_second=second_best_move if args.show_best_move_second else None,
+            large_font_size=args.large_fontsize,
             show_plot=args.show_plot,
             save_plot=args.save_plot,
             save_path=save_path,
