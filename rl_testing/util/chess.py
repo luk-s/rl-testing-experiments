@@ -69,7 +69,10 @@ def stockfish_cp_to_wdl(score: int, ply: int) -> Tuple[int, int, int]:
 
     Args:
         score (float): The Stockfish score in centipawns.
-        ply (int): The number of plies.
+        ply (int): The number of plies. Defined to be
+            '(full_move_number - 1) * 2 + blacksturn' where
+            'blacksturn' is 1 if it is Black's turn and 0
+            otherwise
 
     Returns:
         Tuple[int, int, int]: The WDL score.
@@ -86,6 +89,15 @@ def stockfish_cp_to_wdl(score: int, ply: int) -> Tuple[int, int, int]:
 
 
 def stockfish_cp_to_leela_q(score: int, ply: int) -> float:
+    """Convert a Stockfish centipawn score to a Leela Q value.
+
+    Args:
+        score (int): The Stockfish score in centipawns.
+        ply (int):
+
+    Returns:
+        float: _description_
+    """
     win, draw, loss = stockfish_cp_to_wdl(score, ply)
 
     # Normalize to 0-1

@@ -8,6 +8,7 @@ PRINT_LEELA_RESULTS="True"
 PRINT_SCALING_RESULTS="True"
 PRINT_EVOLUTIONARY_ALGORITHM_RESULTS="True"
 PRINT_STOCKFISH_CLASSIC_RESULTS="True"
+PRINT_STOCKFISH_CLASSIC_RESULTS_FEWER_NODES="True"
 PRINT_STOCKFISH_NNUE_RESULTS="True"
 
 if [ $PRINT_LEELA_RESULTS == "True" ]; then
@@ -70,6 +71,20 @@ if [ $PRINT_STOCKFISH_CLASSIC_RESULTS == "True" ]; then
     python3 experiments/analysis/print_result_percentages.py --result_path $RESULT_DIR/$STOCKFISH_CLASSIC_DIR/stockfish_classic_forced_move_1400000_nodes_200k_forced_move_positions_q_scores_differences_sorted.csv
     echo "Board transformations"
     python3 experiments/analysis/print_result_percentages.py --result_path $RESULT_DIR/$STOCKFISH_CLASSIC_DIR/stockfish_classic_board_transformation_1400000_nodes_200k_no_pawns_synthetic_positions_q_scores_differences_sorted.csv
+fi
+
+if [ $PRINT_STOCKFISH_CLASSIC_RESULTS_FEWER_NODES == "True" ]; then
+    echo "==========================================="
+    echo "Printing Stockfish Classic fewer nodes results"
+    echo "==========================================="
+    echo "Recommended moves"
+    python3 experiments/analysis/print_result_percentages.py --result_path $RESULT_DIR/$STOCKFISH_CLASSIC_DIR/stockfish_classic_recommended_move_81000_nodes_100k_middlegame_positions_q_scores_differences_sorted.csv
+    echo "Position mirroring"
+    python3 experiments/analysis/print_result_percentages.py --result_path $RESULT_DIR/$STOCKFISH_CLASSIC_DIR/stockfish_classic_mirror_position_81000_nodes_100k_middlegame_positions_q_scores_differences_sorted.csv
+    echo "Forced moves"
+    python3 experiments/analysis/print_result_percentages.py --result_path $RESULT_DIR/$STOCKFISH_CLASSIC_DIR/stockfish_classic_forced_move_81000_nodes_100k_forced_move_positions_q_scores_differences_sorted.csv
+    echo "Board transformations"
+    python3 experiments/analysis/print_result_percentages.py --result_path $RESULT_DIR/$STOCKFISH_CLASSIC_DIR/stockfish_classic_board_transformation_81000_nodes_50k_no_pawns_synthetic_positions_q_scores_differences_sorted.csv
 fi
 
 if [ $PRINT_STOCKFISH_NNUE_RESULTS == "True" ]; then
