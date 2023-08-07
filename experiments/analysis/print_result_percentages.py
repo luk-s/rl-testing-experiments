@@ -44,7 +44,7 @@ def get_num_samples_and_score_columns(file_name: str) -> Tuple[int, List[str]]:
     return num_samples, score_columns
 
 
-def get_percentages(raw_row: str) -> str:
+def get_percentages(raw_row: str, cutoff: float = 0.01) -> str:
     numbers = raw_row.split(" & ")
     original_divisor = numbers[0]
 
@@ -65,8 +65,8 @@ def get_percentages(raw_row: str) -> str:
     def to_string(x):
         if x == 0:
             return "0\%"
-        if x < 0.01:
-            return "<0.01\%"
+        if x < cutoff:
+            return f"<{cutoff}\%"
         return f"{x}\%"
 
     numbers = [round_to_1(100 * (number / divisor)) for number in numbers]
@@ -97,6 +97,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--result_path", type=str, help="Path to result file", required=True)  # noqa
     parser.add_argument("--mode", type=str, help="Mode", choices=["numbers", "percentages"], default="percentages")  # noqa
+    parser.add_argument("--cutoff", type=float, help="Cutoff for percentages", default=0.01)  # noqa
     # fmt: on
     args = parser.parse_args()
 
@@ -111,5 +112,5 @@ if __name__ == "__main__":
     if args.mode == "numbers":
         print(number_row)
     elif args.mode == "percentages":
-        percentage_row = get_percentages(number_row)
+        percentage_row = get_percentages(number_row, cutoff=args.cutoff)
         print(percentage_row)

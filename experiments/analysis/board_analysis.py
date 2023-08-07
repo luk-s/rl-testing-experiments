@@ -73,14 +73,17 @@ if __name__ == "__main__":
     fens = [
         # "1r6/pN4K1/3R4/n1R2qp1/PpPp2qB/6p1/p1kPpp2/bB5r b - - 46 117"
         # Leela blunders Checkmate
-        "r5k1/r5Pp/8/1q2p3/4Q3/1p6/p2R4/K5R1 b - - 2 39",
-        "4r1k1/r5Pp/8/1q2p3/4Q3/1p6/p2R4/K5R1 w - - 3 40",
+        # "r5k1/r5Pp/8/1q2p3/4Q3/1p6/p2R4/K5R1 b - - 2 39",
+        # "4r1k1/r5Pp/8/1q2p3/4Q3/1p6/p2R4/K5R1 w - - 3 40",
         # Strongest recommended move violation
         # "r6b/ppq2p1P/3rpk1B/3b4/2nP2P1/2P4R/PPQ2P2/1K1R1B2 w - - 3 29",
         # "r6b/ppq2p1P/3rpk2/3b4/2nP1BP1/2P4R/PPQ2P2/1K1R1B2 b - - 4 29",
         # Strongest forced move violation
         # "r1b3r1/4kR2/p1pNp3/q1P1b2B/4p3/6P1/P6P/2Q3K1 b - - 1 30",
         # "r1bk2r1/5R2/p1pNp3/q1P1b2B/4p3/6P1/P6P/2Q3K1 w - - 2 31",
+        # One of the strongest board mirroring violations
+        "1k1r4/ppp3p1/2n2q1r/8/2P3Q1/1P4N1/P3RPP1/4R1K1 b - - 4 32",
+        "4r1k1/p3rpp1/1p4n1/2p3q1/8/2N2Q1R/PPP3P1/1K1R4 w - - 4 32",
     ]
 
     network_name = (
