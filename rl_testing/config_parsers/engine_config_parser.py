@@ -29,6 +29,7 @@ class LeelaEngineConfig(Config):
         "cp_score_min",
         "convert_cp2q",
         "mate_score_cp",
+        "use_win_draw_loss",
     ]
 
     def __init__(
@@ -48,6 +49,7 @@ class LeelaEngineConfig(Config):
         self.cp_score_max = 12801
         self.cp_score_min = -12801
         self.mate_score_cp = 12780
+        self.use_win_draw_loss = False
 
         # Assign the parameters from the provided config file
         if _initialize:

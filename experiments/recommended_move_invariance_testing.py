@@ -14,19 +14,21 @@ import numpy as np
 
 from rl_testing.config_parsers import get_data_generator_config
 from rl_testing.data_generators import BoardGenerator, get_data_generator
-from rl_testing.distributed.queue_utils import EmptySocketAddress, SocketAddress, build_manager
-from rl_testing.util.experiment import store_experiment_params
-from rl_testing.util.util import get_task_result_handler
 from rl_testing.distributed.distributed_queue_manager import (
     QueueManager,
-    default_address,
     connect_to_manager,
+    default_address,
     default_password,
     default_port,
 )
-from rl_testing.distributed.worker import (
-    RecommendedMoveAnalysisObject,
+from rl_testing.distributed.queue_utils import (
+    EmptySocketAddress,
+    SocketAddress,
+    build_manager,
 )
+from rl_testing.distributed.worker import RecommendedMoveAnalysisObject
+from rl_testing.util.experiment import store_experiment_params
+from rl_testing.util.util import get_task_result_handler
 
 RESULT_DIR = Path(__file__).parent / Path("results/recommended_move_testing")
 
@@ -132,7 +134,7 @@ async def evaluate_candidates(
 
     with open(file_path, "a") as file:
         # Create the header of the result file
-        csv_header = "parent_fen,child_fen,move,parent_score,child_score\n"
+        csv_header = "fen1,fen2,move,score1,score2\n"
         file.write(csv_header)
 
         flush_every = 1000
