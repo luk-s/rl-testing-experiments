@@ -1,0 +1,89 @@
+####################
+# Main experiments #
+####################
+
+############################
+# Recommended move testing #
+############################
+
+nohup python experiments/recommended_move_invariance_testing.py --engine_config leela_local_400_nodes.ini --data_config_name fens_recommended_move.ini --port 50000 --num_positions 400000 &> logs/test_recommended_move1.txt &
+
+CUDA_VISIBLE_DEVICES=7 nohup python rl_testing/distributed/worker.py --engine_config_name leela_local_400_nodes.ini --port 50000 --mode analyze &> logs/worker_leela1.txt &
+
+
+############################
+# Forced move testing #
+############################
+
+nohup python experiments/recommended_move_invariance_testing.py --engine_config leela_local_400_nodes.ini --data_config_name fens_forced_move.ini --port 50001 --num_positions 400000 &> logs/test_forced_move1.txt &
+
+CUDA_VISIBLE_DEVICES=7 nohup python rl_testing/distributed/worker.py --engine_config_name leela_local_400_nodes.ini --port 50001 --mode analyze &> logs/worker_leela1.txt &
+
+
+#####################################
+# Transformation invariance testing #
+#####################################
+
+nohup python experiments/transformation_invariance_testing.py --engine_config leela_local_400_nodes.ini --data_config_name fens_board_transformations.ini --port 50002 --num_positions 200000 --transformations rot90 rot180 rot270 flip_diag flip_anti_diag flip_hor flip_vert &> logs/test_transformation_invariance1.txt &
+
+CUDA_VISIBLE_DEVICES=7 nohup python rl_testing/distributed/worker.py --engine_config_name leela_local_400_nodes.ini --port 50002 --mode analyze &> logs/worker_leela1.txt &
+
+
+###########################
+# Board mirroring testing #
+###########################
+
+nohup python experiments/transformation_invariance_testing.py --engine_config leela_local_400_nodes.ini --data_config_name fens_board_mirroring.ini --port 50003 --num_positions 400000 --transformations mirror &> logs/test_board_mirroring1.txt &
+
+CUDA_VISIBLE_DEVICES=7 nohup python rl_testing/distributed/worker.py --engine_config_name leela_local_400_nodes.ini --port 50003 --mode analyze &> logs/worker_leela1.txt &
+
+#######################
+# Scaling experiments #
+#######################
+
+nohup python experiments/recommended_move_invariance_testing.py --engine_config leela_local_1_node.ini --data_config_name fens_scaling.ini --port 50000 --num_positions 100000 &> logs/test_scaling_1_nodes.txt &
+
+CUDA_VISIBLE_DEVICES=7 nohup python rl_testing/distributed/worker.py --engine_config_name leela_local_1_node.ini --port 50000 --mode analyze &> logs/worker_leela1.txt &
+
+
+nohup python experiments/recommended_move_invariance_testing.py --engine_config leela_local_100_nodes.ini --data_config_name fens_scaling.ini --port 50001 --num_positions 100000 &> logs/test_scaling_100_nodes.txt &
+
+CUDA_VISIBLE_DEVICES=7 nohup python rl_testing/distributed/worker.py --engine_config_name leela_local_100_nodes.ini --port 50001 --mode analyze &> logs/worker_leela2.txt &
+
+
+nohup python experiments/recommended_move_invariance_testing.py --engine_config leela_local_200_nodes.ini --data_config_name fens_scaling.ini --port 50002 --num_positions 100000 &> logs/test_scaling_200_nodes.txt &
+
+CUDA_VISIBLE_DEVICES=7 nohup python rl_testing/distributed/worker.py --engine_config_name leela_local_200_nodes.ini --port 50002 --mode analyze &> logs/worker_leela3.txt &
+
+
+nohup python experiments/recommended_move_invariance_testing.py --engine_config leela_local_400_nodes.ini --data_config_name fens_scaling.ini --port 50003 --num_positions 100000 &> logs/test_scaling_400_nodes.txt &
+
+CUDA_VISIBLE_DEVICES=7 nohup python rl_testing/distributed/worker.py --engine_config_name leela_local_400_nodes.ini --port 50003 --mode analyze &> logs/worker_leela4.txt &
+
+
+nohup python experiments/recommended_move_invariance_testing.py --engine_config leela_local_800_nodes.ini --data_config_name fens_scaling.ini --port 50004 --num_positions 100000 &> logs/test_scaling_800_nodes.txt &
+
+CUDA_VISIBLE_DEVICES=7 nohup python rl_testing/distributed/worker.py --engine_config_name leela_local_800_nodes.ini --port 50004 --mode analyze &> logs/worker_leela5.txt &
+
+
+nohup python experiments/recommended_move_invariance_testing.py --engine_config leela_local_1600_nodes.ini --data_config_name fens_scaling.ini --port 50005 --num_positions 100000 &> logs/test_scaling_1600_nodes.txt &
+
+CUDA_VISIBLE_DEVICES=7 nohup python rl_testing/distributed/worker.py --engine_config_name leela_local_1600_nodes.ini --port 50005 --mode analyze &> logs/worker_leela6.txt &
+
+######################################
+# Evolutionary algorithm experiments #
+######################################
+
+####################
+# Classic baseline #
+####################
+nohup python experiments/transformation_invariance_testing.py --engine_config leela_local_1600_nodes.ini --data_config_name fens_board_transformations.ini --port 50001 --num_positions 50000 --transformations rot180 &> logs/test_transformation_invariance_only_rotations1.txt &
+
+CUDA_VISIBLE_DEVICES=7 nohup python rl_testing/distributed/worker.py --engine_config_name leela_local_1600_nodes.ini --port 50001 --mode analyze &> logs/worker_leela1.txt &
+
+##########################
+# Evolutionary algorithm #
+##########################
+nohup python experiments/evolutionary_algorithms/evolutionary_algorithm_distributed_oracle_queries_async.py --evolutionary_algorithm_config_name config_board_transformations.yaml &> logs/final_evolutionary_board_transformations1.txt &
+
+CUDA_VISIBLE_DEVICES=7 nohup python rl_testing/distributed/worker.py --engine_config_name leela_local_1600_nodes_T80.ini --port 50000 --mode analyze &> logs/worker_leela_1.txt &
