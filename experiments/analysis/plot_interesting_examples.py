@@ -45,6 +45,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fen_column2", type=str, help="Name of the column storing the second fen value", required=False, default="fen2")  # noqa
     parser.add_argument("--score_column1", type=str, help="Name of the column storing the first score value. Only required if the fens are built from transformations.", required=False, default=None)  # noqa
     parser.add_argument("--flip_second_score", action="store_true", help="Whether the second Q-value should be flipped (multiplied by -1)", required=False, default=False)  # noqa
+    parser.add_argument("--plot_example", action="store_true", help="Whether the examples should be plotted", required=False, default=False)  # noqa
     parser.add_argument("--show_best_move_first", action="store_true", help="Whether the best move should be shown for the first position", required=False, default=False)  # noqa
     parser.add_argument("--show_best_move_second", action="store_true", help="Whether the best move should be shown for the second position", required=False, default=False)  # noqa
     parser.add_argument("--large_fontsize", action="store_true", help="Whether the fontsize should be increased", required=False, default=False)  # noqa
@@ -213,7 +214,7 @@ async def analyze_with_engine(
 def analyze_positions(
     fens: List[str],
     args: argparse.Namespace,
-) -> Tuple[List[chess.Move], List[PovWdl]]:
+) -> Tuple[List[Score], List[chess.Move], List[PovWdl]]:
     asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
 
     # Setup engine generator
@@ -225,16 +226,17 @@ def analyze_positions(
     search_limit = engine_config.search_limits
     engine_generator = get_engine_generator(engine_config)
 
-    _, best_moves, wdl_scores = asyncio.run(
+    scores, best_moves, wdl_scores = asyncio.run(
         analyze_with_engine(
             engine_generator=engine_generator,
             positions=fens,
             network_name=args.network_name,
             search_limits=search_limit,
+            score_type="q",
         )
     )
 
-    return best_moves, wdl_scores
+    return scores, best_moves, wdl_scores
 
 
 def create_two_board_plot(
@@ -355,7 +357,7 @@ def create_two_board_plot(
     )
 
 
-def plot_interesting_examples(args: argparse.Namespace):
+def analyze_interesting_examples(args: argparse.Namespace):
     # Load the data
     dataframe = pd.read_csv(args.result_path)
 
@@ -380,9 +382,13 @@ def plot_interesting_examples(args: argparse.Namespace):
 
     # Analyze the positions
     all_fens = first_fens + second_fens
-    all_best_moves, all_wdls = analyze_positions(all_fens, args)
+    all_q_values, all_best_moves, all_wdls = analyze_positions(all_fens, args)
 
     # Split the results
+    first_q_values, second_q_values = (
+        all_q_values[: args.num_examples],
+        all_q_values[args.num_examples :],
+    )
     first_wdls, second_wdls = (
         all_wdls[: args.num_examples],
         all_wdls[args.num_examples :],
@@ -394,6 +400,7 @@ def plot_interesting_examples(args: argparse.Namespace):
 
     # Extract the win probabilities
     if args.flip_second_score:
+        second_q_values = [-q_value for q_value in second_q_values]
         first_colors = [povwdl.turn for povwdl in first_wdls]
     else:
         first_colors = [povwdl.turn for povwdl in second_wdls]
@@ -406,6 +413,8 @@ def plot_interesting_examples(args: argparse.Namespace):
     for index, (
         first_fen,
         second_fen,
+        first_q_value,
+        second_q_value,
         first_win_prob,
         second_win_prob,
         first_best_move,
@@ -414,6 +423,8 @@ def plot_interesting_examples(args: argparse.Namespace):
         zip(
             first_fens,
             second_fens,
+            first_q_values,
+            second_q_values,
             first_win_probs,
             second_win_probs,
             first_best_moves,
@@ -421,20 +432,23 @@ def plot_interesting_examples(args: argparse.Namespace):
         )
     ):
         save_path = str(args.save_path_base) + f"_{index+1}.png"
-        print(f"Plotting example {index+1}/{args.num_examples}")
-        create_two_board_plot(
-            first_fen=first_fen,
-            second_fen=second_fen,
-            first_win_prob=first_win_prob,
-            second_win_prob=second_win_prob,
-            second_win_prob_flipped=args.flip_second_score,
-            best_move_first=first_best_move if args.show_best_move_first else None,
-            best_move_second=second_best_move if args.show_best_move_second else None,
-            large_font_size=args.large_fontsize,
-            show_plot=args.show_plot,
-            save_plot=args.save_plot,
-            save_path=save_path,
-        )
+        print(f"Analyzing example {index+1}/{args.num_examples}: {first_fen}")
+        print(f"Score difference: {abs(first_q_value - second_q_value)}")
+
+        if args.plot_example:
+            create_two_board_plot(
+                first_fen=first_fen,
+                second_fen=second_fen,
+                first_win_prob=first_win_prob,
+                second_win_prob=second_win_prob,
+                second_win_prob_flipped=args.flip_second_score,
+                best_move_first=first_best_move if args.show_best_move_first else None,
+                best_move_second=second_best_move if args.show_best_move_second else None,
+                large_font_size=args.large_fontsize,
+                show_plot=args.show_plot,
+                save_plot=args.save_plot,
+                save_path=save_path,
+            )
 
 
 if __name__ == "__main__":
@@ -442,4 +456,4 @@ if __name__ == "__main__":
     args = parse_args()
 
     # Run the analysis
-    plot_interesting_examples(args)
+    analyze_interesting_examples(args)
