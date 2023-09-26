@@ -9,9 +9,9 @@ CREATE_FORCED_MOVES="False"
 CREATE_BEST_MOVES_MIDDLEGAMES="False"
 CREATE_MIRROR_BOARD="False"
 CREATE_TRANSFORMATION_BOARD="False"
-CREATE_ROTATE180_BOARD="True"
+CREATE_ROTATE180_BOARD="False"
 CREATE_DIFFERENTIAL_TESTING="False"
-CREATE_SCALING="False"
+CREATE_SCALING="True"
 
 # Some general options
 SAVE_RESULT_CSV="True"
@@ -39,6 +39,7 @@ SCALING_FILES=(
     "experiments/results/final_data/leela_chess_zero_results2/recommended_move_400_nodes_100k_middlegame_positions.txt"
     "experiments/results/final_data/leela_chess_zero_results2/recommended_move_800_nodes_100k_middlegame_positions.txt"
     "experiments/results/final_data/leela_chess_zero_results2/recommended_move_1600_nodes_100k_middlegame_positions.txt"
+    "experiments/results/final_data/leela_chess_zero_results2/recommended_move_3200_nodes_100k_middlegame_positions.txt"
 )
 
 # Define the titles of the plots
