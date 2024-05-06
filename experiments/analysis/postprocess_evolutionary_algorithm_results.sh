@@ -17,4 +17,4 @@ python3 experiments/analysis/postprocess_evolutionary_algorithm_results.py --fil
 echo "Second results"
 python3 experiments/analysis/postprocess_evolutionary_algorithm_results.py --file_path $RESULT_DIR/board_transformation_1600_nodes_50k_no_pawns_synthetic_positions_evolutionary_algorithm2.txt $GENERAL_ARGUMENTS
 echo "Third results"
-# python3 experiments/analysis/postprocess_evolutionary_algorithm_results.py --file_path $RESULT_DIR/board_transformation_1600_nodes_50k_no_pawns_synthetic_positions_evolutionary_algorithm3.txt $GENERAL_ARGUMENTS
+python3 experiments/analysis/postprocess_evolutionary_algorithm_results.py --file_path $RESULT_DIR/board_transformation_1600_nodes_50k_no_pawns_synthetic_positions_evolutionary_algorithm3.txt $GENERAL_ARGUMENTS

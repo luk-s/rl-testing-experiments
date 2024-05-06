@@ -1,4 +1,7 @@
 # rl-testing-experiments
+This repository contains the code used to evaluate chess AIs, such as [Leela Chess Zero](https://lczero.org/) and [Stockfish](https://stockfishchess.org/), for consistency. The experiments are part of the paper [Evaluating Superhuman Models with Consistency Checks](https://arxiv.org/abs/2306.09983).
+
+The provided evaluation pipeline is optimized to support multi-GPU evaluation, where GPUs can run on remote machines, and additional GPUs can be dynamically added to an experiment after it has started.
 
 ## Table of contents
 1. [Setup](#setup)
@@ -91,11 +94,16 @@ open_now = True
 
 ## Reproducing the experiments
 ### Prerequisites
-- Leela Chess Zero instance installed and configured as described above
+- Chess AI instance (Leela or Stockfish) installed and configured as described above
 - Data file containing chess positions stored in `data` folder. The specific chess positions used in our experiments can be extracted from the result files in the `experiments/results/final_data` folder.
 
 ### Running the experiments
-All experiments can be run in a two-step process. First, the main experiment file is run. This file handles everything from loading the data, writing results, and coordinating the distributed queues. In a second steps, one or several workers are started. Each worker runs a Leela Chess Zero instance and evaluates positions provided by the main experiment file.
+All experiments can be run in a two-step process. First, the main experiment file is run. This file handles everything from loading the data, writing results, and coordinating the distributed queues. In a second step, one or several workers are started. Each worker runs a chess AI instance and evaluates positions provided by the main experiment file.
+
+The precise commands used to replicate the experiments of the paper for Leela Chess Zero can be found in the file [leela_experiment_commands.txt](leela_experiment_commands.txt). The commands can be adapted accordingly for Stockfish by starting Stockfish worker threads instead of Leela worker threads.
+
+#### Command explanations
+Some simple examples of how to run the different experiments are provided below.
 
 For the forced-move and the recommended-move experiments, the main experiment file can be run via the command
 ```bash
